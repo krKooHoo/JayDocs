@@ -64,7 +64,7 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-Phase 0~3 의 계획 범위는 끝났다. 다음은 Jay 가 실제로 써 보고 주는 피드백이 우선이다 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+Phase 0~3 의 계획 범위는 끝났다. **`TESTCASES.md`(101개 TC)** 를 Jay 가 돌려 ❌/⚠ 가 나온 것부터 고친다. 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 
 남은 숙제 (작은 것부터):
 1. **이미지 미리보기** — 사이드카가 `.md/.tsv` 만 서빙한다. `/api/raw?path=` 로 `_assets/` 이미지를 내보내고 미리보기의 `img` 를 그리로.

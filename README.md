@@ -121,7 +121,7 @@ npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·
 `.claude/launch.json`(여기와 JayTools 루트)의 `--root` 경로는 PC마다 다르므로 clone 한 뒤 맞춘다.
 테스트의 SagaDocs 왕복 항목은 `../../SagaDocs`, `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾고, 없으면 건너뛴다.
 
-다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md).
+다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](TESTCASES.md)(101개 TC).
 
 ## 구조
 
