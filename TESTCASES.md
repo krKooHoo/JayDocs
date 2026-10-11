@@ -95,7 +95,7 @@ cd saga-tc && git init && git add -A && git commit -m "TC 시작"
 | TC-411 | 열 글자(예: `C`)를 눌러 끌어 `F` 뒤에 놓는다 | 세로선 표시 → 확인 창 → 열 순서와 너비가 함께 이동 | |
 | TC-412 | 열 경계를 끌어 너비 조절 → 앱 재시작 | 너비가 기억됨 | |
 
-## 5. 스키마 · 검증 (Phase 1)
+## 5. 스키마 · 검증 · 계산식 (Phase 1 · 계산식은 §17)
 
 | ID | 절차 | 기대 | 결과 |
 |---|---|---|---|
@@ -107,6 +107,10 @@ cd saga-tc && git init && git add -A && git commit -m "TC 시작"
 | TC-506 | `Buildable`(bool) 셀에서 `Space` / 체크박스 클릭 | TRUE ↔ FALSE | |
 | TC-507 | `Building_Table.tsv` 열 툴팁 | 다른 폴더 `District_Field.tsv` 의 `BuildingDef` 설명이 보임 | |
 | TC-508 | `Tile_Field.tsv` 에서 `TerrainType` 블록에 `Volcano` 행을 추가(저장 안 함) → `Tile_Table` 의 TerrainType 드롭다운 | `Volcano` 가 바로 후보에 보임(저장 전 내용 반영) | |
+| TC-509 | `Tile_Table.tsv` 툴바 **계산식 만들기** | `Tile_Calc.tsv` 가 생기고 열림 (`Target / Formula / #메모` + 주석 처리된 예시). 툴바가 **계산 · 계산식** 으로 바뀜 | |
+| TC-510 | Calc 에 `MovementCost	=if(TerrainType == "Peak", 9, if(TerrainType == "Mountain", 3, 1))` 와 `FoodCost[Ocean-Ocean]	=255` 를 적는다(저장 전) → Tile_Table 탭 | 식이 걸린 셀에 파란 왼쪽 띠, 지금 값과 다른 셀은 노란 배경 + 툴팁에 `ƒ 식 → 값`. 상태줄 `계산식 2개 · 바뀔 셀 n` | |
+| TC-511 | `F9` (또는 **계산 (n)**) → `Ctrl+Z` | n개 셀이 한 번에 바뀌고 `● 수정됨`, 되돌리기 한 번에 전부 복구 | |
+| TC-512 | 식을 일부러 틀리게(`=Nope + 1`, `=1 / 0`) | 그리드 위 빨간 배너에 규칙·행·이유. 다른 규칙은 그대로 계산됨. `lookup("20-Settlement/District/District_Table.tsv", "Stronghold", "BuildingLimit")` 는 다른 표 값을 가져옴 | |
 
 ## 6. tsv-view · bake · 템플릿 (Phase 2 · 3)
 
@@ -211,11 +215,11 @@ template: |
 | 2 마크다운 | 16 | | | | |
 | 3 그리드 기본 | 10 | | | | |
 | 4 그리드 범위·찾기 | 12 | | | | |
-| 5 스키마 | 8 | | | | |
+| 5 스키마·계산식 | 12 | | | | |
 | 6 tsv-view·bake·템플릿 | 14 | | | | |
 | 7 git | 14 | | | | |
 | 8 키보드·테마 | 11 | | | | |
 | 9 안전장치 | 7 | | | | |
-| **합계** | **107** | | | | |
+| **합계** | **111** | | | | |
 
 돌린 날짜: ________ · 빌드(커밋): ________ · 환경: Windows / Edge ________

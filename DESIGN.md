@@ -594,6 +594,23 @@ Jay 의 첫 사용 소감: "가벼워서 좋다, git 으로 바로 커밋되는 
 
 ---
 
+## 17. 계산식 (2026-10-11, 권고안 b 채택)
+
+Jay 가 미뤄 둔 "수식" 을 넣으려면 파일 계약(§2: 셀은 값 그대로, SAGA `/design` 이 그대로 읽는다)과 부딪힌다. 두 안 중 **(b)** 로 갔다.
+
+| 안 | 내용 | 판정 |
+|---|---|---|
+| (a) 셀 원문에 `=A*2` | 그리드에서만 계산해 보여 줌 | 파일을 읽는 쪽이 식을 본다 — 계약 위반. 기각 |
+| **(b) 식은 별도 파일, 결과를 값 열에 써 넣기** | `X_Calc.tsv` 에 `Target / Formula`, 그리드의 **계산(F9)** 이 결과를 표에 쓴다 | 파일엔 값만 남는다. 채택 |
+
+- **파일**: `X_Table.tsv` 옆 `X_Calc.tsv`. 헤더 `Target	Formula	#메모`, 규칙은 `열이름` (전 행) 또는 `열이름[Key]` (한 행). 타입 행이 없는 보통 TSV 라 그리드에서 그대로 편집한다. SagaDocs 규칙에는 새 파일 종류지만 `/design` 은 `_Table`/`_Field` 만 읽으므로 무해하다.
+- **식** (`lib/calc/expr.ts`, 250줄): 숫자·문자열·열 참조·사칙·비교·논리·삼항·함수·`lookup(파일, 키, 열)`. 값은 문자열이되 숫자로 읽히면 숫자. 결과는 숫자면 소수 찌꺼기 제거, 불은 TRUE/FALSE.
+- **계산** (`lib/calc/calc.ts`): 규칙 전부를 행마다 평가, 규칙이 규칙 결과를 읽을 수 있어 값이 안정될 때까지 최대 5바퀴. 결과는 **stale 맵**(지금 값 ≠ 계산값)으로 먼저 보여 주고(파란 띠·노란 배경·툴팁), F9 가 바뀐 셀만 `setCells` 한 번으로 써 넣는다(되돌리기 한 단계). 자동 적용은 하지 않는다 — Jay 가 눌러야 파일이 바뀐다.
+- **스토어**: Field 캐시를 보조 표 캐시(`auxTable`)로 일반화해 Calc 파일과 lookup 대상 표도 같은 길로 읽는다. 열려 있으면 저장 전 표를 우선하므로 Calc 파일을 고치는 즉시 바뀔 셀 수가 따라온다.
+- 하지 않은 것: 식 자동완성, 순환 참조 감지(5바퀴 뒤 멈춤), 행 간 집계(sum 등 — 필요하면 `lookup` 처럼 표 단위 함수로).
+
+---
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

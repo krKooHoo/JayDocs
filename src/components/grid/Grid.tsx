@@ -6,6 +6,7 @@ import { issueKey, type Validation } from '../../lib/tsv/validate'
 import { fillDown, fillRange, fillRight, fillSeries, fillTarget, moveSpan, pasteBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
 import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
 import { sanitizeCell } from '../../lib/tsv/serialize'
+import type { CalcCell } from '../../lib/calc/calc'
 
 /**
  * 자체 DOM 그리드 (DESIGN D3). 상태는 활성 셀(부모가 쥔다)과 범위 선택의 기준점(anchor)뿐이고
@@ -62,6 +63,10 @@ export interface GridProps {
   onFindStep: (dir: 1 | -1) => void
   /** 찾기에 걸린 셀 (issueKey 와 같은 r * width + c) */
   matches: ReadonlySet<number>
+  /** 계산식이 걸린 셀 (issueKey 키). stale 이면 F9 로 바뀔 셀 */
+  calcCells: ReadonlyMap<number, CalcCell>
+  /** F9 — 계산식 적용 */
+  onCalc: () => void
   /** 열 너비를 기억할 localStorage 키 */
   widthsKey: string
 }
@@ -152,11 +157,13 @@ interface CellProps {
   match: boolean
   /** 채우기 핸들로 채울 자리 (끄는 중) */
   fill: boolean
+  /** 계산식이 걸린 셀 */
+  calc: CalcCell | undefined
   issue: string | undefined
   head: boolean
 }
 
-const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill, issue, head }: CellProps) {
+const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill, calc, issue, head }: CellProps) {
   let cls = 'grid-cell'
   if (col.type === 'comment') cls += ' is-comment'
   if (col.isKey) cls += ' is-key'
@@ -164,11 +171,17 @@ const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill
   if (selected) cls += ' is-selected'
   if (match) cls += ' is-match'
   if (fill) cls += ' is-fill-target'
+  if (calc) cls += calc.stale ? ' is-calc is-stale' : ' is-calc'
   if (active) cls += ' is-active'
   if (issue) cls += ' has-error'
   const bool = !head && col.type === 'bool' && isBoolText(v)
+  let title = issue
+  if (calc) {
+    const f = `ƒ ${calc.rule.formula}${calc.stale ? ` → ${calc.computed} (F9 로 적용)` : ''}`
+    title = issue ? `${issue}\n${f}` : f
+  }
   return (
-    <div className={cls} data-r={r} data-c={c} style={{ width: w }} title={issue}>
+    <div className={cls} data-r={r} data-c={c} style={{ width: w }} title={title}>
       {bool ? (
         <span className="grid-bool" data-bool="1">
           <input type="checkbox" checked={/^true$/i.test(v)} readOnly tabIndex={-1} />
@@ -196,12 +209,13 @@ interface RowProps {
   fillC1: number
   fillC2: number
   matches: ReadonlySet<number>
+  calcCells: ReadonlyMap<number, CalcCell>
   rowSelected: boolean
   head: boolean
   style?: React.CSSProperties
 }
 
-const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, rowSelected, head, style }: RowProps) {
+const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, style }: RowProps) {
   let cls = 'grid-row'
   cls += head ? ' is-head' : ' is-body'
   if (head && schema.typed && r === 0) cls += ' is-type'
@@ -220,6 +234,7 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
           selected={selC1 >= 0 && c >= selC1 && c <= selC2}
           match={matches.size > 0 && matches.has(issueKey(tableWidth, r, c))}
           fill={fillC1 >= 0 && c >= fillC1 && c <= fillC2}
+          calc={calcCells.size > 0 ? calcCells.get(issueKey(tableWidth, r, c)) : undefined}
           issue={validation.issues.get(issueKey(tableWidth, r, c))}
           head={head}
         />
@@ -230,7 +245,7 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
 
 // ---------------------------------------------------------------- 그리드
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
-  const { table, schema, validation, active, onActiveChange, onEdit, onUndo, onRedo, onNotice, onRowOp, onColOp, onMoveColumns, onFind, onFindStep, matches } = p
+  const { table, schema, validation, active, onActiveChange, onEdit, onUndo, onRedo, onNotice, onRowOp, onColOp, onMoveColumns, onFind, onFindStep, matches, calcCells, onCalc } = p
   const headerRows = schema.headerRows
   const headerH = LETTER_H + headerRows * ROW_H
   const bodyCount = Math.max(0, table.rows.length - headerRows)
@@ -606,6 +621,10 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
         e.preventDefault()
         startEdit('edit')
         return
+      case 'F9':
+        e.preventDefault()
+        onCalc()
+        return
       case 'F3':
         e.preventDefault()
         onFindStep(e.shiftKey ? -1 : 1)
@@ -851,7 +870,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
               const s = rowSel(r)
               const f = fillSel(r)
               return (
-                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} rowSelected={wholeRow && s.c1 >= 0} head />
+                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} calcCells={calcCells} rowSelected={wholeRow && s.c1 >= 0} head />
               )
             })}
             {handleInHead && handle}
@@ -876,6 +895,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 fillC1={f.c1}
                 fillC2={f.c2}
                 matches={matches}
+                calcCells={calcCells}
                 rowSelected={wholeRow && s.c1 >= 0}
                 head={false}
                 style={{ transform: `translateY(${headerH + vi.start}px)` }}

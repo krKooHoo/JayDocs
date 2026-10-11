@@ -115,6 +115,7 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+Alt+Shift+-', label: '선택한 열 삭제' },
       { keys: 'Ctrl+Shift+D', label: '행 복제' },
       { keys: '↓ / ↑ (enum 드롭다운)', label: '후보 고르기, Enter 로 확정' },
+      { keys: 'F9', label: '계산식 적용 — 같은 폴더 `X_Calc.tsv` 의 식을 평가해 값 열에 써 넣는다 (바뀔 셀은 미리 노란 밑줄)', command: 'calc' },
     ],
   },
   {

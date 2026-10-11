@@ -111,6 +111,7 @@ Google Sheets · Excel 의 기본 키를 따른다. 수식은 없다.
 | `Ctrl+Alt+Shift+-` | 선택한 열 삭제 |
 | `Ctrl+Shift+D` | 행 복제 |
 | `↓ / ↑ (enum 드롭다운)` | 후보 고르기, Enter 로 확정 |
+| `F9` | 계산식 적용 — 같은 폴더 `X_Calc.tsv` 의 식을 평가해 값 열에 써 넣는다 (바뀔 셀은 미리 노란 밑줄) |
 
 ## git 패널
 

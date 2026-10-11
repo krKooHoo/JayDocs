@@ -247,6 +247,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && !isTsvPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && !isTsvPath(path) } },
     { id: 'diffActive', label: '현재 문서를 HEAD 와 비교', run: () => { const path = activePath(); if (path) openDiff(path) }, enabled: () => activePath() !== null && git.repo },
     { id: 'historyActive', label: '현재 문서의 커밋 기록', run: () => { const path = activePath(); if (path) { toggleBorder('git', true); git.requestLog(path) } }, enabled: () => activePath() !== null && git.repo },
+    { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
   ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusGit, focusEditor, openDiff])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {

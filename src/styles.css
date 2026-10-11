@@ -354,6 +354,10 @@ kbd {
 .grid-row.is-head .grid-cell.is-selected { background: var(--accent-soft); }
 .grid-cell.has-error { box-shadow: inset 0 -2px 0 var(--danger); background: var(--err-bg); }
 .grid-cell.is-active { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 계산식이 걸린 셀: 왼쪽 띠. 값이 식과 다르면(F9 로 바뀔 셀) 노란 배경 */
+.grid-cell.is-calc { background-image: linear-gradient(to right, var(--accent) 0, var(--accent) 3px, transparent 3px); background-repeat: no-repeat; }
+.grid-cell.is-stale { background-color: var(--diff-chg); background-image: linear-gradient(to right, var(--dirty) 0, var(--dirty) 3px, transparent 3px); }
+.banner-item { display: inline-block; padding: 0 6px; border-left: 2px solid var(--err-border); }
 .grid-bool { display: flex; align-items: center; justify-content: center; height: 100%; }
 .grid-bool input { margin: 0; cursor: pointer; }
 .grid-input {

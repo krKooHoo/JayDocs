@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { onPaneAction, onSelectRequest } from '../../lib/nav'
+import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
+import { backend } from '../../lib/backend'
 import { store, useStoreVersion } from '../../store/documents'
+import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
 import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
@@ -11,6 +13,15 @@ import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './G
 
 const NO_HITS: FindHit[] = []
 const NO_KEYS: ReadonlySet<number> = new Set()
+const NO_CALC: ReadonlyMap<number, CalcCell> = new Map()
+/** 표 객체마다 번호를 붙여 useMemo 의존성 문자열에 넣는다 */
+const tableIds = new WeakMap<object, number>()
+let nextTableId = 1
+function tableId(t: object): number {
+  let id = tableIds.get(t)
+  if (!id) { id = nextTableId++; tableIds.set(t, id) }
+  return id
+}
 /** Ctrl+F 때 활성 셀 값을 찾을 말로 미리 채우는 최대 길이 */
 const PREFILL_MAX = 40
 
@@ -29,14 +40,69 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   // 미리보기의 tsv-view 행이나 diff 항목에서 "이 행으로" 요청이 오면 활성 셀을 옮긴다.
   // 탭이 바뀌는 중이면 포커스가 날아가므로 한 프레임 뒤에 준다
   useEffect(() => onSelectRequest(path, (pos) => { setActive(pos); window.setTimeout(() => grid.current?.focus(), 50) }), [path])
-  useEffect(() => onPaneAction(path, (a) => { if (a === 'focus') window.setTimeout(() => grid.current?.focus(), 0) }), [path])
 
+  const showNotice = useCallback((msg: string) => {
+    setNotice(msg)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 4000)
+  }, [])
+  useEffect(() => () => window.clearTimeout(noticeTimer.current), [])
   const d = store.get(path)
   const doc = d?.kind === 'tsv' && d.status === 'ready' ? d : null
   const table = doc?.table ?? null
   const fields = store.fieldFiles()
   const schema = useMemo(() => (table ? deriveSchema(table, path, fields) : null), [table, path, fields])
   const validation = useMemo(() => (table && schema ? validateTable(table, schema) : null), [table, schema])
+
+  // ---- 계산식 (같은 폴더 X_Calc.tsv, DESIGN §17). 결과는 F9 로 값 열에 써 넣는다
+  const calcPath = siblingCalcPath(path)
+  const hasCalc = calcPath !== path && store.hasPath(calcPath)
+  const calcTable = hasCalc ? store.auxTable(calcPath) : null
+  const calcRules = useMemo(() => (calcTable ? parseCalcRules(calcTable) : null), [calcTable])
+  const lookupFiles = useMemo(() => (calcRules ? calcLookupFiles(calcRules.rules) : []), [calcRules])
+  useEffect(() => { for (const f of lookupFiles) store.ensureAux(f) }, [lookupFiles])
+  // lookup 표가 읽히거나 바뀌면 다시 계산되게 — 표 객체 번호로 의존성을 만든다
+  const lookupKey = lookupFiles.map((f) => { const t = store.auxTable(f); return t ? `${f}#${tableId(t)}` : `${f}#-` }).join('|')
+  const lookupSource = useCallback((f: string): LookupSource | null => {
+    const t = store.auxTable(f)
+    return t ? { table: t, schema: deriveSchema(t, f, fields) } : null
+  }, [fields])
+  const calcResult = useMemo<CalcResult | null>(
+    () => (table && schema && calcRules ? computeCalc(table, schema, calcRules.rules, lookupSource) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table, schema, calcRules, lookupSource, lookupKey],
+  )
+  const calcErrors = useMemo(() => [...(calcRules?.errors ?? []), ...(calcResult?.errors ?? [])], [calcRules, calcResult])
+
+  const runCalc = useCallback(() => {
+    if (!schema || !calcRules) { showNotice(hasCalc ? '계산식을 아직 읽는 중입니다' : `계산식 파일이 없습니다: ${calcPath}`); return }
+    let count = 0
+    store.editTable(path, (t) => {
+      const r = applyCalc(t, computeCalc(t, schema, calcRules.rules, lookupSource))
+      count = r.count
+      return r.table
+    })
+    showNotice(count ? `계산식 적용: ${count}개 셀 갱신 (Ctrl+Z 로 되돌림)` : '계산식 적용: 바뀐 셀 없음')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, schema, calcRules, lookupSource, hasCalc, calcPath])
+
+  const createCalc = useCallback(async () => {
+    // 예시 규칙에는 숫자 열이 자연스럽다. 없으면 Key·주석이 아닌 첫 열
+    const cols = schema?.columns ?? []
+    const example = (cols.find((c) => c.name && (c.type === 'byte' || c.type === 'uint' || c.type === 'float')) ?? cols.find((c) => !c.isKey && c.type !== 'comment' && c.name))?.name ?? null
+    try {
+      await backend().write(calcPath, calcTemplate(example), null)
+      window.setTimeout(() => openPath(calcPath), 400) // 트리가 갱신될 시간
+    } catch (e) {
+      showNotice(`만들지 못했습니다: ${(e as Error).message}`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcPath, schema])
+
+  useEffect(() => onPaneAction(path, (a) => {
+    if (a === 'focus') window.setTimeout(() => grid.current?.focus(), 0)
+    if (a === 'calc') runCalc()
+  }), [path, runCalc])
 
   // 표가 줄어들면 활성 셀을 안으로
   useEffect(() => {
@@ -45,13 +111,6 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     const c = Math.min(active.c, Math.max(0, table.width - 1))
     if (r !== active.r || c !== active.c) setActive({ r, c })
   }, [table, active])
-
-  const showNotice = useCallback((msg: string) => {
-    setNotice(msg)
-    window.clearTimeout(noticeTimer.current)
-    noticeTimer.current = window.setTimeout(() => setNotice(null), 4000)
-  }, [])
-  useEffect(() => () => window.clearTimeout(noticeTimer.current), [])
 
   const edit = useCallback((fn: (t: TsvTable) => TsvTable) => store.editTable(path, fn), [path])
   const undo = useCallback(() => store.undo(path), [path])
@@ -265,6 +324,25 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <button onClick={() => colOp('del', currentRange())} disabled={table.width <= 1} title="선택한 열 삭제 (Ctrl+Alt+Shift+-)">삭제</button>
             <span className="sep" />
             <button onClick={() => openFind(false)} title="찾기 (Ctrl+F) · 바꾸기 (Ctrl+H)">찾기</button>
+            {schema.typed && calcPath !== path && (
+              <>
+                <span className="sep" />
+                {hasCalc ? (
+                  <>
+                    <button
+                      onClick={() => { runCalc(); refocus() }}
+                      disabled={!calcResult || (calcResult.staleCount === 0 && calcErrors.length === 0)}
+                      title={`${baseName(calcPath)} 의 식을 평가해 값 열에 써 넣는다 (F9). 노란 밑줄 셀이 바뀐다`}
+                    >
+                      계산{calcResult?.staleCount ? ` (${calcResult.staleCount})` : ''}
+                    </button>
+                    <button onClick={() => openPath(calcPath)} title={`${baseName(calcPath)} 열기`}>계산식</button>
+                  </>
+                ) : (
+                  <button onClick={() => void createCalc()} title={`${baseName(calcPath)} 를 만들어 연다 — 열 값을 식으로 채우는 규칙을 적는 곳`}>계산식 만들기</button>
+                )}
+              </>
+            )}
             {table.rows.length === 0 && (
               <>
                 <span className="sep" />
@@ -274,6 +352,16 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <span className="spacer" />
             {notice && <span className="grid-notice">{notice}</span>}
           </div>
+          {calcErrors.length > 0 && (
+            <div className="banner is-error">
+              계산식 문제 {calcErrors.length}건:
+              {calcErrors.slice(0, 4).map((e, i) => (
+                <span key={i} className="banner-item">{e.rule ? `${e.rule.target}${e.rule.key ? `[${e.rule.key}]` : ''}` : baseName(calcPath)}{e.row !== null ? ` ${e.row + 1}행` : ''} — {e.message}</span>
+              ))}
+              {calcErrors.length > 4 && <span className="muted">… 외 {calcErrors.length - 4}건</span>}
+              <button onClick={() => openPath(calcPath)}>계산식 열기</button>
+            </div>
+          )}
           {findOpen && (
             <div className="grid-find" onKeyDown={onFindKey}>
               <input
@@ -329,6 +417,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             onFind={openFind}
             onFindStep={findStep}
             matches={hitKeys}
+            calcCells={calcResult?.cells ?? NO_CALC}
+            onCalc={runCalc}
             widthsKey={`jaydocs.colw:${path}`}
           />
           <div className="grid-foot">
@@ -346,6 +436,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
               </button>
             )}
             <span>{schemaLabel}</span>
+            {hasCalc && calcRules && <span title={calcPath}>계산식 {calcRules.rules.length}개{calcResult?.staleCount ? ` · 바뀔 셀 ${calcResult.staleCount}` : ''}</span>}
           </div>
         </>
       )}

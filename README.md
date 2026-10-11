@@ -5,7 +5,7 @@ Node 사이드카 하나 + 브라우저 창 하나. 문서는 git 리포에 평�
 
 > 상태: **Phase 3 완료** — 폴더 열기 · 탭/분할 · 마크다운 소스/하이브리드/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME · 범위 선택 · 찾기/바꾸기 · 채우기 핸들)
 > · md 안에 TSV 표 임베드(`tsv-view` — 그 자리 편집 · bake · Mermaid 템플릿) · git(배지 · HEAD diff · 커밋 · 기록 · 되돌리기) · 다크 모드 · 명령 팔레트 · 전부 키보드로 ([SHORTCUTS.md](SHORTCUTS.md)).
-> 남은 것: 수식(설계 결정 필요 — 파일엔 값만 두는 계약과 충돌).
+> 수식은 `X_Calc.tsv` 로 — 파일에는 값만 남는다(아래 "계산식").
 
 ## 실행
 
@@ -101,6 +101,22 @@ limit: 20
   byte(0~255)·uint·float·enum 값과 Key 중복은 빨간 밑줄 + 툴팁. 저장은 막지 않는다.
 - **왕복 보존** 수정한 행만 다시 조립한다. BOM·CRLF/LF·끝 개행·열 수는 파일에 있던 그대로. 끝 개행이 없는 파일은 아래 상태줄의 **끝 개행 추가** 로 한 번 넣어 두면 행을 덧붙일 때 diff 가 한 줄로 나온다.
 
+### 계산식 (`X_Calc.tsv`)
+
+표 `X_Table.tsv` 옆에 `X_Calc.tsv` 를 두면(툴바 **계산식 만들기**) 그 식으로 값 열을 채울 수 있다. **파일에는 식이 아니라 결과 값이 남는다** — SagaDocs 를 읽는 쪽(SAGA `/design`)은 식을 볼 일이 없다.
+
+```
+Target	Formula	#메모
+MovementCost	=if(TerrainType == "Peak", 9, if(TerrainType == "Mountain", 3, 1))	지형별 이동 비용
+FoodCost	=MovementCost * 2 / 3 > 1 ? round(MovementCost * 2 / 3) : 1	
+FoodCost[Ocean-Ocean]	=255	이 행만
+```
+
+- 1행은 헤더(`Target`), 2행부터 규칙. `열이름` 은 모든 데이터 행, `열이름[Key]` 는 그 Key 행 하나(나중 규칙이 이긴다). `#` 로 시작하는 Target 은 주석.
+- 식: 숫자 · `"문자열"` · 열이름 · `+ - * / %` · `== != > < >= <=` · `&& || !` · `조건 ? a : b` · 함수 `if min max abs floor ceil round(x, n) len upper lower trim concat contains(리스트셀, 항목) count(리스트셀) num`, 다른 표는 `lookup("폴더/Y_Table.tsv", 키값, "열")`. 빈 셀은 숫자 문맥에서 0. 규칙이 다른 규칙의 결과를 읽을 수 있다(값이 안정될 때까지 다시 계산).
+- 그리드에서 식이 걸린 셀은 왼쪽에 파란 띠, 지금 값이 식과 다르면 노란 배경. 툴바 **계산 (n)** 또는 `F9` 가 바뀔 셀을 한 번에 써 넣는다(되돌리기 한 단계). 식 오류는 위에 빨간 배너로.
+- Calc 파일은 보통 TSV 처럼 그리드에서 고치고, 저장 전 내용이 바로 표에 반영된다(바뀔 셀 수가 실시간으로 바뀐다).
+
 ### git (아래 **변경 (git)** 패널)
 
 - 바뀐 `.md`/`.tsv` 목록 + 배지. 체크를 풀면 커밋에서 뺀다. 메시지를 쓰고 **커밋** (`Ctrl+Enter`). 저장하지 않은 문서가 섞여 있으면 먼저 저장할지 묻는다.
@@ -146,6 +162,9 @@ src/
     field.ts          _Field 시트의 블록 읽기
     schema.ts         타입 행 + Field 블록 → 열 스키마 (enum 후보 · 설명 · Key)
     validate.ts       셀 검증 (타입 · enum · Key 중복)
+  lib/calc/
+    expr.ts           계산식 토크나이저 · 파서 · 평가기 (함수 · lookup)
+    calc.ts           X_Calc.tsv 규칙 읽기 · 계산 · 적용 (stale 판정)
     diff.ts           두 표의 차이 (Key 로 행 맞춤)
     *.test.ts         vitest
   store/documents.ts  DocumentStore — 경로당 문서 하나 (TextDoc | TsvDoc), 창 간 동기화, undo 스택, Field 캐시, dirty·충돌·저장

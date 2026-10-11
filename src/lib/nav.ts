@@ -10,7 +10,7 @@ export interface CellPos {
 
 type Opener = (path: string) => void
 type SelectListener = (pos: CellPos) => void
-export type PaneAction = 'cycleMdMode' | 'focus'
+export type PaneAction = 'cycleMdMode' | 'focus' | 'calc'
 type ActionListener = (action: PaneAction) => void
 
 let opener: Opener | null = null

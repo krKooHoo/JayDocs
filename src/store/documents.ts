@@ -81,11 +81,14 @@ class DocumentStore {
   private listeners = new Set<() => void>()
   private changeListeners = new Map<string, Set<ChangeListener>>()
 
-  // ---- Field 시트 (스키마 힌트) ----
+  // ---- 보조 표 (Field 시트 = 스키마 힌트, Calc 시트 = 계산식, lookup 대상 표) ----
+  // 열려 있지 않은 표를 디스크에서 읽어 들고 있는다. 열린 문서는 그 (저장 전) 표를 우선한다.
   private fieldPaths: string[] = []
-  private fieldCache = new Map<string, { mtime: number; file: FieldFile }>()
-  private fieldLoading = new Set<string>()
+  private treePaths = new Set<string>()
+  private auxCache = new Map<string, { mtime: number; table: TsvTable }>()
+  private auxLoading = new Set<string>()
   private liveFieldParsed = new Map<string, { table: TsvTable; file: FieldFile }>()
+  private cachedFieldParsed = new Map<string, { table: TsvTable; file: FieldFile }>()
   private fieldsResult: FieldFile[] = []
   private fieldsStale = true
 
@@ -203,39 +206,55 @@ class DocumentStore {
   }
 
   // ---------------------------------------------------------------- Field 시트
-  /** 파일 트리가 바뀌면 호출. `*_Field.tsv` 목록을 갱신한다. */
+  /** 파일 트리가 바뀌면 호출. `*_Field.tsv` 목록과 전체 경로 집합을 갱신한다. */
   setTree(entries: TreeEntry[]) {
     const paths: string[] = []
+    const all = new Set<string>()
     const walk = (es: TreeEntry[]) => {
       for (const e of es) {
         if (e.type === 'dir') walk(e.children ?? [])
-        else if (isFieldFile(e.path)) paths.push(e.path)
+        else { all.add(e.path); if (isFieldFile(e.path)) paths.push(e.path) }
       }
     }
     walk(entries)
     paths.sort()
+    this.treePaths = all
+    for (const p of [...this.auxCache.keys()]) if (!all.has(p)) this.auxCache.delete(p)
     if (paths.join('\n') !== this.fieldPaths.join('\n')) {
       this.fieldPaths = paths
-      for (const p of [...this.fieldCache.keys()]) if (!paths.includes(p)) this.fieldCache.delete(p)
       this.fieldsStale = true
       this.emit()
     }
-    this.ensureFieldsLoaded()
+    for (const p of this.fieldPaths) this.ensureAux(p)
   }
 
-  private ensureFieldsLoaded() {
-    for (const p of this.fieldPaths) {
-      if (this.fieldCache.has(p) || this.fieldLoading.has(p) || this.docs.has(p)) continue
-      this.fieldLoading.add(p)
-      backend().read(p)
-        .then((f) => {
-          this.fieldCache.set(p, { mtime: f.mtime, file: parseFieldBlocks(p, parseTsv(f.text)) })
-          this.fieldsStale = true
-          this.emit()
-        })
-        .catch(() => { /* 못 읽으면 힌트 없이 간다 */ })
-        .finally(() => this.fieldLoading.delete(p))
-    }
+  /** 트리에 있는 파일인가 (아직 트리를 못 받았으면 모른다 → true) */
+  hasPath(path: string): boolean {
+    return this.treePaths.size === 0 || this.treePaths.has(path)
+  }
+
+  /** 열려 있지 않은 표를 디스크에서 읽어 둔다. 읽히면 emit — 다시 그릴 때 auxTable 이 값을 준다 */
+  ensureAux(path: string) {
+    if (!isTsvPath(path) || this.auxCache.has(path) || this.auxLoading.has(path) || this.docs.has(path) || !this.hasPath(path)) return
+    this.auxLoading.add(path)
+    backend().read(path)
+      .then((f) => {
+        this.auxCache.set(path, { mtime: f.mtime, table: parseTsv(f.text) })
+        if (isFieldFile(path)) this.fieldsStale = true
+        this.emit()
+      })
+      .catch(() => { /* 못 읽으면 없는 것으로 */ })
+      .finally(() => this.auxLoading.delete(path))
+  }
+
+  /** 표 하나 — 열려 있으면 (저장 전) 그 표, 아니면 디스크 캐시. 아직 없으면 null (읽기를 시작한다) */
+  auxTable(path: string): TsvTable | null {
+    const d = this.docs.get(path)
+    if (d?.kind === 'tsv') return d.status === 'ready' ? d.table : null
+    const c = this.auxCache.get(path)
+    if (c) return c.table
+    this.ensureAux(path)
+    return null
   }
 
   /**
@@ -243,7 +262,7 @@ class DocumentStore {
    * 바뀐 게 없으면 같은 배열을 돌려준다 (useMemo 의존성으로 쓸 수 있게).
    */
   fieldFiles(): FieldFile[] {
-    this.ensureFieldsLoaded()
+    for (const p of this.fieldPaths) this.ensureAux(p)
     // 열린 Field 문서의 표가 바뀌었는지
     for (const p of this.fieldPaths) {
       const d = this.docs.get(p)
@@ -261,8 +280,14 @@ class DocumentStore {
         }
         out.push(live.file)
       } else {
-        const c = this.fieldCache.get(p)
-        if (c) out.push(c.file)
+        const c = this.auxCache.get(p)
+        if (!c) continue
+        let parsed = this.cachedFieldParsed.get(p)
+        if (!parsed || parsed.table !== c.table) {
+          parsed = { table: c.table, file: parseFieldBlocks(p, c.table) }
+          this.cachedFieldParsed.set(p, parsed)
+        }
+        out.push(parsed.file)
       }
     }
     this.fieldsResult = out
@@ -398,8 +423,8 @@ class DocumentStore {
   async handleExternal(e: ChangeEvent) {
     const d = this.docs.get(e.path)
     if (!d) {
-      // 열려 있지 않은 Field 시트가 바뀌면 캐시를 버리고 다시 읽는다
-      if (this.fieldCache.has(e.path)) { this.fieldCache.delete(e.path); this.fieldsStale = true; this.ensureFieldsLoaded() }
+      // 열려 있지 않은 보조 표(Field·Calc·lookup 대상)가 바뀌면 캐시를 버리고 다시 읽는다
+      if (this.auxCache.has(e.path)) { this.auxCache.delete(e.path); if (isFieldFile(e.path)) this.fieldsStale = true; this.ensureAux(e.path) }
       return
     }
     if (d.status !== 'ready' || d.saving) return
