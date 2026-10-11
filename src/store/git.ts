@@ -6,6 +6,9 @@ class GitStore {
   version = 0
   repo = false
   branch: string | null = null
+  upstream: string | null = null
+  ahead = 0
+  behind = 0
   status = new Map<string, GitCode>()
   error: string | null = null
   loading = false
@@ -56,6 +59,9 @@ class GitStore {
       const s = await backend().gitStatus()
       this.repo = s.repo
       this.branch = s.branch
+      this.upstream = s.upstream ?? null
+      this.ahead = s.ahead ?? 0
+      this.behind = s.behind ?? 0
       this.status = new Map(s.entries.map((e) => [e.path, e.status]))
       this.error = null
     } catch (e) {

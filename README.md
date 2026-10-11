@@ -5,7 +5,7 @@ Node 사이드카 하나 + 브라우저 창 하나. 문서는 git 리포에 평�
 
 > 상태: **Phase 3 완료** — 폴더 열기 · 탭/분할 · 마크다운 소스/하이브리드/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME · 범위 선택 · 찾기/바꾸기 · 채우기 핸들)
 > · md 안에 TSV 표 임베드(`tsv-view` — 그 자리 편집 · bake · Mermaid 템플릿) · git(배지 · HEAD diff · 커밋 · 기록 · 되돌리기) · 다크 모드 · 명령 팔레트 · 전부 키보드로 ([SHORTCUTS.md](SHORTCUTS.md)).
-> 남은 것: 수식, 이미지 미리보기, push/pull 버튼.
+> 남은 것: 수식(설계 결정 필요 — 파일엔 값만 두는 계약과 충돌).
 
 ## 실행
 
@@ -42,8 +42,9 @@ Edge(없으면 Chrome) 앱 모드 창이 열린다. 창을 닫으면 서버도 1
 ### 마크다운
 
 - 창 위의 **소스 / 하이브리드 / 분할 / 미리보기** 로 보기 모드를 고른다 (`Ctrl+Shift+V` 로 순환). 미리보기는 GFM(표·체크박스·취소선) + ```` ```mermaid ```` 다이어그램.
-- **하이브리드**는 Obsidian 식 — 커서가 있는 줄만 원문이고 나머지 줄은 `#` `**` `` ` `` 같은 표식이 숨고 목록·인용이 꾸며진다. ```` ```mermaid ````·```` ```tsv-view ```` 블록은 커서가 밖에 있으면 그 자리에서 렌더되고(표는 편집도 된다), 블록 위의 **원문** 을 누르면 소스로 돌아온다. 글자는 하나도 바뀌지 않는다 — 파일은 늘 소스 그대로다.
+- **하이브리드**는 Obsidian 식 — 커서가 있는 줄만 원문이고 나머지 줄은 `#` `**` `` ` `` 같은 표식이 숨고 목록·인용이 꾸며진다. ```` ```mermaid ````·```` ```tsv-view ```` 블록과 GFM 표는 커서가 밖에 있으면 그 자리에서 렌더되고(tsv-view 표는 편집도 된다), 블록 위의 **원문** 을 누르면 소스로 돌아온다. `![그림](…)` 은 줄 아래에 그림이 붙고, `- [ ]` 할 일은 체크박스를 눌러 `[x]` 로 바꿀 수 있다. 글자는 체크박스 말고는 하나도 바뀌지 않는다 — 파일은 늘 소스 그대로다.
 - 미리보기의 `.md`/`.tsv` 링크를 누르면 그 문서가 탭으로 열린다(링크는 그 md 파일 위치 기준, `/` 로 시작하면 리포 루트 기준).
+- 이미지는 `![alt](_assets/x.png)` 처럼 리포 안 경로(그 md 위치 기준, `/` 면 리포 루트)를 쓰면 사이드카가 내보낸다(png·jpg·gif·webp·svg·bmp·avif). 바깥 주소도 된다.
 - 저장은 소스 그대로다 — 미리보기는 파일을 바꾸지 않는다.
 
 ### md 안에 TSV 표 넣기 (`tsv-view`)
@@ -106,7 +107,7 @@ limit: 20
 - 파일 이름(또는 **diff**) → HEAD 와 비교 탭. md 는 왼쪽 HEAD / 오른쪽 현재(편집 가능, 가운데 화살표로 청크 되돌리기). tsv 는 Key 로 행을 맞춘 셀 변경 목록, 항목을 누르면 그리드의 그 셀로.
 - **되돌리기** → `git restore` (HEAD 내용으로, 저장 전 수정도 버린다). 새 파일(`?`)은 대상이 아니다.
 - **기록** (또는 **현재 문서** / **전체**) → 커밋 목록. **보기** 는 그 시점 내용을 읽기 전용 탭으로, **이 버전으로** 는 그 내용을 현재 문서에 넣는다 (git 은 안 건드린다 — 저장·커밋은 따로).
-- push/pull/브랜치는 없다. 터미널에서.
+- 원격 추적 브랜치가 있으면 패널 머리에 **pull ↓n / push ↑n** 버튼(팔레트의 `git push` / `git pull` 도 같다). pull 은 `--ff-only` 라 갈라졌으면 거부하고 터미널로 안내한다. 자격 증명은 git credential helper 에 맡기므로 처음 한 번은 터미널에서 `git push` 해 둔다. 브랜치 전환은 없다.
 
 ## 개발
 
@@ -126,7 +127,7 @@ npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·
 ## 구조
 
 ```
-server.mjs            사이드카 — 정적 파일 + /api/tree,file,mkdir,rename,delete + /api/git/* (CLI 위임) + /api/events(SSE). 런타임 의존성 0
+server.mjs            사이드카 — 정적 파일 + /api/tree,file,mkdir,rename,delete,raw(이미지) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임) + /api/events(SSE). 런타임 의존성 0
 start.cmd             실행기
 src/
   lib/backend.ts      Backend 인터페이스 + HttpBackend (토큰 헤더, 409 → ConflictError, git 메서드)
@@ -157,7 +158,7 @@ src/
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯)
     GitPane.tsx       변경 목록 · 커밋 · 기록 · 되돌리기
     DiffPane.tsx      HEAD 비교 (md: @codemirror/merge, tsv: 셀 diff) · 이전 버전 보기(RevPane)
-    grid/Grid.tsx     자체 DOM 그리드 — 행 가상화(@tanstack/react-virtual) · 고정 헤더 · 입력 textarea 하나 · 드롭다운
+    grid/Grid.tsx     자체 DOM 그리드 — 행 윈도잉(고정 높이, 직접 계산) · 고정 헤더 · 입력 textarea 하나 · 드롭다운 · 범위 선택 · 채우기 핸들 · 열 드래그
     grid/GridPane.tsx 툴바(되돌리기·행/열) · 배너 · 상태줄, 스토어 ↔ Grid 연결
 ```
 

@@ -47,7 +47,7 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 - `JayTools/.claude/launch.json` 과 `JayDocs/.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 **JayTools 루트의** launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
 - 확인: `npm run serve` 후 `http://127.0.0.1:5190/#token=dev` 를 열어 트리·편집·저장·git 패널이 되는지. 또는 `start.cmd "<SagaDocs 경로>"`.
 - **커밋 같은 git 쓰기 기능을 시험할 때는 SagaDocs 가 아니라 임시 리포**(`git archive HEAD | tar -x` 로 복사 → `git init`)에 사이드카를 하나 더 띄운다(`node server.mjs --root <임시> --port 5195 --token dev --dev --keep`). Phase 2 검증을 그렇게 했다.
-- Node 22+, git 필요. 설치 시점 버전: Vite 8, TypeScript 7, flexlayout-react 0.11, CodeMirror 6.43, @codemirror/merge 6.12, react-markdown 10, remark-gfm 4, mermaid 12, @tanstack/react-virtual 3.14.
+- Node 22+, git 필요. 설치 시점 버전: Vite 8, TypeScript 7, flexlayout-react 0.11, CodeMirror 6.43, @codemirror/merge 6.12, react-markdown 10, remark-gfm 4, mermaid 12. (@tanstack/react-virtual 은 뺐다 — 숨은 탭에서 마운트된 그리드가 보인 뒤에도 행을 안 그리는 일이 있어 고정 높이 윈도잉을 직접 계산한다.)
 
 ## 4. 핵심 사실 (memory 에 저장할 것)
 
@@ -66,13 +66,14 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 
 Phase 0~3 의 계획 범위는 끝났다. **`TESTCASES.md`(101개 TC)** 를 Jay 가 돌려 ❌/⚠ 가 나온 것부터 고친다. 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 
-남은 숙제 (작은 것부터):
-1. **이미지 미리보기** — 사이드카가 `.md/.tsv` 만 서빙한다. `/api/raw?path=` 로 `_assets/` 이미지를 내보내고 미리보기의 `img` 를 그리로.
-2. **수식** — Jay 가 "다음 버전" 으로 미뤘다. 넣는다면 셀 값 `=` 접두 + 작은 평가기(사칙·열 참조) 정도로, 파일에는 원문 그대로.
-3. **push / pull 버튼** (DESIGN D5 v2) — 사이드카에 `/api/git/push|pull`, 패널에 버튼. 자격 증명은 git credential helper 에 맡긴다.
-4. **하이브리드 다듬기** — GFM 표 렌더, 이미지, 체크박스 토글, 제목 크기 등. 지금은 표식 숨김 + 목록/인용 + 펜스 블록까지.
-5. 번들 1.2 MB(gz 380 KB) — flexlayout·react-markdown·CM 몫. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
-6. `npm audit` 가 mermaid 의존성 경고를 낸다(로컬 도구라 보류).
+남은 숙제:
+1. **수식** — Jay 가 "다음 버전" 으로 미뤘고, 넣으려면 설계 결정이 먼저다: 파일에는 값만 두는 계약(SAGA 가 그대로 읽는다)과 충돌하므로 (a) 셀 원문은 `=A*2` 로 두고 그리드에서만 계산해 보여 주기(파일을 읽는 쪽이 식을 보게 된다 — 계약 위반) 또는 (b) 별도 `_calc` 열/파일에서 계산해 값 열에 **써 넣기**(파일엔 값만) 중 골라야 한다. 권고는 (b).
+2. **하이브리드 다듬기 2차** — 제목 크기 단계, 코드 펜스(일반 언어) 꾸밈, 각주, 표 안 편집. 지금은 표식 숨김 · 목록/인용 · 할 일 체크박스 · 이미지 · GFM 표/펜스 블록 위젯까지.
+3. 번들 1.2 MB(gz 390 KB) — flexlayout·react-markdown·CM 몫. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
+4. `npm audit` 가 mermaid 의존성 경고를 낸다(로컬 도구라 보류).
+
+이번 라운드(Phase 3 뒤)에 끝낸 것: 이미지 미리보기(`/api/raw`, 미리보기·하이브리드), git push/pull 버튼(upstream·ahead/behind 는 `status --branch` 의 `# branch.ab`), 하이브리드의 GFM 표 위젯·이미지·할 일 체크박스.
+
 
 ## 6. 알려진 상태·주의
 

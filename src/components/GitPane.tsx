@@ -84,6 +84,24 @@ export function GitPane({ activePath, onOpenDiff, onOpenRev }: Props) {
     }
   }
 
+  const [syncing, setSyncing] = useState<'push' | 'pull' | null>(null)
+  const sync = async (kind: 'push' | 'pull') => {
+    if (syncing) return
+    if (kind === 'pull' && store.anyDirty() && !window.confirm('저장하지 않은 문서가 있습니다. pull 로 파일이 바뀌면 충돌 배너가 뜹니다. 계속할까요?')) return
+    setSyncing(kind)
+    setResult(null)
+    try {
+      const r = kind === 'push' ? await backend().gitPush() : await backend().gitPull()
+      const last = r.output.trim().split('\n').filter(Boolean).pop() ?? ''
+      setResult({ ok: true, text: `${kind} 완료${last ? ' — ' + last : ''}` })
+      git.headChanged()
+    } catch (e) {
+      setResult({ ok: false, text: `${kind} 실패: ${(e as Error).message}` })
+    } finally {
+      setSyncing(null)
+    }
+  }
+
   const restoreVersion = async (entry: GitLogEntry) => {
     if (!logPath) return
     if (!window.confirm(`"${logPath}" 를 ${entry.shortHash} (${entry.date.slice(0, 10)}) 시점 내용으로 바꿉니다. 저장은 따로 합니다. 계속할까요?`)) return
@@ -107,6 +125,17 @@ export function GitPane({ activePath, onOpenDiff, onOpenRev }: Props) {
           {git.branch && <span className="muted">· {git.branch}</span>}
           {git.loading && <span className="muted">· 읽는 중</span>}
           <span className="spacer" />
+          {git.repo && git.upstream && (
+            <>
+              <button onClick={() => void sync('pull')} disabled={!!syncing} title={`${git.upstream} 에서 pull (--ff-only)`}>
+                {syncing === 'pull' ? 'pull…' : `pull${git.behind ? ` ↓${git.behind}` : ''}`}
+              </button>
+              <button onClick={() => void sync('push')} disabled={!!syncing || !git.ahead} title={`${git.upstream} 으로 push`}>
+                {syncing === 'push' ? 'push…' : `push${git.ahead ? ` ↑${git.ahead}` : ''}`}
+              </button>
+            </>
+          )}
+          {git.repo && !git.upstream && <span className="muted" title="원격 추적 브랜치가 없어 push/pull 버튼이 없다 (터미널에서 git push -u origin <브랜치>)">원격 없음</span>}
           <button onClick={() => void git.refresh()} title="다시 읽기">↻</button>
         </div>
         <div className="gitpane-list">

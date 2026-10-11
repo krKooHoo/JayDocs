@@ -288,6 +288,9 @@ function mapXY(xy, renamed) {
 function parseStatus(out, info) {
   const recs = out.split('\0')
   let branch = null
+  let upstream = null
+  let ahead = 0
+  let behind = 0
   const entries = []
   for (let i = 0; i < recs.length; i++) {
     const r = recs[i]
@@ -296,6 +299,12 @@ function parseStatus(out, info) {
       if (r.startsWith('# branch.head ')) {
         const h = r.slice('# branch.head '.length)
         branch = h === '(detached)' ? null : h
+      } else if (r.startsWith('# branch.upstream ')) {
+        upstream = r.slice('# branch.upstream '.length)
+      } else if (r.startsWith('# branch.ab ')) {
+        // "# branch.ab +1 -0"
+        const m = /\+(\d+) -(\d+)/.exec(r)
+        if (m) { ahead = Number(m[1]); behind = Number(m[2]) }
       }
       continue
     }
@@ -333,7 +342,7 @@ function parseStatus(out, info) {
     entries.push(e)
   }
   entries.sort((a, b) => a.path.localeCompare(b.path, 'ko'))
-  return { branch, entries }
+  return { branch, upstream, ahead, behind, entries }
 }
 
 /** 쓰기 작업(commit/restore)은 한 번에 하나씩 — index.lock 충돌 방지. */
@@ -580,12 +589,59 @@ async function handleApi(req, res, url) {
       })
     }
 
+    // push / pull — 원격 추적 브랜치가 있을 때만. 자격 증명은 git credential helper 에 맡긴다 (프롬프트는 끈다)
+    case 'POST /api/git/push':
+    case 'POST /api/git/pull': {
+      await requireRepo()
+      const isPush = route.endsWith('push')
+      return await gitSerial(async () => {
+        const r = await git(isPush ? ['push', '--porcelain'] : ['pull', '--ff-only', '--no-rebase'])
+        const output = `${r.stdout}${r.stderr}`.trim()
+        if (r.code !== 0) {
+          const msg = /could not read Username|Authentication failed|terminal prompts disabled/i.test(output)
+            ? '인증이 필요합니다. 터미널에서 한 번 git push 해 자격 증명을 저장하세요'
+            : /no upstream|has no upstream branch/i.test(output)
+              ? '원격 추적 브랜치가 없습니다 (git push -u origin <브랜치>)'
+              : /Not possible to fast-forward|diverge|non-fast-forward|rejected/i.test(output)
+                ? '빨리 감기로 합칠 수 없습니다. 터미널에서 pull/merge 를 하세요'
+                : output || (isPush ? 'push 실패' : 'pull 실패')
+          throw httpError(400, msg)
+        }
+        return json(res, 200, { ok: true, output })
+      })
+    }
+
+    // 이미지 등 원본 파일 (미리보기의 <img>). 문서 폴더 아래, 정해진 확장자만
+    case 'GET /api/raw': {
+      const { abs } = await resolveSafe(q.get('path'))
+      const ext = path.extname(abs).toLowerCase()
+      const type = RAW_MIME[ext]
+      if (!type) throw httpError(400, '허용되지 않은 파일 형식입니다')
+      const st = await statOrNull(abs)
+      if (!st || !st.isFile()) throw httpError(404, '파일이 없습니다')
+      res.writeHead(200, { 'Content-Type': type, 'Content-Length': st.size, 'Cache-Control': 'no-cache' })
+      fs.createReadStream(abs).pipe(res)
+      return
+    }
+
     case 'GET /api/events':
       return sse(req, res)
 
     default:
       throw httpError(404, `알 수 없는 API: ${route}`)
   }
+}
+
+/** /api/raw 로 내보낼 수 있는 형식 — 미리보기 이미지 용도만 */
+const RAW_MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
 }
 
 // ---------------------------------------------------------------- 정적 파일

@@ -2,6 +2,7 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { store, useStoreVersion } from '../store/documents'
+import { backend } from '../lib/backend'
 import { openPath } from '../lib/nav'
 import { useTheme } from '../lib/theme'
 import { applyTsvView, parseTsvViewSpec, resolveViewPath, rowRecord, type TsvViewResult } from '../lib/md/tsvView'
@@ -312,11 +313,21 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   )
 }
 
-// ---------------------------------------------------------------- 링크
+// ---------------------------------------------------------------- 링크 · 이미지
 /** 마크다운 링크는 그 md 파일 위치 기준. `/` 로 시작하면 리포 루트 기준 */
-function resolveLink(href: string, mdPath: string): string {
+export function resolveLink(href: string, mdPath: string): string {
   if (href.startsWith('/')) return href.replace(/^\/+/, '')
   return resolveViewPath(href.startsWith('./') || href.startsWith('../') ? href : './' + href, mdPath)
+}
+
+function isExternal(src: string) {
+  return /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')
+}
+
+/** 리포 안 이미지(`_assets/x.png`)는 사이드카의 /api/raw 로, 바깥 주소는 그대로 */
+export function imageSrc(src: string, mdPath: string): string {
+  if (isExternal(src) || src.startsWith('data:')) return src
+  return backend().rawUrl(resolveLink(src.split('#')[0], mdPath))
 }
 
 function childClassName(children: ReactNode): string {
@@ -354,6 +365,7 @@ export function PreviewPane({ path }: { path: string }) {
       }
       return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>
     },
+    img: ({ node, src, alt, ...rest }) => <img src={typeof src === 'string' ? imageSrc(src, path) : undefined} alt={alt} loading="lazy" {...rest} />,
   }), [path])
 
   return (

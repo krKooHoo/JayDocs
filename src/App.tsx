@@ -159,6 +159,8 @@ function Workspace() {
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'gitRefresh', label: 'git 상태 다시 읽기', run: () => void git.refresh(), enabled: () => git.repo },
+    { id: 'gitPush', label: 'git push', run: () => void backend().gitPush().then(() => git.headChanged()).catch((e) => window.alert(`push 실패: ${(e as Error).message}`)), enabled: () => git.repo && !!git.upstream },
+    { id: 'gitPull', label: 'git pull (--ff-only)', run: () => void backend().gitPull().then(() => git.headChanged()).catch((e) => window.alert(`pull 실패: ${(e as Error).message}`)), enabled: () => git.repo && !!git.upstream },
   ]), [newFile, newFolder, refreshTree])
 
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다

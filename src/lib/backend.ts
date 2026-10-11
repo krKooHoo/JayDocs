@@ -19,7 +19,17 @@ export type GitCode = 'M' | 'A' | 'D' | 'R' | 'U' | '?'
 export interface GitStatus {
   repo: boolean
   branch: string | null
+  /** 원격 추적 브랜치 (없으면 null) */
+  upstream?: string | null
+  /** 원격보다 앞선 / 뒤처진 커밋 수 (upstream 이 있을 때) */
+  ahead?: number
+  behind?: number
   entries: { path: string; status: GitCode; origPath?: string }[]
+}
+export interface GitSyncResult {
+  ok: boolean
+  /** git 의 출력 (stdout + stderr) */
+  output: string
 }
 export interface GitLogEntry {
   hash: string
@@ -51,6 +61,10 @@ export interface Backend {
   gitLog(path?: string, limit?: number): Promise<{ entries: GitLogEntry[] }>
   gitCommit(paths: string[], message: string): Promise<{ hash: string; shortHash: string; summary: string }>
   gitRestore(path: string): Promise<void>
+  gitPush(): Promise<GitSyncResult>
+  gitPull(): Promise<GitSyncResult>
+  /** 이미지 같은 원본 파일을 <img src> 로 쓸 수 있는 주소 */
+  rawUrl(path: string): string
   subscribe(handler: (e: ChangeEvent) => void): () => void
 }
 
@@ -91,6 +105,16 @@ export class HttpBackend implements Backend {
   }
   async gitRestore(path: string) {
     await this.call<unknown>('POST', '/api/git/restore', { path })
+  }
+  gitPush() {
+    return this.call<GitSyncResult>('POST', '/api/git/push', {})
+  }
+  gitPull() {
+    return this.call<GitSyncResult>('POST', '/api/git/pull', {})
+  }
+  rawUrl(path: string) {
+    // <img> 는 헤더를 못 보내니 토큰을 쿼리로. 로컬 전용 주소라 괜찮다
+    return `/api/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(this.token)}`
   }
   tree() {
     return this.call<{ root: string; entries: TreeEntry[] }>('GET', '/api/tree')

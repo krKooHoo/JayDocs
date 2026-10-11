@@ -3,26 +3,32 @@ import { createRoot, type Root } from 'react-dom/client'
 import { StateField, type EditorState, type Extension, type Transaction } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
-import { Mermaid, TsvView } from './PreviewPane'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Mermaid, TsvView, imageSrc } from './PreviewPane'
 
 /**
  * 하이브리드 Live Preview (DESIGN D2 v2, §11 Phase 3). Obsidian 식 — 커서가 있는 줄은 원문, 나머지는 렌더.
  *
  * - 문법 표식(`#`, `**`, `` ` ``, `~~`, 링크의 `[]()`, `>`)은 커서 밖 줄에서 숨긴다. 글자 자체는 그대로다 (텍스트 = 모델).
- * - ```mermaid · ```tsv-view 펜스는 커서가 밖에 있으면 블록 위젯(미리보기와 같은 React 컴포넌트)으로 바꾼다.
- *   위젯의 "원문" 버튼이 커서를 펜스로 옮겨 다시 원문이 보이게 한다.
+ * - ```mermaid · ```tsv-view 펜스, GFM 표는 커서가 밖에 있으면 블록 위젯(미리보기와 같은 React 컴포넌트)으로 바꾼다.
+ *   위젯의 "원문" 버튼이 커서를 그 블록으로 옮겨 다시 원문이 보이게 한다.
+ * - 이미지 `![alt](src)` 는 그 줄 아래에 그림을 보여 주고, 할 일 `- [ ]` 는 클릭할 수 있는 체크박스가 된다 (글자 `[ ]`↔`[x]` 를 고친다).
  * - 한글 조합 중(input.type.compose)에는 장식을 다시 계산하지 않고 위치만 옮긴다 — 조합이 깨지지 않게.
  * - 블록 위젯은 StateField 로 제공해야 한다 (ViewPlugin 장식은 세로 레이아웃을 못 바꾼다).
  *
- * `@atomic-editor/editor` 를 쓰지 않은 이유: 의존성 하나와 그 수명에 묶이는 것보다 200줄 자체 구현이 싸고, 스토어 동기화·IME 규칙을 우리 것으로 둔다.
+ * `@atomic-editor/editor` 를 쓰지 않은 이유: 의존성 하나와 그 수명에 묶이는 것보다 자체 구현이 싸고, 스토어 동기화·IME 규칙을 우리 것으로 둔다.
  */
 
-type BlockKind = 'mermaid' | 'tsv-view'
+type BlockKind = 'mermaid' | 'tsv-view' | 'table'
 
 function renderBlock(kind: BlockKind, code: string, mdPath: string): ReactNode {
-  return kind === 'mermaid' ? createElement(Mermaid, { code }) : createElement(TsvView, { body: code, mdPath })
+  if (kind === 'mermaid') return createElement(Mermaid, { code })
+  if (kind === 'tsv-view') return createElement(TsvView, { body: code, mdPath })
+  return createElement('div', { className: 'preview-body is-inline' }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, code))
 }
 
+/** 위젯 안 React 트리. 같은 코드면 DOM 을 재사용한다 (eq) */
 class BlockWidget extends WidgetType {
   private root: Root | null = null
   constructor(readonly kind: BlockKind, readonly code: string, readonly mdPath: string) {
@@ -33,11 +39,11 @@ class BlockWidget extends WidgetType {
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement('div')
-    wrap.className = 'cm-hybrid-block'
+    wrap.className = 'cm-hybrid-block is-' + this.kind
     const bar = document.createElement('div')
     bar.className = 'cm-hybrid-bar'
     const label = document.createElement('span')
-    label.textContent = this.kind
+    label.textContent = this.kind === 'table' ? '표' : this.kind
     const btn = document.createElement('button')
     btn.textContent = '원문'
     btn.title = '이 블록의 소스로 커서를 옮긴다'
@@ -68,6 +74,62 @@ class BlockWidget extends WidgetType {
   }
   get estimatedHeight() {
     return 140
+  }
+}
+
+/** 이미지 — 원문 줄은 그대로 두고 그 아래에 그림을 넣는다 (block widget, side 1) */
+class ImageWidget extends WidgetType {
+  constructor(readonly src: string, readonly alt: string) {
+    super()
+  }
+  eq(other: ImageWidget) {
+    return other.src === this.src && other.alt === this.alt
+  }
+  toDOM() {
+    const wrap = document.createElement('div')
+    wrap.className = 'cm-hybrid-image'
+    const img = document.createElement('img')
+    img.src = this.src
+    img.alt = this.alt
+    img.loading = 'lazy'
+    img.onerror = () => { wrap.classList.add('is-error'); wrap.textContent = `이미지를 불러오지 못했습니다: ${this.alt || this.src}` }
+    wrap.appendChild(img)
+    return wrap
+  }
+  ignoreEvent() {
+    return true
+  }
+  get estimatedHeight() {
+    return 120
+  }
+}
+
+/** `- [ ]` / `- [x]` 를 체크박스로. 클릭하면 글자를 바꾼다 */
+class TaskWidget extends WidgetType {
+  constructor(readonly checked: boolean) {
+    super()
+  }
+  eq(other: TaskWidget) {
+    return other.checked === this.checked
+  }
+  toDOM(view: EditorView) {
+    const box = document.createElement('input')
+    box.type = 'checkbox'
+    box.className = 'cm-hybrid-task'
+    box.checked = this.checked
+    box.addEventListener('mousedown', (e) => e.preventDefault())
+    box.addEventListener('click', (e) => {
+      e.preventDefault()
+      const pos = view.posAtDOM(box)
+      // 위젯이 대신한 글자는 `[ ]` 또는 `[x]` 세 글자다
+      const text = view.state.sliceDoc(pos, pos + 3)
+      if (!/^\[[ xX]\]$/.test(text)) return
+      view.dispatch({ changes: { from: pos, to: pos + 3, insert: this.checked ? '[ ]' : '[x]' } })
+    })
+    return box
+  }
+  ignoreEvent(e: Event) {
+    return e.type !== 'click' && e.type !== 'mousedown' ? false : true
   }
 }
 
@@ -120,8 +182,28 @@ function build(state: EditorState, mdPath: string): DecorationSet {
         }
         return false // 코드 블록 안의 표식은 건드리지 않는다
       }
+      if (name === 'Table') {
+        if (!touchesActive(node.from, node.to)) {
+          const from = doc.lineAt(node.from).from
+          const to = doc.lineAt(node.to).to
+          items.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget('table', state.sliceDoc(from, to), mdPath), block: true }) })
+        }
+        return false
+      }
       if (name === 'CodeBlock' || name === 'HTMLBlock') return false
-      if (touchesActive(node.from, node.to) && (MARKS.has(name) || name === 'Link' || name === 'ListMark' || name === 'QuoteMark')) return
+      if (name === 'Image') {
+        // 원문은 두고 줄 끝에 그림을 붙인다 (커서 줄이어도)
+        const n = node.node
+        const urlNode = n.getChild('URL')
+        if (urlNode) {
+          const src = state.sliceDoc(urlNode.from, urlNode.to)
+          const alt = state.sliceDoc(node.from + 2, Math.max(node.from + 2, (n.getChildren('LinkMark')[1]?.from ?? node.from + 2)))
+          const line = doc.lineAt(node.to)
+          items.push({ from: line.to, to: line.to, deco: Decoration.widget({ widget: new ImageWidget(imageSrc(src, mdPath), alt), block: true, side: 1 }) })
+        }
+        return false
+      }
+      if (touchesActive(node.from, node.to) && (MARKS.has(name) || name === 'Link' || name === 'ListMark' || name === 'QuoteMark' || name === 'TaskMarker')) return
       if (MARKS.has(name)) {
         let to = node.to
         if (name === 'HeaderMark' && state.sliceDoc(to, to + 1) === ' ') to++
@@ -136,9 +218,18 @@ function build(state: EditorState, mdPath: string): DecorationSet {
         }
         return false
       }
+      if (name === 'TaskMarker') {
+        const text = state.sliceDoc(node.from, node.to)
+        items.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: new TaskWidget(/x/i.test(text)) }) })
+        return
+      }
       if (name === 'ListMark') {
         const mark = state.sliceDoc(node.from, node.to)
-        if (/^[-*+]$/.test(mark)) items.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: bullet }) })
+        if (/^[-*+]$/.test(mark)) {
+          // 할 일 목록(`- [ ]`)이면 점 대신 체크박스만
+          const next = state.sliceDoc(node.to, node.to + 4)
+          items.push({ from: node.from, to: node.to, deco: /^ \[[ xX]\]/.test(next) ? hide : Decoration.replace({ widget: bullet }) })
+        }
         return
       }
       if (name === 'QuoteMark') {
@@ -153,10 +244,7 @@ function build(state: EditorState, mdPath: string): DecorationSet {
     },
   })
 
-  // RangeSetBuilder 는 정렬된 입력이 필요하다. 같은 위치면 줄 장식(line) 이 먼저
-  items.sort((a, b) => a.from - b.from || a.to - b.to || (a.deco.spec.block ? -1 : 0))
-  const dedup = items.filter((it, i) => i === 0 || !(it.from === items[i - 1].from && it.to === items[i - 1].to && it.deco === items[i - 1].deco))
-  return Decoration.set(dedup.map((it) => it.deco.range(it.from, it.to)), true)
+  return Decoration.set(items.map((it) => it.deco.range(it.from, it.to)), true)
 }
 
 function isComposing(tr: Transaction) {
@@ -183,6 +271,12 @@ const hybridTheme = EditorView.baseTheme({
   '.cm-hybrid-bar button': { fontSize: '11px', padding: '0 6px', lineHeight: '16px' },
   '.cm-hybrid-host': { padding: '2px 10px' },
   '.cm-hybrid-host .tsv-view, .cm-hybrid-host .mermaid-box': { margin: '6px 0' },
+  '.cm-hybrid-host .preview-body.is-inline': { padding: '4px 0', maxWidth: 'none', fontSize: 'inherit', lineHeight: 'inherit' },
+  '.cm-hybrid-host .preview-body.is-inline table': { margin: '4px 0' },
+  '.cm-hybrid-image': { padding: '4px 0 6px' },
+  '.cm-hybrid-image img': { maxWidth: '100%', maxHeight: '60vh', borderRadius: '4px' },
+  '.cm-hybrid-image.is-error': { color: 'var(--danger)', fontSize: '12px' },
+  '.cm-hybrid-task': { margin: '0 6px 0 0', verticalAlign: 'middle' },
   '.cm-hybrid-quote': { borderLeft: '3px solid var(--border)', paddingLeft: '10px', color: 'var(--muted)' },
   '.cm-hybrid-bullet': { display: 'inline-block', width: '1em', color: 'var(--muted)' },
 })

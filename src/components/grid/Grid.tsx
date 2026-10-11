@@ -1,6 +1,5 @@
 import './grid-extras.css'
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import { cellAt, type TsvRow, type TsvTable } from '../../lib/tsv/model'
 import { columnLetter, type ColumnSchema, type TableSchema } from '../../lib/tsv/schema'
 import { issueKey, type Validation } from '../../lib/tsv/validate'
@@ -297,12 +296,24 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   }, [p.widthsKey])
 
   // ---- 가상화
-  const virtualizer = useVirtualizer({
-    count: bodyCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_H,
-    overscan: 8,
-  })
+  // ---- 행 윈도잉. 행 높이가 고정이라 직접 계산한다.
+  // (@tanstack/react-virtual 을 썼더니 숨은 탭에서 마운트된 그리드가 보이게 된 뒤에도 높이 0 으로 남아 행을 안 그리는 일이 있었다.
+  //  보이는 높이를 아직 모르면 창 높이로 넉넉히 잡아 어떤 경우에도 행이 비지 않게 한다.)
+  const [viewH, setViewH] = useState(0)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight))
+    ro.observe(el)
+    setViewH(el.clientHeight)
+    return () => ro.disconnect()
+  }, [])
+  const OVERSCAN = 8
+  const effectiveH = viewH > 0 ? viewH : window.innerHeight
+  const firstRow = Math.max(0, Math.floor(scroll.top / ROW_H) - OVERSCAN)
+  const lastRow = Math.min(bodyCount, Math.ceil((scroll.top + effectiveH) / ROW_H) + OVERSCAN)
+  const virtualItems = Array.from({ length: Math.max(0, lastRow - firstRow) }, (_, k) => ({ index: firstRow + k, start: (firstRow + k) * ROW_H, key: firstRow + k }))
+  const totalSize = bodyCount * ROW_H
 
   // ---- 활성 셀 보이게 스크롤
   useLayoutEffect(() => {
@@ -815,11 +826,11 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   if (fillDrag) wrapCls += ' is-filling'
   if (colDrop) wrapCls += ' is-col-moving'
 
-  const items = virtualizer.getVirtualItems()
+  const items = virtualItems
   return (
     <div className={wrapCls}>
       <div ref={scrollRef} className="grid-scroll" onScroll={onScroll} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onDoubleClick={onDoubleClick}>
-        <div className="grid-inner" style={{ width: totalWidth, height: headerH + virtualizer.getTotalSize() }}>
+        <div className="grid-inner" style={{ width: totalWidth, height: headerH + totalSize }}>
           <div className="grid-head" style={{ width: totalWidth }}>
             <div className="grid-row is-letters" style={{ width: totalWidth }}>
               <div className="grid-rownum grid-corner" data-corner="1" title="전체 선택 (Ctrl+A)" />
