@@ -1,0 +1,40 @@
+/* ---- TSV 그리드 추가분: 찾기/바꾸기 막대 · 채우기 핸들 · 열 옮기기. 색은 styles.css 의 변수만 쓴다 (다크 모드) ---- */
+
+/* 찾기 / 바꾸기 막대 (툴바와 그리드 사이) */
+.grid-find {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  padding: 3px 8px; border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.grid-find-input {
+  width: 170px; padding: 2px 7px; font-size: 12.5px;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); outline: none;
+}
+.grid-find-input:focus { border-color: var(--accent); }
+.grid-find-input:focus-visible { outline: none; }
+.grid-find label { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; user-select: none; }
+.grid-find label input { margin: 0; }
+.grid-find button { padding: 2px 7px; }
+.grid-find-count { min-width: 64px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grid-find-count.is-none { color: var(--danger); }
+
+/* 찾기에 걸린 셀. 활성 셀(지금 결과)은 더 진하게. 범위·오류·헤더 배경보다 앞선다 */
+.grid-row .grid-cell.is-match { background: var(--selection-match); }
+.grid-row .grid-cell.is-match.is-active { background: var(--search-match); }
+
+/* 채우기 핸들 — 범위 오른쪽 아래 모서리의 작은 네모 */
+.grid-fill-handle {
+  position: absolute; z-index: 2; width: 7px; height: 7px; margin: -4px 0 0 -4px;
+  background: var(--accent); border: 1px solid var(--bg); cursor: crosshair;
+}
+/* 끄는 동안 채울 자리 */
+.grid-row .grid-cell.is-fill-target { background: var(--range); outline: 1px dashed var(--accent); outline-offset: -1px; }
+.grid-fill-ghost { position: absolute; z-index: 1; pointer-events: none; }
+.grid-fill-ghost.is-fill-target { background: var(--range); outline: 1px dashed var(--accent); outline-offset: -1px; }
+.grid-wrap.is-filling, .grid-wrap.is-filling * { cursor: crosshair !important; }
+
+/* 열 옮기기 — 놓을 경계의 세로선 */
+.grid-col-drop {
+  position: absolute; top: 0; bottom: 0; z-index: 4; width: 3px; margin-left: -1px;
+  background: var(--accent); pointer-events: none;
+}
+.grid-wrap.is-col-moving, .grid-wrap.is-col-moving * { cursor: grabbing !important; }

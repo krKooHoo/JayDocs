@@ -1,4 +1,4 @@
-# JayDocs 인수인계 (2026-10-11, Phase 2 + 피드백 2차 반영 시점)
+# JayDocs 인수인계 (2026-10-11, Phase 3 완료 시점)
 
 다른 PC의 **새 세션**에 아래 프롬프트를 그대로 붙여 넣으면 된다. 이 문서 자체가 그 세션이 처음 읽을 문서다.
 
@@ -8,19 +8,20 @@
 
 ```
 JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md 를 읽고, 거기 적힌 순서로 문서를 읽은 뒤
-환경을 준비하고 Phase 3 을 시작해 줘. 시작 전에 HANDOFF.md 의 "핵심 사실" 을 memory 에 저장해 둬.
+환경을 준비하고 "다음 작업" 을 시작해 줘. 시작 전에 HANDOFF.md 의 "핵심 사실" 을 memory 에 저장해 둬.
 ```
 
 ---
 
 ## 1. 지금 상태
 
-- **JayDocs** (`JayTools/JayDocs/`): Markdown(+Mermaid)과 TSV를 나란히 편집하는 경량 로컬 편집기. **Phase 0·1·2 완료·검증 끝.**
+- **JayDocs** (`JayTools/JayDocs/`): Markdown(+Mermaid)과 TSV를 나란히 편집하는 경량 로컬 편집기. **Phase 0·1·2·3 완료·검증 끝.**
   사이드카(`server.mjs`, 의존성 0, git CLI 위임) + Vite/React 18 SPA.
   - 탭·분할(flexlayout-react) · 파일 트리(배지, 오른쪽 클릭 이름 바꾸기/삭제) · 저장 · 외부 변경 감지/충돌 배너 · 레이아웃 복원.
   - 마크다운: CodeMirror 6 소스 + react-markdown 미리보기(소스/분할/미리보기), mermaid 동적 로드, `tsv-view` 펜스로 TSV 표 임베드(필터·정렬·열 선택, 행 클릭 → 그리드).
   - TSV: 자체 그리드 — 바이트 왕복 보존, 타입 행 + `_Field` 스키마(툴팁·enum·bool·검증·Key 중복), 한글 IME, Sheets 붙여넣기, undo/redo, 행/열 조작.
   - git: 상태 배지, HEAD diff(md 는 merge view, tsv 는 Key 셀 diff), 선택 커밋, 파일 기록, 이전 버전 보기/문서에 넣기, `git restore`.
+  - Phase 3(DESIGN §11, §7): tsv-view 그 자리 편집 · `bake: true`(저장 시 파이프 표) · `render: mermaid` 템플릿(Mustache 부분집합) · 하이브리드 Live Preview(`components/hybrid.ts`, CM6 StateField 자체 구현) · 그리드 찾기/바꾸기 · 채우기 핸들 · 열 드래그.
   - 키보드·테마(DESIGN §16): 명령 팔레트 `Ctrl+Shift+P` · 빠른 열기 `Ctrl+P` · 탭/패널 키 · 트리 키보드 탐색 · 그리드 범위 선택과 Sheets 식 복사/붙여넣기/채우기 · md 여러 선택 표시 · 다크 모드. 단축키 원본은 `src/lib/shortcuts-table.mjs`, `npm run shortcuts` → `SHORTCUTS.md`(테스트가 동기화를 검사).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
 - 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1 은 `b4c7597` 로 커밋·push 됨. Phase 2 와 피드백 반영은 Jay 지시 전이라 **커밋하지 않았을 수 있다** — `git status` 로 확인.
@@ -61,22 +62,23 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 - Claude Code 의 Bash 도구는 명령 문자열의 백슬래시를 한 단계 벗긴다 → `sed`/`node -e`/heredoc 으로 `\\` 가 든 치환은 조용히 실패하고, CSS 처럼 따옴표·백슬래시가 섞인 heredoc 은 깨진다. 그런 편집은 Edit/Write 도구로.
 - 사이드카처럼 **자체 완결적인 조각은 Opus 에이전트에 맡겨도 된다**(Phase 2 의 git API 가 그 예 — 계약을 표로 적어 주면 잘 한다). 공유 파일을 여러 에이전트가 동시에 고치는 구조는 피한다.
 
-## 5. 다음 작업 — Phase 3 (DESIGN §11, §7)
+## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-목표: 결합 심화.
+Phase 0~3 의 계획 범위는 끝났다. 다음은 Jay 가 실제로 써 보고 주는 피드백이 우선이다 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 
-1. **`tsv-view` 그 자리 편집** — 미리보기 표의 셀을 더블클릭해 고치면 같은 `TsvDoc` 에 `store.editTable` 로 반영(필터로 숨은 행은 건드리지 않는다). 그리드의 셀 편집기(textarea + IME 가드)를 재사용할 것.
-2. **`bake: true`** — 저장 시 펜스 바로 아래 `<!-- tsv-view:baked -->` … `<!-- /tsv-view -->` 사이에 파이프 표를 다시 생성(DESIGN §7.1). 저장 경로에서 md 텍스트를 가공하므로 `store.save` 앞단에 훅을 둔다. 기본값 꺼짐.
-3. **Mermaid 템플릿** (`render: mermaid`, `template: |`) — Mustache 수준(`{{col}}`, `{{#each}}`, `{{#if}}`, `.list`)만 자체 구현(100줄 안팎), `mermaid.parse` 로 검증 후 렌더, 실패하면 생성 텍스트와 오류를 그대로 보여 준다(DESIGN §7.2).
-4. **하이브리드 Live Preview** — `@atomic-editor/editor` 평가 후 채택 또는 CM6 decoration 자체 구현. 활성 줄은 raw, 나머지는 렌더. `view.composing` 동안 decoration 갱신 보류.
-5. **그리드**: 채우기 핸들, 찾기/바꾸기, 열 드래그 재정렬, 수식(Jay 가 "다음 버전" 으로 미룸). 범위 선택·복사/붙여넣기·채우기(Ctrl+D/R)는 이미 있다.
-6. **검증**: Tile.md 의 tsv-view 에서 셀을 고치면 그리드·파일에 반영. bake 켠 문서를 GitHub 에서 보면 진짜 표. 템플릿으로 Building → District 흐름도가 그려진다. 한글 입력이 하이브리드 모드에서도 안 깨진다.
-
-작은 것들(남은 숙제): 번들 1.16 MB(gz 372 KB) — flexlayout·react-markdown 몫. `Ctrl+P` 빠른 열기(DESIGN §8). 이미지(`_assets/`) 미리보기 — 사이드카가 지금은 `.md/.tsv` 만 서빙한다. `npm audit` 가 mermaid 쪽 의존성 경고를 낸다(로컬 도구라 보류).
+남은 숙제 (작은 것부터):
+1. **이미지 미리보기** — 사이드카가 `.md/.tsv` 만 서빙한다. `/api/raw?path=` 로 `_assets/` 이미지를 내보내고 미리보기의 `img` 를 그리로.
+2. **수식** — Jay 가 "다음 버전" 으로 미뤘다. 넣는다면 셀 값 `=` 접두 + 작은 평가기(사칙·열 참조) 정도로, 파일에는 원문 그대로.
+3. **push / pull 버튼** (DESIGN D5 v2) — 사이드카에 `/api/git/push|pull`, 패널에 버튼. 자격 증명은 git credential helper 에 맡긴다.
+4. **하이브리드 다듬기** — GFM 표 렌더, 이미지, 체크박스 토글, 제목 크기 등. 지금은 표식 숨김 + 목록/인용 + 펜스 블록까지.
+5. 번들 1.2 MB(gz 380 KB) — flexlayout·react-markdown·CM 몫. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
+6. `npm audit` 가 mermaid 의존성 경고를 낸다(로컬 도구라 보류).
 
 ## 6. 알려진 상태·주의
 
-- 그리드 범위 선택·블록 복사/붙여넣기·채우기는 있다. 채우기 핸들·찾기/바꾸기·열 드래그·수식은 Phase 3.
+- 하이브리드 모드는 한글 조합 중(input.type.compose) 장식을 다시 계산하지 않는다. 실제 키보드로 한글을 쳐서 조합이 안 깨지는지 한 번 확인할 것(자동화로는 조합을 못 흉내 낸다).
+- bake 는 md 저장 때만 돈다. TSV 만 고치고 md 를 저장하지 않으면 baked 표는 그대로다(미리보기는 살아 있는 표를 보여 준다). tsv-view 의 `file` 을 못 읽으면 배너로 알리고 그 펜스는 건너뛴다.
+- 그리드 수식은 없다(Jay 가 다음으로 미룸).
 - 전역 단축키는 버블 단계 keydown 으로 처리한다 — 에디터·그리드가 먼저 `preventDefault` 한 키는 건드리지 않는다. 글자 키 단독 단축키는 두지 않는다(입력 중 충돌). 브라우저 예약 조합(Ctrl+W/T/N/Tab/숫자)은 페이지가 못 받는다.
 - 자동화 테스트에서 패널 포커스 명령 뒤 바로 키를 보내면 포커스 이동(한 프레임)보다 앞설 수 있다. 사람 속도에서는 문제 없다.
 - enum 열에 Field 블록이 없으면(예: District `AllowedTerrain`) **열에 이미 있는 값**을 후보로 보여 주고 검증은 하지 않는다. 툴팁에 "(열에 있는 값)" 으로 표시.

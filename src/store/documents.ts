@@ -5,7 +5,8 @@ import type { TsvTable } from '../lib/tsv/model'
 import { openWarnings, parseTsv } from '../lib/tsv/parse'
 import { serializeTsv } from '../lib/tsv/serialize'
 import { parseFieldBlocks, type FieldFile } from '../lib/tsv/field'
-import { isFieldFile } from '../lib/tsv/schema'
+import { deriveSchema, isFieldFile } from '../lib/tsv/schema'
+import { bakeMarkdown, bakeTargets, type BakeSource } from '../lib/md/bake'
 
 export type Eol = '\n' | '\r\n'
 
@@ -30,6 +31,8 @@ export interface TextDoc extends DocBase {
   savedText: Text
   eol: Eol
   bom: boolean
+  /** 마지막 저장 때 bake 에서 난 문제 (있으면 배너로) */
+  bakeErrors: string[]
 }
 
 /**
@@ -127,7 +130,7 @@ class DocumentStore {
     const empty = Text.of([''])
     const d: Doc = isTsvPath(path)
       ? { ...base, kind: 'tsv', table: parseTsv(''), savedTable: parseTsv(''), past: [], future: [], warnings: [] }
-      : { ...base, kind: 'text', text: empty, savedText: empty, eol: '\n', bom: false }
+      : { ...base, kind: 'text', text: empty, savedText: empty, eol: '\n', bom: false, bakeErrors: [] }
     if (d.kind === 'tsv') d.savedTable = d.table
     this.docs.set(path, d)
     this.emit()
@@ -295,6 +298,7 @@ class DocumentStore {
     if (d.conflict && baseMtime === undefined) return // 배너에서 골라야 한다
     d.saving = true
     this.emit()
+    if (d.kind === 'text' && /\.md$/i.test(path)) await this.bakeIfNeeded(d)
     const snapshot = d.kind === 'tsv' ? d.table : d.text
     try {
       const r = await backend().write(path, serialize(d), baseMtime === undefined ? d.mtime : baseMtime)
@@ -314,6 +318,33 @@ class DocumentStore {
 
   async saveAll() {
     for (const d of this.all()) if (this.isDirty(d.path)) await this.save(d.path)
+  }
+
+  /**
+   * `bake: true` 인 tsv-view 펜스 아래에 파이프 표를 다시 쓴다 (DESIGN §7.1). 저장 직전에 문서 텍스트를 고친다.
+   * 참조한 TSV 가 열려 있으면 그 (저장 전) 표를, 아니면 디스크에서 읽는다.
+   */
+  private async bakeIfNeeded(d: TextDoc) {
+    const text = d.text.toString()
+    if (!/bake\s*:\s*(true|yes|1)\b/i.test(text)) { if (d.bakeErrors.length) { d.bakeErrors = []; this.emit() } return }
+    const sources = new Map<string, BakeSource>()
+    for (const file of bakeTargets(text, d.path)) {
+      const open = this.docs.get(file)
+      let table: TsvTable | null = null
+      if (open?.kind === 'tsv' && open.status === 'ready') table = open.table
+      else {
+        try { table = parseTsv((await backend().read(file)).text) } catch { table = null }
+      }
+      if (table) sources.set(file, { table, schema: deriveSchema(table, file, this.fieldFiles()) })
+    }
+    if (this.docs.get(d.path) !== d || d.status !== 'ready') return
+    // 읽는 사이 문서가 바뀌었을 수 있으니 지금 텍스트로 다시 계산한다. CM 텍스트는 항상 \n 이다
+    const now = d.text.toString()
+    const r = bakeMarkdown(now, d.path, (f) => sources.get(f) ?? null, '\n')
+    d.bakeErrors = r.errors
+    if (r.changes.length) {
+      this.applyChanges(d.path, ChangeSet.of(r.changes.map((c) => ({ from: c.from, to: c.to, insert: c.insert })), now.length), null)
+    } else this.emit()
   }
 
   /** 디스크에서 다시 읽어 지금 내용을 버린다 (git 되돌리기 뒤). 열려 있지 않으면 아무 일도 없다 */

@@ -3,9 +3,9 @@
 Markdown(+Mermaid) 과 TSV 를 **나란히 놓고 편집**하는 경량 로컬 문서 편집기.
 Node 사이드카 하나 + 브라우저 창 하나. 문서는 git 리포에 평범한 파일로 둔다. 설계는 [DESIGN.md](DESIGN.md).
 
-> 상태: **Phase 2 + 키보드·테마 반영 완료** — 폴더 열기 · 탭/분할 · 마크다운 소스/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME)
-> · md 안에 TSV 표 임베드(`tsv-view`) · git(배지 · HEAD diff · 커밋 · 기록 · 되돌리기) · 이름 바꾸기/삭제 · 외부 변경 감지 · **다크 모드 · 명령 팔레트 · 전부 키보드로** ([SHORTCUTS.md](SHORTCUTS.md)).
-> Phase 3(`tsv-view` 그 자리 편집·bake, Mermaid 템플릿, 하이브리드 Live Preview, 그리드 채우기 핸들·찾기/바꾸기·수식)은 아직 없다.
+> 상태: **Phase 3 완료** — 폴더 열기 · 탭/분할 · 마크다운 소스/하이브리드/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME · 범위 선택 · 찾기/바꾸기 · 채우기 핸들)
+> · md 안에 TSV 표 임베드(`tsv-view` — 그 자리 편집 · bake · Mermaid 템플릿) · git(배지 · HEAD diff · 커밋 · 기록 · 되돌리기) · 다크 모드 · 명령 팔레트 · 전부 키보드로 ([SHORTCUTS.md](SHORTCUTS.md)).
+> 남은 것: 수식, 이미지 미리보기, push/pull 버튼.
 
 ## 실행
 
@@ -41,7 +41,8 @@ Edge(없으면 Chrome) 앱 모드 창이 열린다. 창을 닫으면 서버도 1
 
 ### 마크다운
 
-- 창 위의 **소스 / 분할 / 미리보기** 로 보기 모드를 고른다. 미리보기는 GFM(표·체크박스·취소선) + ```` ```mermaid ```` 다이어그램.
+- 창 위의 **소스 / 하이브리드 / 분할 / 미리보기** 로 보기 모드를 고른다 (`Ctrl+Shift+V` 로 순환). 미리보기는 GFM(표·체크박스·취소선) + ```` ```mermaid ```` 다이어그램.
+- **하이브리드**는 Obsidian 식 — 커서가 있는 줄만 원문이고 나머지 줄은 `#` `**` `` ` `` 같은 표식이 숨고 목록·인용이 꾸며진다. ```` ```mermaid ````·```` ```tsv-view ```` 블록은 커서가 밖에 있으면 그 자리에서 렌더되고(표는 편집도 된다), 블록 위의 **원문** 을 누르면 소스로 돌아온다. 글자는 하나도 바뀌지 않는다 — 파일은 늘 소스 그대로다.
 - 미리보기의 `.md`/`.tsv` 링크를 누르면 그 문서가 탭으로 열린다(링크는 그 md 파일 위치 기준, `/` 로 시작하면 리포 루트 기준).
 - 저장은 소스 그대로다 — 미리보기는 파일을 바꾸지 않는다.
 
@@ -60,8 +61,26 @@ limit: 20
 - `file` 리포 상대 경로(필수). `./`, `../` 로 시작하면 md 파일 위치 기준.
 - `columns` 열 이름 목록(생략하면 주석 열을 뺀 전부). `sort` 는 `-` 접두면 내림차순, 여러 개 가능. `limit` 행 수.
 - `where` 비교식: `==` `!=` `>` `<` `>=` `<=` · `in ["a", "b"]` · `not in` · `&&` `||` `!` · 괄호. 숫자끼리는 숫자로 비교. `Plains, Hill` 같은 리스트 셀은 `in` 에 항목 단위로 걸린다.
-- 그리드에서 값을 바꾸면 미리보기 표가 바로 따라오고 "● 저장 전 내용" 이 붙는다. 표의 행을 누르면 그리드가 그 행으로 열린다.
-- GitHub 에서는 그냥 코드 블록으로 보인다. (`bake`, `render: mermaid` 는 Phase 3.)
+- 그리드에서 값을 바꾸면 미리보기 표가 바로 따라오고 "● 저장 전 내용" 이 붙는다. 행 번호를 누르면 그리드가 그 행으로 열린다.
+- **그 자리 편집**: 셀을 클릭해 고르고 더블클릭·`Enter`·`F2`(또는 바로 타이핑)로 고친다. `Tab`/`Enter` 로 옆·아래 셀, `Delete` 비우기, `Ctrl+Z` 되돌리기, `Ctrl+Enter` 그리드로. 같은 TsvDoc 이라 그리드·다른 창과 즉시 같아지고, 저장은 TSV 파일 쪽에서 한다.
+- **`bake: true`** 를 넣으면 md 를 저장할 때 펜스 바로 아래 `<!-- tsv-view:baked -->` … `<!-- /tsv-view -->` 사이에 파이프 표를 다시 써 준다. GitHub 에서도 진짜 표가 보이는 대신 파생 내용이 diff 에 섞인다. 미리보기에서는 이 블록을 숨긴다. 기본은 꺼짐.
+- **`render: mermaid`** + `template: |` 로 행들에서 다이어그램을 만든다. Mustache 수준만 된다: `{{Key}}` `{{this}}` `{{../Key}}` `{{@index}}` `{{#each rows}}` `{{#each Col.list}}`(콤마 리스트) `{{Col.id}}`(mermaid id 로 안전하게) `{{#if Col}}…{{else}}…{{/if}}`. 블록 태그만 있는 줄은 빈 줄을 남기지 않는다. 문법이 틀리면 생성 텍스트와 오류를 보여 주고, 표시줄의 **생성 텍스트** 로 결과를 볼 수 있다.
+
+  ````markdown
+  ```tsv-view
+  file: 20-Settlement/Building/Building_Table.tsv
+  where: DistrictKey == "Agricultural-District"
+  render: mermaid
+  template: |
+    flowchart LR
+    {{#each rows}}
+    {{Key.id}}["{{DisplayName}}"]
+    {{#each RequiredBuildingKey.list}}
+    {{this.id}} --> {{../Key.id}}
+    {{/each}}
+    {{/each}}
+  ```
+  ````
 
 ### TSV 그리드
 
@@ -71,7 +90,10 @@ limit: 20
 - **되돌리기** `Ctrl+Z` / `Ctrl+Y` (문서 단위 — 분할 창 어디서 눌러도 같다).
 - **범위 선택** `Shift+방향키` · 드래그 · 행 번호/열 글자 클릭 · `Ctrl+A` · `Shift+Space`(행) · `Ctrl+Space`(열). `Esc` 로 해제.
 - **복사/붙여넣기** `Ctrl+C`/`Ctrl+X` 는 선택 범위를 TSV 블록으로, `Ctrl+V` 는 Google Sheets·Excel 블록을 활성 셀부터 채운다. 표 끝을 넘는 행은 추가, 너비를 넘는 열은 잘라 내고 알린다. 한 셀을 복사해 범위에 붙이면 범위가 그 값으로 채워진다. `Delete` 범위 비우기, `Ctrl+D`/`Ctrl+R` 아래·오른쪽으로 채우기.
+- **채우기 핸들** 범위(또는 활성 셀) 오른쪽 아래의 작은 네모를 아래·위·옆으로 끈다. Sheets 처럼 값 무늬를 되풀이하고, 끄는 방향으로 숫자 2칸 이상이 등차면 수열을 잇는다 (`1, 2` → `3, 4 …`, 소수 자릿수 유지). 숫자 한 칸은 복사. 표 끝을 넘으면 행이 생긴다. 되돌리기 한 번.
+- **찾기/바꾸기** `Ctrl+F`(찾기) · `Ctrl+H`(바꾸기) 로 그리드 위에 막대가 열린다. 헤더 행까지 모든 셀을 위→아래, 왼→오로 찾고 걸린 셀은 노랗게, 개수는 `3 / 27`. `Enter`·`F3` 다음, `Shift+Enter`·`Shift+F3` 이전, 대소문자 구분 · 셀 전체 일치. **바꾸기** 는 지금 셀만 바꾸고 다음으로, **모두 바꾸기** 는 한 번에(되돌리기 한 번). `Esc` 로 닫고 그리드로.
 - **행/열** 툴바 또는 `Ctrl+Alt+=`(행 삽입) `Ctrl+Alt+-`(행 삭제) `Ctrl+Shift+D`(행 복제), Shift 를 더하면 열. 선택한 범위만큼 여러 행/열에 적용된다. 열을 바꾸면 모든 행이 다시 조립되어 git diff 에 전체가 나오므로 확인을 묻는다.
+- **열 옮기기** 열 글자를 누른 채 옆으로 끌면 놓을 자리에 세로선이 보인다. 고른 여러 열 안에서 끌면 함께 옮긴다. 열 너비도 따라간다. 역시 모든 행이 다시 조립되므로 확인을 묻는다.
 - **스키마** 1행이 `#string enum bool …` 타입 행이면 2행을 헤더로 보고 고정한다. 빈 타입·`#헤더` 는 주석 열(회색).
   같은 폴더의 `X_Field.tsv`(없으면 리포 안 다른 `_Field` 의 `XDef` 블록)에서 열 설명(열 글자 위에 마우스)과 enum 허용 값을 읽는다.
   enum 셀은 입력창 아래에 후보가 뜬다 (`↓`로 고르고 `Enter`). `A, B` 리스트 열은 마지막 항목만 자동완성. bool 은 체크박스(`Space`).
@@ -112,6 +134,8 @@ src/
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
   lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · diff 창 · 이전 버전 보기)
   lib/md/tsvView.ts   tsv-view 펜스 파서(YAML 부분집합) · where 식 · 필터/정렬 적용
+  lib/md/template.ts  Mermaid 생성용 Mustache 부분집합 (each · if · .list · .id)
+  lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산
   lib/tsv/
     model.ts          TsvTable / TsvRow (불변, raw 행 보관)
     parse.ts          텍스트 → 표 (탭 split 만, 따옴표 해석 없음) · 열 때 경고
@@ -128,8 +152,9 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인. md/tsv/diff/rev 탭, 아래 git 패널
     FileTree.tsx      파일 트리 (git 배지, 오른쪽 클릭 메뉴)
-    MarkdownPane.tsx  CodeMirror 6 + 소스/분할/미리보기 모드
-    PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표
+    MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드
+    PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
+    hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯)
     GitPane.tsx       변경 목록 · 커밋 · 기록 · 되돌리기
     DiffPane.tsx      HEAD 비교 (md: @codemirror/merge, tsv: 셀 diff) · 이전 버전 보기(RevPane)
     grid/Grid.tsx     자체 DOM 그리드 — 행 가상화(@tanstack/react-virtual) · 고정 헤더 · 입력 textarea 하나 · 드롭다운

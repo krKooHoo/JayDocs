@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseTsv } from './parse'
 import { serializeTsv } from './serialize'
-import { deleteColumn, deleteRows, duplicateRow, insertColumn, insertRows, pasteBlock, setCell, setCells } from './edits'
+import { deleteColumn, deleteRows, duplicateRow, fillSeries, fillTarget, insertColumn, insertRows, moveColumns, moveSpan, pasteBlock, setCell, setCells } from './edits'
 import { parseClipboardTsv } from './clipboard'
 import { parseFieldBlocks } from './field'
 import { deriveSchema, isTypeRow, siblingFieldPath, tablePrefix } from './schema'
@@ -154,6 +154,92 @@ describe('edits', () => {
     expect(clippedCols).toBe(2)
     expect(addedRows).toBe(1)
     expect(serializeTsv(table)).toBe('#string\tbyte\nKey\tN\nA\t1\nB\tx\n\tp')
+  })
+})
+
+describe('열 옮기기', () => {
+  const t = parseTsv('a\tb\tc\td\n1\t2\t3\t4\nx\n')
+
+  it('오른쪽으로 (to 는 옮긴 뒤 첫 열의 자리)', () => {
+    expect(serializeTsv(moveColumns(t, 0, 1, 2))).toBe('b\tc\ta\td\n2\t3\t1\t4\n\t\tx\t\n')
+  })
+  it('왼쪽으로', () => {
+    expect(serializeTsv(moveColumns(t, 3, 1, 1))).toBe('a\td\tb\tc\n1\t4\t2\t3\nx\t\t\t\n')
+  })
+  it('여러 열을 한꺼번에', () => {
+    expect(serializeTsv(moveColumns(t, 1, 2, 0))).toBe('b\tc\ta\td\n2\t3\t1\t4\n\t\tx\t\n')
+    expect(serializeTsv(moveColumns(t, 0, 2, 2))).toBe('c\td\ta\tb\n3\t4\t1\t2\n\t\tx\t\n')
+  })
+  it('제자리 · 범위 밖이면 같은 표', () => {
+    expect(moveColumns(t, 1, 1, 1)).toBe(t)
+    expect(moveColumns(t, 0, 2, 3)).toBe(t)
+    expect(moveColumns(t, 3, 2, 0)).toBe(t)
+    expect(moveColumns(t, 0, 0, 2)).toBe(t)
+  })
+  it('모든 행이 다시 조립되고 너비는 그대로', () => {
+    const m = moveColumns(t, 2, 1, 0)
+    expect(m.width).toBe(4)
+    expect(m.rows.every((r) => r.raw === null)).toBe(true)
+  })
+  it('열 너비 배열도 같은 규칙으로', () => {
+    expect(moveSpan([10, 20, 30, 40], 0, 2, 2)).toEqual([30, 40, 10, 20])
+    expect(moveSpan([10, 20, 30, 40], 3, 1, 0)).toEqual([40, 10, 20, 30])
+  })
+})
+
+describe('채우기 핸들', () => {
+  const col = (u: ReturnType<typeof parseTsv>, c: number) => u.rows.map((r) => r.cells[c] ?? '')
+
+  it('끈 위치 → 채울 범위 (더 멀리 벗어난 축 하나)', () => {
+    const src = { r1: 2, c1: 1, r2: 3, c2: 2 }
+    expect(fillTarget(src, 3, 2)).toBeNull()
+    expect(fillTarget(src, 6, 3)).toEqual({ r1: 4, c1: 1, r2: 6, c2: 2 })
+    expect(fillTarget(src, 0, 2)).toEqual({ r1: 0, c1: 1, r2: 1, c2: 2 })
+    expect(fillTarget(src, 4, 6)).toEqual({ r1: 2, c1: 3, r2: 3, c2: 6 })
+    expect(fillTarget(src, 3, 0)).toEqual({ r1: 2, c1: 0, r2: 3, c2: 0 })
+  })
+  it('글자는 무늬로 되풀이, 숫자 한 칸은 복사', () => {
+    const t = parseTsv('x\t5\ny\t\n\t\n\t\n\t')
+    const a = fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 0 }, { r1: 2, c1: 0, r2: 4, c2: 0 })
+    expect(col(a, 0)).toEqual(['x', 'y', 'x', 'y', 'x'])
+    const b = fillSeries(t, { r1: 0, c1: 1, r2: 0, c2: 1 }, { r1: 1, c1: 1, r2: 3, c2: 1 })
+    expect(col(b, 1)).toEqual(['5', '5', '5', '5', ''])
+  })
+  it('숫자 2칸 이상이 등차면 수열을 잇는다 (열마다)', () => {
+    const t = parseTsv('1\t0.1\t10\ta\n2\t0.2\t7\tb\n')
+    const f = fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 3 }, { r1: 2, c1: 0, r2: 4, c2: 3 })
+    expect(f.rows.length).toBe(5) // 표 끝을 넘는 행은 새로 만든다
+    expect(col(f, 0)).toEqual(['1', '2', '3', '4', '5'])
+    expect(col(f, 1)).toEqual(['0.1', '0.2', '0.3', '0.4', '0.5'])
+    expect(col(f, 2)).toEqual(['10', '7', '4', '1', '-2'])
+    expect(col(f, 3)).toEqual(['a', 'b', 'a', 'b', 'a'])
+    // 원본 행은 그대로 (raw 유지)
+    expect(f.rows[0]).toBe(t.rows[0])
+  })
+  it('소수 자릿수는 원본을 따르고, 등차가 아니면 무늬', () => {
+    const t = parseTsv('1.50\n2.00\n\n')
+    expect(col(fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 0 }, { r1: 2, c1: 0, r2: 3, c2: 0 }), 0)).toEqual(['1.50', '2.00', '2.50', '3.00'])
+    const u = parseTsv('1\n2\n4')
+    expect(col(fillSeries(u, { r1: 0, c1: 0, r2: 2, c2: 0 }, { r1: 3, c1: 0, r2: 4, c2: 0 }), 0)).toEqual(['1', '2', '4', '1', '2'])
+  })
+  it('위로 채우면 수열을 거꾸로, 무늬는 주기대로', () => {
+    const t = parseTsv('\t\n\t\n3\tp\n4\tq')
+    const f = fillSeries(t, { r1: 2, c1: 0, r2: 3, c2: 1 }, { r1: 0, c1: 0, r2: 1, c2: 1 })
+    expect(col(f, 0)).toEqual(['1', '2', '3', '4'])
+    expect(col(f, 1)).toEqual(['p', 'q', 'p', 'q'])
+  })
+  it('가로로 끌면 행마다', () => {
+    const t = parseTsv('2\t4\t\t\nk\t\t\t')
+    const f = fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 1 }, { r1: 0, c1: 2, r2: 1, c2: 3 })
+    expect(f.rows[0].cells).toEqual(['2', '4', '6', '8'])
+    expect(f.rows[1].cells).toEqual(['k', '', 'k', ''])
+    const g = fillSeries(t, { r1: 0, c1: 1, r2: 0, c2: 1 }, { r1: 0, c1: 0, r2: 0, c2: 0 })
+    expect(g.rows[0].cells).toEqual(['4', '4', '', ''])
+  })
+  it('붙어 있지 않은 범위면 그대로', () => {
+    const t = parseTsv('1\n2\n\n\n')
+    expect(fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 0 }, { r1: 3, c1: 0, r2: 4, c2: 0 })).toBe(t)
+    expect(fillSeries(t, { r1: 0, c1: 0, r2: 1, c2: 0 }, { r1: 1, c1: 0, r2: 2, c2: 0 })).toBe(t)
   })
 })
 

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onPaneAction, onSelectRequest } from '../../lib/nav'
 import { store, useStoreVersion } from '../../store/documents'
-import type { TsvTable } from '../../lib/tsv/model'
-import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, seedTypedTable, type CellRange } from '../../lib/tsv/edits'
+import { cellAt, type TsvTable } from '../../lib/tsv/model'
+import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
+import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
 import { baseName, deriveSchema } from '../../lib/tsv/schema'
-import { validateTable } from '../../lib/tsv/validate'
+import { sanitizeCell } from '../../lib/tsv/serialize'
+import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
+
+const NO_HITS: FindHit[] = []
+const NO_KEYS: ReadonlySet<number> = new Set()
+/** Ctrl+F 때 활성 셀 값을 찾을 말로 미리 채우는 최대 길이 */
+const PREFILL_MAX = 40
 
 /** TSV 문서 창. 스토어의 표를 그리드로 보여 주고 편집·되돌리기·행/열 조작·저장을 잇는다. */
 export function GridPane({ path, onSplit }: { path: string; onSplit: () => void }) {
@@ -91,6 +98,127 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     refocus()
   }, [table, edit, active.r, showNotice])
 
+  /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입·삭제처럼 확인을 묻는다 */
+  const moveCols = useCallback((from: number, count: number, to: number): boolean => {
+    if (!window.confirm(`열 ${count}개를 옮기면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 계속할까요?`)) { refocus(); return false }
+    edit((t) => moveColumns(t, from, count, to))
+    refocus()
+    return true
+  }, [edit])
+
+  // ---- 찾기 / 바꾸기 (툴바와 그리드 사이의 막대)
+  const [findOpen, setFindOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [matchCase, setMatchCase] = useState(false)
+  const [wholeCell, setWholeCell] = useState(false)
+  /** 막대의 어느 칸에 포커스를 줄지. n 은 같은 칸을 다시 요청할 때 바뀐다 */
+  const [findFocus, setFindFocus] = useState<{ field: 'find' | 'replace'; n: number } | null>(null)
+  const findInput = useRef<HTMLInputElement>(null)
+  const replaceInput = useRef<HTMLInputElement>(null)
+  const findOpts = useMemo<FindOptions>(() => ({ matchCase, wholeCell }), [matchCase, wholeCell])
+  const hits = useMemo(() => (findOpen && table ? findMatches(table, query, findOpts) : NO_HITS), [findOpen, table, query, findOpts])
+  const hitKeys = useMemo<ReadonlySet<number>>(
+    () => (table && hits.length ? new Set(hits.map((h) => issueKey(table.width, h.r, h.c))) : NO_KEYS),
+    [hits, table],
+  )
+
+  useEffect(() => {
+    if (!findFocus) return
+    const el = findFocus.field === 'replace' ? replaceInput.current : findInput.current
+    el?.focus()
+    el?.select()
+  }, [findFocus])
+
+  const focusFindField = (field: 'find' | 'replace') => setFindFocus((f) => ({ field, n: (f?.n ?? 0) + 1 }))
+
+  const openFind = useCallback((withReplace: boolean) => {
+    if (table) {
+      const g = grid.current?.range()
+      const single = !g || (g.r1 === g.r2 && g.c1 === g.c2)
+      const v = cellAt(table, active.r, active.c)
+      // 활성 셀 값이 짧으면 찾을 말로 미리 채운다 (Ctrl+H 는 찾을 말이 비어 있을 때만)
+      if (single && v && v.length <= PREFILL_MAX && (!withReplace || !query)) setQuery(v)
+    }
+    setFindOpen(true)
+    focusFindField(withReplace ? 'replace' : 'find')
+  }, [table, active, query])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    grid.current?.focus()
+  }, [])
+
+  const goTo = (h: FindHit) => {
+    grid.current?.clearRange()
+    setActive({ r: h.r, c: h.c })
+  }
+
+  /** 활성 셀 다음(1) / 이전(-1) 결과로. 끝에 닿으면 반대쪽 처음으로 돈다 */
+  const findStep = useCallback((dir: 1 | -1) => {
+    if (!table) return
+    if (!query) { openFind(false); return }
+    const list = findOpen ? hits : findMatches(table, query, findOpts)
+    if (!findOpen) setFindOpen(true)
+    const i = stepMatch(list, active, dir)
+    if (i < 0) { showNotice(`찾지 못했습니다: ${query}`); return }
+    grid.current?.clearRange()
+    setActive({ r: list[i].r, c: list[i].c })
+  }, [table, query, findOpen, hits, findOpts, active, openFind, showNotice])
+
+  const cleanReplacement = (): string => {
+    const [rep, changed] = sanitizeCell(replacement)
+    if (changed) showNotice('탭·줄바꿈은 셀에 넣을 수 없어 공백으로 바꿨습니다')
+    return rep
+  }
+
+  /** 지금 셀이 걸려 있으면 그 셀에서 바꾸고, 다음 결과로 */
+  const replaceOne = () => {
+    if (!table || !query) return
+    const rep = cleanReplacement()
+    const { r, c } = active
+    let after = table
+    if (matchIndex(hits, active) >= 0) {
+      after = setCell(table, r, c, replaceInCell(cellAt(table, r, c), query, rep, findOpts))
+      edit((t) => setCell(t, r, c, replaceInCell(cellAt(t, r, c), query, rep, findOpts)))
+    }
+    const list = findMatches(after, query, findOpts)
+    const i = stepMatch(list, active, 1)
+    if (i >= 0) goTo(list[i])
+    else if (after === table) showNotice(`찾지 못했습니다: ${query}`)
+  }
+
+  /** 걸린 셀을 전부 — onEdit 한 번이라 되돌리기도 한 번 */
+  const replaceEvery = () => {
+    if (!table || !query) return
+    const rep = cleanReplacement()
+    const { count } = replaceAll(table, query, rep, findOpts)
+    if (count === 0) { showNotice('바꿀 셀이 없습니다'); return }
+    edit((t) => replaceAll(t, query, rep, findOpts).table)
+    showNotice(`${count}개 셀 바꿈`)
+  }
+
+  const onFindKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    const mod = e.ctrlKey || e.metaKey
+    if (e.key === 'Escape') { e.preventDefault(); closeFind(); return }
+    if (e.key === 'F3') { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return }
+    // 막대 안에서 Ctrl+F / Ctrl+H 는 칸만 옮긴다 (브라우저 찾기·기록을 막는다). Ctrl+Shift+F/H 는 전역
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'KeyF' || e.code === 'KeyH')) {
+      e.preventDefault()
+      focusFindField(e.code === 'KeyH' ? 'replace' : 'find')
+      return
+    }
+    if (e.key === 'Enter' && !mod && !e.altKey && (e.target === findInput.current || e.target === replaceInput.current)) {
+      e.preventDefault()
+      findStep(e.shiftKey ? -1 : 1)
+    }
+  }
+
+  const hitIdx = findOpen ? matchIndex(hits, active) : -1
+  let findCount = ''
+  if (query) findCount = hits.length ? `${hitIdx >= 0 ? hitIdx + 1 : '–'} / ${hits.length}` : '결과 없음'
+
   const dirty = store.isDirty(path)
   const status = doc?.saving ? '저장 중…' : doc?.conflict ? '충돌' : dirty ? '● 수정됨' : '저장됨'
   const canUndo = store.canUndo(path)
@@ -135,6 +263,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <button onClick={() => colOp('left', currentRange())} title="선택한 열 왼쪽에 빈 열">＋왼쪽</button>
             <button onClick={() => colOp('right', currentRange())} title="선택한 열 오른쪽에 빈 열 (Ctrl+Alt+Shift+=)">＋오른쪽</button>
             <button onClick={() => colOp('del', currentRange())} disabled={table.width <= 1} title="선택한 열 삭제 (Ctrl+Alt+Shift+-)">삭제</button>
+            <span className="sep" />
+            <button onClick={() => openFind(false)} title="찾기 (Ctrl+F) · 바꾸기 (Ctrl+H)">찾기</button>
             {table.rows.length === 0 && (
               <>
                 <span className="sep" />
@@ -144,6 +274,44 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <span className="spacer" />
             {notice && <span className="grid-notice">{notice}</span>}
           </div>
+          {findOpen && (
+            <div className="grid-find" onKeyDown={onFindKey}>
+              <input
+                ref={findInput}
+                className="grid-find-input"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="찾기"
+                aria-label="찾기"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <input
+                ref={replaceInput}
+                className="grid-find-input"
+                type="text"
+                value={replacement}
+                onChange={(e) => setReplacement(e.target.value)}
+                placeholder="바꾸기"
+                aria-label="바꾸기"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <label title="대소문자를 구분해 찾는다">
+                <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> 대소문자 구분
+              </label>
+              <label title="셀 값 전체가 찾을 말과 같아야 걸린다. 바꾸면 셀 전체가 바뀐다">
+                <input type="checkbox" checked={wholeCell} onChange={(e) => setWholeCell(e.target.checked)} /> 셀 전체 일치
+              </label>
+              <span className={'grid-find-count' + (query && !hits.length ? ' is-none' : '')}>{findCount}</span>
+              <button onClick={() => findStep(-1)} title="이전 (Shift+Enter · Shift+F3)">이전</button>
+              <button onClick={() => findStep(1)} title="다음 (Enter · F3)">다음</button>
+              <button onClick={replaceOne} title="지금 셀에서 바꾸고 다음 결과로">바꾸기</button>
+              <button onClick={replaceEvery} title="걸린 셀을 전부 바꾼다 (Ctrl+Z 한 번으로 되돌림)">모두 바꾸기</button>
+              <button onClick={closeFind} title="닫기 (Esc)">닫기</button>
+            </div>
+          )}
           <Grid
             ref={grid}
             table={table}
@@ -157,6 +325,10 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             onNotice={showNotice}
             onRowOp={rowOp}
             onColOp={colOp}
+            onMoveColumns={moveCols}
+            onFind={openFind}
+            onFindStep={findStep}
+            matches={hitKeys}
             widthsKey={`jaydocs.colw:${path}`}
           />
           <div className="grid-foot">

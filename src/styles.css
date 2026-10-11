@@ -251,6 +251,7 @@ kbd {
 .md-body.is-split .editor-host { flex: 1 1 50%; border-right: 1px solid var(--border); }
 .md-body.is-split .preview { flex: 1 1 50%; }
 .md-body.is-preview .preview { flex: 1; }
+.md-body.is-hybrid .cm-content { max-width: 920px; }
 
 /* ---- 미리보기 ---- */
 .preview { min-width: 0; overflow: auto; background: var(--bg); }
@@ -291,9 +292,26 @@ kbd {
 .tsv-view th { background: var(--panel2); font-weight: 600; position: sticky; top: 0; }
 .tsv-view td.is-num { text-align: right; font-variant-numeric: tabular-nums; }
 .tsv-view td.is-empty { color: var(--muted); text-align: center; }
-.tsv-view tbody tr { cursor: pointer; }
 .tsv-view tbody tr:hover td { background: var(--hover); }
 .tsv-view tbody tr:last-child td { border-bottom: 0; }
+.tsv-view-wrap { position: relative; overflow: auto; }
+.tsv-view td.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tsv-view td.has-error { box-shadow: inset 0 -2px 0 var(--danger); }
+.tsv-view td.is-comment { color: var(--muted); }
+.tsv-view .tsv-view-rownum { color: var(--muted); font-size: 11px; width: 1%; text-align: right; cursor: pointer; user-select: none; background: var(--panel2); }
+.tsv-view .tsv-view-rownum:hover { color: var(--accent); }
+.tsv-view-hint { font-size: 11px; }
+.tsv-view-btn { padding: 0 6px; font-size: 11px; line-height: 16px; }
+.tsv-view-input {
+  position: absolute; z-index: 5; box-sizing: border-box; margin: 0;
+  border: 2px solid var(--accent); padding: 2px 4px; border-radius: 0;
+  font: inherit; font-size: 13px; line-height: 20px; resize: none; background: var(--elev); color: var(--fg);
+  outline: none; white-space: pre-wrap; overflow: hidden; box-shadow: var(--shadow);
+}
+.tsv-view-input:not(.is-editing) { opacity: 0; width: 1px !important; height: 1px !important; border: 0; padding: 0; pointer-events: none; box-shadow: none; }
+.tsv-view-gen { margin: 0; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; background: var(--code-bg); }
+.tsv-view-gen.is-error { color: var(--danger); background: var(--err-bg); }
+.tsv-view.is-mermaid .mermaid-box { margin: 6px 10px; }
 
 /* ---- TSV 그리드 ---- */
 .grid-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }

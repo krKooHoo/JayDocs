@@ -279,9 +279,10 @@ export interface TsvViewResult {
   error: string | null
 }
 
-function rowRecord(cells: readonly string[], schema: TableSchema): Row {
+/** 행을 열 이름 → 값 레코드로 (where 식 · 템플릿이 쓴다). 이름 없는 열은 `_3` 처럼 번호로 */
+export function rowRecord(cells: readonly string[], schema: TableSchema): Row {
   const row: Row = {}
-  for (const col of schema.columns) if (col.name) row[col.name] = cells[col.index] ?? ''
+  for (const col of schema.columns) row[col.name || `_${col.index + 1}`] = cells[col.index] ?? ''
   return row
 }
 

@@ -469,7 +469,14 @@ JayDocs/
 - git: 배지, HEAD diff(md는 `@codemirror/merge`, tsv는 Key 매칭 셀 diff), 커밋, 로그, 특정 버전 보기, 복원. 외부 변경 배너·409 처리.
 - **검증** 기획 md 안에서 Peak 행 표가 보이고, 그리드에서 값을 바꾸면 미리보기가 따라온다. 커밋 → 로그 → 이전 버전 열기 → 복원.
 
-### Phase 3 — 결합 심화 (3일+)  → R9 편집, R10, R11, R12
+### Phase 3 — 결합 심화 (3일+)  → R9 편집, R10, R11, R12  ✅ 2026-10-11 완료
+
+구현 메모:
+- **그 자리 편집**: 미리보기·하이브리드의 tsv-view 표는 그리드와 같은 방식(숨은 textarea 하나, IME 가드)으로 셀을 고친다. 같은 `TsvDoc` 에 `store.editTable` 로 넣으니 그리드·다른 창·bake 가 즉시 같은 표를 본다. 필터로 숨은 행은 건드리지 않는다. enum 드롭다운·검증 밑줄은 그리드 전용(표에는 밑줄만).
+- **bake**: `lib/md/bake.ts` 가 펜스와 기존 baked 블록을 찾아 원문 오프셋 기준 변경 목록을 만들고, `store.save` 가 md 저장 직전에 참조 TSV(열려 있으면 저장 전 표, 아니면 디스크)를 모아 `ChangeSet` 으로 문서에 적용한다. 표가 같으면 변경 없음(diff 깨끗). 미리보기는 `stripBaked` 로 블록을 숨긴다. CM 텍스트는 \n 이므로 bake 도 \n, 파일 EOL 은 직렬화에서 복원.
+- **Mermaid 템플릿**: `lib/md/template.ts` — Mustache 부분집합(`each`·`if/else`·`this`·`../`·`@index`·`.list`·`.id`·`.length`, 주석, standalone 줄 제거) 150줄. 루트는 `{ rows, file, count }`, 행은 열 이름 → 값 레코드. 생성 텍스트는 Mermaid 컴포넌트가 `mermaid.parse` 로 검증.
+- **하이브리드 Live Preview**: `@atomic-editor/editor` 를 들이지 않고 `components/hybrid.ts` 에 CM6 **StateField** 장식으로 자체 구현(블록 위젯은 ViewPlugin 으로 못 넣는다). 커서 줄은 원문, 다른 줄의 `HeaderMark`·`EmphasisMark`·`CodeMark`·`StrikethroughMark`·링크 표식/URL·`QuoteMark` 를 `Decoration.replace` 로 숨기고, `ListMark` 는 • 위젯, 인용은 줄 장식. ```mermaid·```tsv-view 펜스는 커서 밖이면 블록 위젯(React root 로 미리보기와 같은 컴포넌트, `ignoreEvent: true`)으로 바꾸고 "원문" 버튼이 `posAtDOM` 으로 커서를 펜스로 옮긴다. 조합 중(`input.type.compose`)엔 재계산 없이 `map` 만. 파서가 뷰포트 밖을 아직 안 읽었을 수 있어 `ensureSyntaxTree(…, 300ms)` 로 끝까지 파싱.
+- **그리드 추가**: 찾기/바꾸기 바(Ctrl+F/H, `lib/tsv/find.ts`), 채우기 핸들(패턴 반복·등차수열), 열 글자 드래그 재정렬(`moveColumns`) — 에이전트 위임분, 메모는 그 커밋 메시지와 README.
 
 - `tsv-view` 그 자리에서 편집, `bake`.
 - Mermaid 템플릿(`render: mermaid`).
