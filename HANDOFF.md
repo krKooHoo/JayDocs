@@ -1,4 +1,4 @@
-# JayDocs 인수인계 (2026-10-11, Phase 2 완료 시점)
+# JayDocs 인수인계 (2026-10-11, Phase 2 + 피드백 2차 반영 시점)
 
 다른 PC의 **새 세션**에 아래 프롬프트를 그대로 붙여 넣으면 된다. 이 문서 자체가 그 세션이 처음 읽을 문서다.
 
@@ -21,8 +21,9 @@ JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md
   - 마크다운: CodeMirror 6 소스 + react-markdown 미리보기(소스/분할/미리보기), mermaid 동적 로드, `tsv-view` 펜스로 TSV 표 임베드(필터·정렬·열 선택, 행 클릭 → 그리드).
   - TSV: 자체 그리드 — 바이트 왕복 보존, 타입 행 + `_Field` 스키마(툴팁·enum·bool·검증·Key 중복), 한글 IME, Sheets 붙여넣기, undo/redo, 행/열 조작.
   - git: 상태 배지, HEAD diff(md 는 merge view, tsv 는 Key 셀 diff), 선택 커밋, 파일 기록, 이전 버전 보기/문서에 넣기, `git restore`.
+  - 키보드·테마(DESIGN §16): 명령 팔레트 `Ctrl+Shift+P` · 빠른 열기 `Ctrl+P` · 탭/패널 키 · 트리 키보드 탐색 · 그리드 범위 선택과 Sheets 식 복사/붙여넣기/채우기 · md 여러 선택 표시 · 다크 모드. 단축키 원본은 `src/lib/shortcuts-table.mjs`, `npm run shortcuts` → `SHORTCUTS.md`(테스트가 동기화를 검사).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
-- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1 은 `b4c7597` 로 커밋·push 됨. Phase 2 는 Jay 지시 전이라 **커밋하지 않았을 수 있다** — `git status` 로 확인.
+- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1 은 `b4c7597` 로 커밋·push 됨. Phase 2 와 피드백 반영은 Jay 지시 전이라 **커밋하지 않았을 수 있다** — `git status` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
@@ -39,7 +40,7 @@ git pull
 cd JayDocs
 npm install          # node_modules 와 dist 는 커밋하지 않는다
 npm run build        # dist/ 생성
-npm test             # 63개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
+npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
 ```
 
 - `JayTools/.claude/launch.json` 과 `JayDocs/.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 **JayTools 루트의** launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
@@ -56,6 +57,7 @@ npm test             # 63개 — SagaDocs 실제 파일 왕복 포함 (리포를
 - Google Sheets export TSV는 **CRLF**다. SagaDocs 리포는 `.gitattributes`로 **LF 정규화**. JayDocs는 파일별 EOL·BOM·끝 개행을 감지해 보존한다(DESIGN §6.1). 왕복 테스트는 CRLF 입력과 LF 입력 둘 다 통과.
 - v1 마크다운은 소스 + 미리보기(하이브리드는 Phase 3). TSV 그리드는 **자체 제작**(DOM + 행 가상화, 라이브러리 아님 — 이유는 DESIGN §3.3/D3). 입력은 항상 떠 있는 textarea 하나가 받고 한글 조합이 그 안에서 시작된다.
 - 다른 세션에 보낼 프롬프트는 작게(질문 3~5개). 이전에 10항목 조사 프롬프트가 과한 작업을 만들었다.
+- Jay 의 사용 기준(2026-10-11 피드백): **가볍고, git 으로 바로 커밋되는 것**이 핵심 가치. 모든 작업이 키보드로 되어야 하고, 단축키는 Sheets·Excel 관행을 따르며 `SHORTCUTS.md` 에 계속 쌓는다(한 곳 `shortcuts-table.mjs` 에서 생성). 새 기능을 넣을 때 단축키 표와 팔레트 명령을 같이 넣을 것.
 - Claude Code 의 Bash 도구는 명령 문자열의 백슬래시를 한 단계 벗긴다 → `sed`/`node -e`/heredoc 으로 `\\` 가 든 치환은 조용히 실패하고, CSS 처럼 따옴표·백슬래시가 섞인 heredoc 은 깨진다. 그런 편집은 Edit/Write 도구로.
 - 사이드카처럼 **자체 완결적인 조각은 Opus 에이전트에 맡겨도 된다**(Phase 2 의 git API 가 그 예 — 계약을 표로 적어 주면 잘 한다). 공유 파일을 여러 에이전트가 동시에 고치는 구조는 피한다.
 
@@ -67,14 +69,16 @@ npm test             # 63개 — SagaDocs 실제 파일 왕복 포함 (리포를
 2. **`bake: true`** — 저장 시 펜스 바로 아래 `<!-- tsv-view:baked -->` … `<!-- /tsv-view -->` 사이에 파이프 표를 다시 생성(DESIGN §7.1). 저장 경로에서 md 텍스트를 가공하므로 `store.save` 앞단에 훅을 둔다. 기본값 꺼짐.
 3. **Mermaid 템플릿** (`render: mermaid`, `template: |`) — Mustache 수준(`{{col}}`, `{{#each}}`, `{{#if}}`, `.list`)만 자체 구현(100줄 안팎), `mermaid.parse` 로 검증 후 렌더, 실패하면 생성 텍스트와 오류를 그대로 보여 준다(DESIGN §7.2).
 4. **하이브리드 Live Preview** — `@atomic-editor/editor` 평가 후 채택 또는 CM6 decoration 자체 구현. 활성 줄은 raw, 나머지는 렌더. `view.composing` 동안 decoration 갱신 보류.
-5. **그리드**: 범위 선택(Shift+방향키/드래그) + 범위 복사·붙여넣기·지우기, 채우기 핸들, 찾기/바꾸기, 열 드래그 재정렬.
+5. **그리드**: 채우기 핸들, 찾기/바꾸기, 열 드래그 재정렬, 수식(Jay 가 "다음 버전" 으로 미룸). 범위 선택·복사/붙여넣기·채우기(Ctrl+D/R)는 이미 있다.
 6. **검증**: Tile.md 의 tsv-view 에서 셀을 고치면 그리드·파일에 반영. bake 켠 문서를 GitHub 에서 보면 진짜 표. 템플릿으로 Building → District 흐름도가 그려진다. 한글 입력이 하이브리드 모드에서도 안 깨진다.
 
 작은 것들(남은 숙제): 번들 1.16 MB(gz 372 KB) — flexlayout·react-markdown 몫. `Ctrl+P` 빠른 열기(DESIGN §8). 이미지(`_assets/`) 미리보기 — 사이드카가 지금은 `.md/.tsv` 만 서빙한다. `npm audit` 가 mermaid 쪽 의존성 경고를 낸다(로컬 도구라 보류).
 
 ## 6. 알려진 상태·주의
 
-- 그리드 범위 선택은 없다(Phase 3). 복사는 활성 셀 하나, 붙여넣기는 블록. 행 복사는 툴바의 복제.
+- 그리드 범위 선택·블록 복사/붙여넣기·채우기는 있다. 채우기 핸들·찾기/바꾸기·열 드래그·수식은 Phase 3.
+- 전역 단축키는 버블 단계 keydown 으로 처리한다 — 에디터·그리드가 먼저 `preventDefault` 한 키는 건드리지 않는다. 글자 키 단독 단축키는 두지 않는다(입력 중 충돌). 브라우저 예약 조합(Ctrl+W/T/N/Tab/숫자)은 페이지가 못 받는다.
+- 자동화 테스트에서 패널 포커스 명령 뒤 바로 키를 보내면 포커스 이동(한 프레임)보다 앞설 수 있다. 사람 속도에서는 문제 없다.
 - enum 열에 Field 블록이 없으면(예: District `AllowedTerrain`) **열에 이미 있는 값**을 후보로 보여 주고 검증은 하지 않는다. 툴팁에 "(열에 있는 값)" 으로 표시.
 - `Building_Table` 의 열 설명은 다른 폴더의 `District_Field.tsv` 안 `BuildingDef` 블록에서 온다(리포 전체의 `_Field` 를 훑는다). 열린 Field 문서는 저장 전 편집 내용이 바로 스키마에 반영된다.
 - 한글 IME 는 composition 이벤트를 흉내 낸 자동 테스트로 확인했다. 실제 키보드로도 한 번 쳐 보는 것이 좋다(브라우저 자동화는 IME 를 거치지 않는다).

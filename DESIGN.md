@@ -571,6 +571,21 @@ SagaDocs/                          git 리포 (GitHub: Jay/SagaDocs, private) ·
 
 ---
 
+## 16. 피드백 2차 반영 (2026-10-11, Phase 2 사용 후)
+
+Jay 의 첫 사용 소감: "가벼워서 좋다, git 으로 바로 커밋되는 게 매우 좋다." 요청 네 가지와 반영.
+
+| # | 요청 | 반영 |
+|---|---|---|
+| 1 | TSV: Sheets·Excel 기본 단축키, 복사/붙여넣기 (수식은 다음) | 그리드에 **범위 선택**(Shift+방향키·드래그·행번호/열글자 클릭·Ctrl+A·Shift+Space·Ctrl+Space)을 넣고 Ctrl+C/X/V 를 **범위 블록**으로. 한 셀을 복사해 범위에 붙이면 채우기. Delete 범위 비우기, Ctrl+D/R 채우기, Ctrl+Alt+= / - 행 삽입·삭제(Shift 면 열), Ctrl+Shift+D 행 복제. Phase 3 에 남긴 것: 채우기 핸들, 찾기/바꾸기, 열 드래그 재정렬, 수식 |
+| 2 | md: 여러 문자열 선택 표시 | 원인 둘 — ① `drawSelection` 은 선택을 글자 **뒤** 레이어에 그리는데 활성 줄 배경이 불투명해 가려졌다 → 활성 줄·선택 색을 반투명 변수로. ② `allowMultipleSelections` 가 없어 Ctrl+D(같은 단어 추가 선택)·Ctrl+클릭이 한 선택으로 합쳐졌다 → 켬. 선택 일치 하이라이트·검색 일치 색도 변수화 |
+| 3 | 다크 모드 | 색을 전부 CSS 변수로 모으고 `<html data-theme>` 로 전환(Ctrl+Alt+D, 상단 버튼, 팔레트). 처음엔 OS 설정, 이후 localStorage. flexlayout 은 light.css 의 `--flexlayout-color-*` 변수를 덮어쓰고, CodeMirror·merge view·mermaid(`theme: dark`)도 따라간다 |
+| 4 | 단축키를 md 로 보관, 키보드로 모든 작업 | **`src/lib/shortcuts-table.mjs` 한 곳**이 원본. `npm run shortcuts` 가 `SHORTCUTS.md` 를 만들고, 테스트가 둘이 같은지 검사한다. 앱의 F1 도움말과 전역 키 처리기(`commandByCombo`)도 같은 표를 읽는다. 키보드 전부: **명령 팔레트(Ctrl+Shift+P)** 가 등록된 모든 명령을 글자로 실행, **빠른 열기(Ctrl+P)**, 탭 이동(Alt+[ ] / Alt+1~9 / Alt+W), 패널 접기·포커스(Ctrl+B · Ctrl+J · Ctrl+Shift+E/G/M), 트리 키보드 탐색(방향키·Enter·F2·Delete·Shift+F10), 보기 모드 순환(Ctrl+Shift+V), diff/기록(Ctrl+Shift+F/H). 브라우저가 가로채는 조합(Ctrl+W/T/N/Tab/숫자)은 피했다 |
+
+구조: 명령은 `lib/commands.ts` 레지스트리에 창이 마운트될 때 등록(`registerCommands`)하고, 전역 keydown(버블 단계, 창이 preventDefault 한 키는 건너뜀)이 표의 키 → 명령으로 실행한다. 특정 창에 시키는 일(보기 모드·포커스)은 `nav.paneAction(path, …)` 로 보낸다.
+
+---
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

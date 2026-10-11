@@ -316,6 +316,42 @@ class DocumentStore {
     for (const d of this.all()) if (this.isDirty(d.path)) await this.save(d.path)
   }
 
+  /** 디스크에서 다시 읽어 지금 내용을 버린다 (git 되돌리기 뒤). 열려 있지 않으면 아무 일도 없다 */
+  async reload(path: string) {
+    const d = this.docs.get(path)
+    if (!d || d.status !== 'ready') return
+    try {
+      const f = await backend().read(path)
+      this.replaceAll(d, f.text, f.mtime)
+    } catch (e) {
+      d.error = (e as Error).message
+      this.emit()
+    }
+  }
+
+  /** 내용을 통째로 바꾼다 (이전 버전 복원 등). 저장은 따로 한다. TSV 는 되돌리기 가능 */
+  setText(path: string, text: string) {
+    const d = this.docs.get(path)
+    if (!d || d.status !== 'ready') return
+    if (d.kind === 'tsv') {
+      this.editTable(path, () => parseTsv(text))
+    } else {
+      const p = parseText(text)
+      this.applyChanges(path, ChangeSet.of({ from: 0, to: d.text.length, insert: p.text }, d.text.length), null)
+    }
+  }
+
+  /** 문서가 읽힐 때까지 기다린다 (최대 waitMs). 열려 있지 않은 문서는 기다리지 않는다 */
+  async whenReady(path: string, waitMs = 4000): Promise<Doc | null> {
+    const until = Date.now() + waitMs
+    while (Date.now() < until) {
+      const d = this.docs.get(path)
+      if (d && d.status !== 'loading') return d
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    return this.docs.get(path) ?? null
+  }
+
   /** 충돌: 내 내용으로 덮어쓴다 */
   overwrite(path: string) {
     const d = this.docs.get(path)

@@ -3,16 +3,19 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { cellAt, type TsvRow, type TsvTable } from '../../lib/tsv/model'
 import { columnLetter, type ColumnSchema, type TableSchema } from '../../lib/tsv/schema'
 import { issueKey, type Validation } from '../../lib/tsv/validate'
-import { pasteBlock, setCell } from '../../lib/tsv/edits'
-import { parseClipboardTsv } from '../../lib/tsv/clipboard'
+import { fillDown, fillRange, fillRight, pasteBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
+import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
 import { sanitizeCell } from '../../lib/tsv/serialize'
 
 /**
- * 자체 DOM 그리드 (DESIGN D3). 상태는 갖지 않고 표(TsvTable) 를 그리기만 한다 — 편집은 onEdit 으로 올려 보낸다.
+ * 자체 DOM 그리드 (DESIGN D3). 상태는 활성 셀(부모가 쥔다)과 범위 선택의 기준점(anchor)뿐이고
+ * 표(TsvTable) 는 그리기만 한다 — 편집은 onEdit 으로 올려 보낸다.
  *
  * 입력은 항상 떠 있는 <textarea> 하나가 받는다. 셀을 고르면 그 위(1×1, 투명)에 두고 포커스를 준다.
  * 글자가 들어오면(input / compositionstart) 그때 편집 모드로 커진다. 한글 조합이 textarea 안에서 시작되므로
  * 첫 자모가 사라지는 문제(§3.3)가 구조적으로 없다. 조합 중(isComposing / keyCode 229)에는 키를 가로채지 않는다.
+ *
+ * 키는 Google Sheets · Excel 의 기본 키를 따른다 (SHORTCUTS.md "TSV 그리드").
  */
 export const ROW_H = 26
 const LETTER_H = 22
@@ -27,7 +30,13 @@ export interface CellPos {
 
 export interface GridHandle {
   focus(): void
+  /** 지금 선택된 범위 (활성 셀 하나뿐이면 1×1) */
+  range(): CellRange
+  clearRange(): void
 }
+
+export type RowOp = 'above' | 'below' | 'append' | 'dup' | 'del'
+export type ColOp = 'left' | 'right' | 'del'
 
 export interface GridProps {
   table: TsvTable
@@ -39,6 +48,9 @@ export interface GridProps {
   onUndo: () => void
   onRedo: () => void
   onNotice: (msg: string) => void
+  /** 행/열 조작 (단축키에서). 범위를 함께 보낸다 */
+  onRowOp: (kind: RowOp, range: CellRange) => void
+  onColOp: (kind: ColOp, range: CellRange) => void
   /** 열 너비를 기억할 localStorage 키 */
   widthsKey: string
 }
@@ -99,7 +111,12 @@ function columnTitle(col: ColumnSchema): string {
   if (col.description) parts.push(col.description)
   for (const n of col.notes) parts.push(`${n.label}: ${n.text}`)
   if (col.enumValues?.length) parts.push(`허용 값${col.enumSource === 'column' ? ' (열에 있는 값)' : ''}: ${col.enumValues.join(', ')}`)
+  parts.push('클릭: 열 선택 · 드래그: 너비')
   return parts.join('\n')
+}
+
+function normalizeRange(a: CellPos, b: CellPos): CellRange {
+  return { r1: Math.min(a.r, b.r), c1: Math.min(a.c, b.c), r2: Math.max(a.r, b.r), c2: Math.max(a.c, b.c) }
 }
 
 // ---------------------------------------------------------------- 셀 · 행
@@ -110,15 +127,17 @@ interface CellProps {
   col: ColumnSchema
   w: number
   active: boolean
+  selected: boolean
   issue: string | undefined
   head: boolean
 }
 
-const Cell = memo(function Cell({ r, c, v, col, w, active, issue, head }: CellProps) {
+const Cell = memo(function Cell({ r, c, v, col, w, active, selected, issue, head }: CellProps) {
   let cls = 'grid-cell'
   if (col.type === 'comment') cls += ' is-comment'
   if (col.isKey) cls += ' is-key'
   if (!head && isNumeric(col.type)) cls += ' is-num'
+  if (selected) cls += ' is-selected'
   if (active) cls += ' is-active'
   if (issue) cls += ' has-error'
   const bool = !head && col.type === 'bool' && isBoolText(v)
@@ -144,17 +163,21 @@ interface RowProps {
   tableWidth: number
   totalWidth: number
   activeC: number
+  /** 이 행에 걸친 선택 열 범위. 없으면 -1 */
+  selC1: number
+  selC2: number
+  rowSelected: boolean
   head: boolean
   style?: React.CSSProperties
 }
 
-const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, head, style }: RowProps) {
+const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, rowSelected, head, style }: RowProps) {
   let cls = 'grid-row'
   cls += head ? ' is-head' : ' is-body'
   if (head && schema.typed && r === 0) cls += ' is-type'
   return (
     <div className={cls} style={{ ...style, width: totalWidth }}>
-      <div className={'grid-rownum' + (activeC >= 0 ? ' is-active-row' : '')}>{r + 1}</div>
+      <div className={'grid-rownum' + (activeC >= 0 || rowSelected ? ' is-active-row' : '')} data-rownum={r} title="클릭: 행 선택">{r + 1}</div>
       {widths.map((w, c) => (
         <Cell
           key={c}
@@ -164,6 +187,7 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
           col={schema.columns[c]}
           w={w}
           active={activeC === c}
+          selected={selC1 >= 0 && c >= selC1 && c <= selC2}
           issue={validation.issues.get(issueKey(tableWidth, r, c))}
           head={head}
         />
@@ -174,10 +198,12 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
 
 // ---------------------------------------------------------------- 그리드
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
-  const { table, schema, validation, active, onActiveChange, onEdit, onUndo, onRedo, onNotice } = p
+  const { table, schema, validation, active, onActiveChange, onEdit, onUndo, onRedo, onNotice, onRowOp, onColOp } = p
   const headerRows = schema.headerRows
   const headerH = LETTER_H + headerRows * ROW_H
   const bodyCount = Math.max(0, table.rows.length - headerRows)
+  const maxR = Math.max(0, table.rows.length - 1)
+  const maxC = Math.max(0, table.width - 1)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const ta = useRef<HTMLTextAreaElement>(null)
@@ -185,6 +211,15 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState('')
   const [ddActive, setDdActive] = useState<number | null>(null)
+  /** 범위 선택의 기준점. null 이면 활성 셀 하나만 선택 */
+  const [anchor, setAnchor] = useState<CellPos | null>(null)
+  const dragging = useRef(false)
+
+  const range = useMemo<CellRange>(() => {
+    const a = anchor ? { r: Math.min(anchor.r, maxR), c: Math.min(anchor.c, maxC) } : active
+    return normalizeRange(a, active)
+  }, [anchor, active, maxR, maxC])
+  const multi = range.r1 !== range.r2 || range.c1 !== range.c2
 
   // ---- 열 너비
   const [widths, setWidths] = useState<number[]>(() => loadWidths(p.widthsKey, table.width) ?? estimateWidths(table))
@@ -208,6 +243,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       setWidths((ws) => ws.map((x, i) => (i === rs.c ? w : x)))
     }
     const onUp = () => {
+      dragging.current = false
       if (!resizing.current) return
       resizing.current = null
       setWidths((ws) => { try { localStorage.setItem(p.widthsKey, JSON.stringify(ws)) } catch { /* 무시 */ } return ws })
@@ -245,7 +281,37 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   }, [active, headerRows, headerH, offsets, widths])
 
   const focusInput = useCallback(() => { ta.current?.focus({ preventScroll: true }) }, [])
-  useImperativeHandle(ref, () => ({ focus: focusInput }), [focusInput])
+  useImperativeHandle(ref, () => ({ focus: focusInput, range: () => range, clearRange: () => setAnchor(null) }), [focusInput, range])
+
+  // ---- 선택 · 이동
+  /** 활성 셀을 옮긴다. extend 면 범위를 넓힌다 (기준점 유지), 아니면 범위를 푼다 */
+  const select = useCallback((pos: CellPos, extend = false) => {
+    const next = { r: Math.max(0, Math.min(maxR, pos.r)), c: Math.max(0, Math.min(maxC, pos.c)) }
+    if (extend) { if (!anchor) setAnchor(active) } else setAnchor(null)
+    if (next.r !== active.r || next.c !== active.c) onActiveChange(next)
+  }, [active, anchor, maxR, maxC, onActiveChange])
+
+  const moveActive = useCallback((dir: Move, far = false, extend = false) => {
+    let { r, c } = active
+    if (dir === 'up') r = far ? 0 : r - 1
+    if (dir === 'down') r = far ? maxR : r + 1
+    if (dir === 'left') c = far ? 0 : c - 1
+    if (dir === 'right') c = far ? maxC : c + 1
+    select({ r, c }, extend)
+  }, [active, maxR, maxC, select])
+
+  const selectRows = useCallback((r1: number, r2: number) => {
+    setAnchor({ r: Math.min(r1, r2), c: 0 })
+    onActiveChange({ r: Math.max(r1, r2), c: maxC })
+  }, [maxC, onActiveChange])
+  const selectCols = useCallback((c1: number, c2: number) => {
+    setAnchor({ r: 0, c: Math.min(c1, c2) })
+    onActiveChange({ r: maxR, c: Math.max(c1, c2) })
+  }, [maxR, onActiveChange])
+  const selectAll = useCallback(() => {
+    setAnchor({ r: 0, c: 0 })
+    onActiveChange({ r: maxR, c: maxC })
+  }, [maxR, maxC, onActiveChange])
 
   // ---- 편집 시작 · 확정 · 취소
   const startEdit = useCallback((mode: Editing['mode'], r = active.r, c = active.c) => {
@@ -256,22 +322,12 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       el.value = cur
       el.setSelectionRange(cur.length, cur.length)
     }
+    setAnchor(null)
     setEditing({ r, c, mode })
     setDraft(el.value)
     setDdActive(null)
     el.focus({ preventScroll: true })
   }, [active, table])
-
-  const moveActive = useCallback((dir: Move, far = false) => {
-    const maxR = Math.max(0, table.rows.length - 1)
-    const maxC = Math.max(0, table.width - 1)
-    let { r, c } = active
-    if (dir === 'up') r = far ? 0 : Math.max(0, r - 1)
-    if (dir === 'down') r = far ? maxR : Math.min(maxR, r + 1)
-    if (dir === 'left') c = far ? 0 : Math.max(0, c - 1)
-    if (dir === 'right') c = far ? maxC : Math.min(maxC, c + 1)
-    if (r !== active.r || c !== active.c) onActiveChange({ r, c })
-  }, [active, table, onActiveChange])
 
   const commitEdit = useCallback((move: Move | null, override?: string) => {
     const el = ta.current
@@ -294,12 +350,6 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     setDraft('')
     setDdActive(null)
   }, [])
-
-  const selectCell = useCallback((r: number, c: number) => {
-    if (editing && (editing.r !== r || editing.c !== c)) commitEdit(null)
-    if (r !== active.r || c !== active.c) onActiveChange({ r, c })
-    focusInput()
-  }, [editing, commitEdit, active, onActiveChange, focusInput])
 
   const toggleBool = useCallback((r: number, c: number) => {
     const v = cellAt(table, r, c)
@@ -327,10 +377,17 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     return `${draft.slice(0, i + 1).trimEnd()} ${item}`
   }, [editCol, draft])
 
+  // ---- 범위 편집
+  const clearRange = useCallback(() => {
+    const g = range
+    onEdit((t) => fillRange(t, g, ''))
+  }, [range, onEdit])
+
   // ---- 키보드
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
     const mod = e.ctrlKey || e.metaKey
+    const code = e.code
     if (editing) {
       switch (e.key) {
         case 'Enter': {
@@ -359,67 +416,92 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
           return
       }
     }
+
+    // 행/열 조작 (Ctrl+Alt+= / -, Shift 면 열)
+    if (mod && e.altKey && (code === 'Equal' || code === 'Minus')) {
+      e.preventDefault()
+      if (code === 'Equal') { if (e.shiftKey) onColOp('right', range); else onRowOp('below', range) }
+      else { if (e.shiftKey) onColOp('del', range); else onRowOp('del', range) }
+      return
+    }
+
     // 선택 상태
     switch (e.key) {
-      case 'ArrowUp': e.preventDefault(); moveActive('up', mod); return
-      case 'ArrowDown': e.preventDefault(); moveActive('down', mod); return
-      case 'ArrowLeft': e.preventDefault(); moveActive('left', mod); return
-      case 'ArrowRight': e.preventDefault(); moveActive('right', mod); return
+      case 'ArrowUp': e.preventDefault(); moveActive('up', mod, e.shiftKey); return
+      case 'ArrowDown': e.preventDefault(); moveActive('down', mod, e.shiftKey); return
+      case 'ArrowLeft': e.preventDefault(); moveActive('left', mod, e.shiftKey); return
+      case 'ArrowRight': e.preventDefault(); moveActive('right', mod, e.shiftKey); return
       case 'Tab': e.preventDefault(); moveActive(e.shiftKey ? 'left' : 'right'); return
       case 'Home':
         e.preventDefault()
-        onActiveChange({ r: mod ? 0 : active.r, c: 0 })
+        select({ r: mod ? 0 : active.r, c: 0 }, e.shiftKey)
         return
       case 'End':
         e.preventDefault()
-        onActiveChange({ r: mod ? Math.max(0, table.rows.length - 1) : active.r, c: Math.max(0, table.width - 1) })
+        select({ r: mod ? maxR : active.r, c: maxC }, e.shiftKey)
         return
       case 'PageUp':
       case 'PageDown': {
         e.preventDefault()
         const el = scrollRef.current
         const page = Math.max(1, Math.floor(((el?.clientHeight ?? 400) - headerH) / ROW_H) - 1)
-        const r = e.key === 'PageUp' ? Math.max(0, active.r - page) : Math.min(table.rows.length - 1, active.r + page)
-        onActiveChange({ r, c: active.c })
+        const r = e.key === 'PageUp' ? active.r - page : active.r + page
+        select({ r, c: active.c }, e.shiftKey)
         return
       }
+      case 'Escape':
+        e.preventDefault()
+        setAnchor(null)
+        return
       case 'Enter':
+        e.preventDefault()
+        startEdit('edit')
+        return
       case 'F2':
         e.preventDefault()
         startEdit('edit')
         return
       case 'Delete':
-      case 'Backspace': {
+      case 'Backspace':
         e.preventDefault()
-        const { r, c } = active
-        onEdit((t) => setCell(t, r, c, ''))
+        clearRange()
         return
-      }
       case ' ': {
+        if (e.shiftKey) { e.preventDefault(); selectRows(range.r1, range.r2); return }
+        if (mod) { e.preventDefault(); selectCols(range.c1, range.c2); return }
         const col = schema.columns[active.c]
-        if (col?.type === 'bool' && active.r >= headerRows && isBoolText(cellAt(table, active.r, active.c))) {
+        if (!multi && col?.type === 'bool' && active.r >= headerRows && isBoolText(cellAt(table, active.r, active.c))) {
           e.preventDefault()
           toggleBool(active.r, active.c)
         }
         return
       }
-      case 'z':
-      case 'Z':
-        if (mod) { e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo() }
-        return
-      case 'y':
-      case 'Y':
-        if (mod) { e.preventDefault(); onRedo() }
-        return
       default:
-        return // 글자 키는 textarea 로 들어가 input 이벤트에서 편집이 시작된다
+        break
     }
+    if (mod) {
+      switch (code) {
+        case 'KeyA': e.preventDefault(); selectAll(); return
+        case 'KeyZ': e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo(); return
+        case 'KeyY': e.preventDefault(); onRedo(); return
+        case 'KeyD':
+          e.preventDefault()
+          if (e.shiftKey) onRowOp('dup', range)
+          else { const g = range; onEdit((t) => fillDown(t, g)) }
+          return
+        case 'KeyR': { e.preventDefault(); const g = range; onEdit((t) => fillRight(t, g)); return }
+        default:
+          return // Ctrl+C/X/V 는 clipboard 이벤트로, 나머지 Ctrl 조합은 전역으로
+      }
+    }
+    // 글자 키는 textarea 로 들어가 input 이벤트에서 편집이 시작된다
   }
 
   const onInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
     if (!editing) {
       if (active.r >= table.rows.length) { el.value = ''; return }
+      setAnchor(null)
       setEditing({ r: active.r, c: active.c, mode: 'replace' })
     }
     setDraft(el.value)
@@ -427,6 +509,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   }
   const onCompositionStart = () => {
     if (!editing && active.r < table.rows.length) {
+      setAnchor(null)
       setEditing({ r: active.r, c: active.c, mode: 'replace' })
       setDraft('')
     }
@@ -437,14 +520,13 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const onCopy = (e: React.ClipboardEvent) => {
     if (editing) return
     e.preventDefault()
-    e.clipboardData.setData('text/plain', cellAt(table, active.r, active.c))
+    e.clipboardData.setData('text/plain', formatClipboardTsv(rangeBlock(table, range)))
   }
   const onCut = (e: React.ClipboardEvent) => {
     if (editing) return
     e.preventDefault()
-    e.clipboardData.setData('text/plain', cellAt(table, active.r, active.c))
-    const { r, c } = active
-    onEdit((t) => setCell(t, r, c, ''))
+    e.clipboardData.setData('text/plain', formatClipboardTsv(rangeBlock(table, range)))
+    clearRange()
   }
   const onPaste = (e: React.ClipboardEvent) => {
     if (editing) return
@@ -452,7 +534,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     e.preventDefault()
     if (text === '') return
     const block = parseClipboardTsv(text)
-    const { r, c } = active
+    const g = range
+    // 한 셀을 복사해 범위에 붙이면 범위를 그 값으로 채운다 (Sheets 와 같다)
+    if (block.length === 1 && block[0].length === 1 && multi) {
+      const v = block[0][0]
+      onEdit((t) => fillRange(t, g, v))
+      onNotice(`${g.r2 - g.r1 + 1}×${g.c2 - g.c1 + 1} 범위를 "${v}" 로 채움`)
+      return
+    }
+    const r = g.r1
+    const c = g.c1
     const preview = pasteBlock(table, r, c, block)
     onEdit((t) => pasteBlock(t, r, c, block).table)
     const cols = Math.max(...block.map((l) => l.length))
@@ -460,6 +551,9 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     if (preview.addedRows) notes.push(`행 ${preview.addedRows}개 추가`)
     if (preview.clippedCols) notes.push(`열 ${preview.clippedCols}개는 표 너비를 넘어 잘림`)
     onNotice(notes.join(' · '))
+    // 붙인 블록을 선택 상태로
+    setAnchor({ r, c })
+    onActiveChange({ r: Math.min(r + block.length - 1, Math.max(maxR, r + block.length - 1)), c: Math.min(maxC, c + cols - 1) })
   }
 
   // ---- 마우스 (이벤트 위임)
@@ -473,13 +567,52 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       resizing.current = { c, startX: e.clientX, startW: widths[c] }
       return
     }
+    const rownum = target.closest<HTMLElement>('[data-rownum]')
+    if (rownum) {
+      e.preventDefault()
+      if (editing) commitEdit(null)
+      const r = Number(rownum.dataset.rownum)
+      if (e.shiftKey && anchor) selectRows(anchor.r, r)
+      else selectRows(r, r)
+      focusInput()
+      return
+    }
+    const letter = target.closest<HTMLElement>('[data-letter]')
+    if (letter) {
+      e.preventDefault()
+      if (editing) commitEdit(null)
+      const c = Number(letter.dataset.letter)
+      if (e.shiftKey && anchor) selectCols(anchor.c, c)
+      else selectCols(c, c)
+      focusInput()
+      return
+    }
+    if (target.closest('[data-corner]')) {
+      e.preventDefault()
+      if (editing) commitEdit(null)
+      selectAll()
+      focusInput()
+      return
+    }
     const cell = target.closest<HTMLElement>('[data-r]')
     if (!cell) return
     e.preventDefault()
     const r = Number(cell.dataset.r)
     const c = Number(cell.dataset.c)
-    selectCell(r, c)
-    if (target.closest('[data-bool]')) toggleBool(r, c)
+    if (editing && (editing.r !== r || editing.c !== c)) commitEdit(null)
+    if (target.closest('[data-bool]')) { select({ r, c }); toggleBool(r, c); focusInput(); return }
+    select({ r, c }, e.shiftKey)
+    dragging.current = true
+    focusInput()
+  }
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragging.current || !(e.buttons & 1)) { dragging.current = false; return }
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
+    if (!cell) return
+    const r = Number(cell.dataset.r)
+    const c = Number(cell.dataset.c)
+    if (r === active.r && c === active.c && anchor) return
+    select({ r, c }, true)
   }
   const onDoubleClick = (e: React.MouseEvent) => {
     const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
@@ -497,19 +630,23 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const inputW = Math.max(widths[active.c] ?? MIN_COL, 160)
   const inputH = editing && textWidth(draft) > inputW - 12 ? ROW_H * 3 : ROW_H
 
+  const rowSel = (r: number): { c1: number; c2: number } => (r >= range.r1 && r <= range.r2 ? { c1: range.c1, c2: range.c2 } : { c1: -1, c2: -1 })
+  const wholeRow = range.c1 === 0 && range.c2 === maxC && multi
+
   const items = virtualizer.getVirtualItems()
   return (
     <div className="grid-wrap">
-      <div ref={scrollRef} className="grid-scroll" onScroll={onScroll} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>
+      <div ref={scrollRef} className="grid-scroll" onScroll={onScroll} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onDoubleClick={onDoubleClick}>
         <div className="grid-inner" style={{ width: totalWidth, height: headerH + virtualizer.getTotalSize() }}>
           <div className="grid-head" style={{ width: totalWidth }}>
             <div className="grid-row is-letters" style={{ width: totalWidth }}>
-              <div className="grid-rownum grid-corner" />
+              <div className="grid-rownum grid-corner" data-corner="1" title="전체 선택 (Ctrl+A)" />
               {widths.map((w, c) => {
                 const col = schema.columns[c]
                 const errs = validation.byColumn[c]
+                const colSel = c >= range.c1 && c <= range.c2 && (multi || active.c === c)
                 return (
-                  <div key={c} className={'grid-letter' + (active.c === c ? ' is-active-col' : '')} style={{ width: w }} title={columnTitle(col)}>
+                  <div key={c} className={'grid-letter' + (colSel ? ' is-active-col' : '')} data-letter={c} style={{ width: w }} title={columnTitle(col)}>
                     {columnLetter(c)}
                     {errs > 0 && <span className="grid-errcount">{errs}</span>}
                     <span className="grid-resize" data-resize={c} />
@@ -517,12 +654,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 )
               })}
             </div>
-            {table.rows.slice(0, headerRows).map((row, r) => (
-              <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} head />
-            ))}
+            {table.rows.slice(0, headerRows).map((row, r) => {
+              const s = rowSel(r)
+              return (
+                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} rowSelected={wholeRow && s.c1 >= 0} head />
+              )
+            })}
           </div>
           {items.map((vi) => {
             const r = vi.index + headerRows
+            const s = rowSel(r)
             return (
               <Row
                 key={vi.key}
@@ -534,6 +675,9 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 tableWidth={table.width}
                 totalWidth={totalWidth}
                 activeC={active.r === r ? active.c : -1}
+                selC1={s.c1}
+                selC2={s.c2}
+                rowSelected={wholeRow && s.c1 >= 0}
                 head={false}
                 style={{ transform: `translateY(${headerH + vi.start}px)` }}
               />
@@ -547,6 +691,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
         style={{ left: inputX, top: inputY, width: inputW, height: inputH }}
         spellCheck={false}
         autoComplete="off"
+        aria-label="셀 입력"
         onKeyDown={onKeyDown}
         onInput={onInput}
         onCompositionStart={onCompositionStart}

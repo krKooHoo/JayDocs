@@ -9,20 +9,25 @@
     "serve": "node server.mjs --dev --port 5190 --token dev",
     "build": "tsc -b && vite build",
     "start": "node server.mjs --open",
-    "test": "vitest run"
+    "test": "vitest run",
+    "shortcuts": "node scripts/gen-shortcuts.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",
+    "@codemirror/merge": "^6.12.2",
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
     "@lezer/highlight": "^1.2.5",
     "@tanstack/react-virtual": "^3.14.14",
     "flexlayout-react": "^0.11.1",
+    "mermaid": "^12.1.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

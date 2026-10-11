@@ -11,6 +11,14 @@ export interface CellEdit {
   v: string
 }
 
+/** 포함 범위 (r1 ≤ r2, c1 ≤ c2) */
+export interface CellRange {
+  r1: number
+  c1: number
+  r2: number
+  c2: number
+}
+
 function withRows(t: TsvTable, rows: readonly TsvRow[], width = t.width): TsvTable {
   return { ...t, rows, width }
 }
@@ -60,12 +68,17 @@ export function deleteRows(t: TsvTable, at: number, count = 1): TsvTable {
   return withRows(t, [...t.rows.slice(0, at), ...t.rows.slice(at + count)])
 }
 
-/** r 행을 복제해 바로 아래에 넣는다. 복제본은 수정된 행으로 취급한다 (raw 없음) */
+/** r 행부터 count 행을 복제해 바로 아래에 넣는다. 복제본은 수정된 행으로 취급한다 (raw 없음) */
+export function duplicateRows(t: TsvTable, r: number, count = 1): TsvTable {
+  if (r < 0 || r >= t.rows.length || count <= 0) return t
+  const src = t.rows.slice(r, r + count)
+  const copies: TsvRow[] = src.map((row) => ({ raw: null, cells: [...row.cells] }))
+  const end = r + src.length
+  return withRows(t, [...t.rows.slice(0, end), ...copies, ...t.rows.slice(end)])
+}
+
 export function duplicateRow(t: TsvTable, r: number): TsvTable {
-  const row = t.rows[r]
-  if (!row) return t
-  const copy: TsvRow = { raw: null, cells: [...row.cells] }
-  return withRows(t, [...t.rows.slice(0, r + 1), copy, ...t.rows.slice(r + 1)])
+  return duplicateRows(t, r, 1)
 }
 
 export function moveRow(t: TsvTable, from: number, to: number): TsvTable {
@@ -77,28 +90,40 @@ export function moveRow(t: TsvTable, from: number, to: number): TsvTable {
 }
 
 /** 열 삽입 — 모든 행이 수정된 행이 된다 (불가피, DESIGN §6.1) */
-export function insertColumn(t: TsvTable, at: number): TsvTable {
+export function insertColumns(t: TsvTable, at: number, count = 1): TsvTable {
+  if (count <= 0) return t
   const idx = Math.max(0, Math.min(at, t.width))
-  const width = t.width + 1
+  const width = t.width + count
+  const blanks = new Array<string>(count).fill('')
   const rows = t.rows.map((row) => {
     const cells = [...row.cells]
     while (cells.length < t.width) cells.push('')
-    cells.splice(idx, 0, '')
+    cells.splice(idx, 0, ...blanks)
+    return { raw: null, cells } as TsvRow
+  })
+  return withRows(t, rows, width)
+}
+
+export function insertColumn(t: TsvTable, at: number): TsvTable {
+  return insertColumns(t, at, 1)
+}
+
+export function deleteColumns(t: TsvTable, at: number, count = 1): TsvTable {
+  if (count <= 0 || at < 0 || at >= t.width) return t
+  const n = Math.min(count, t.width - at)
+  if (n >= t.width) return t // 열을 전부 지울 수는 없다
+  const width = t.width - n
+  const rows = t.rows.map((row) => {
+    const cells = [...row.cells]
+    while (cells.length < t.width) cells.push('')
+    cells.splice(at, n)
     return { raw: null, cells } as TsvRow
   })
   return withRows(t, rows, width)
 }
 
 export function deleteColumn(t: TsvTable, at: number): TsvTable {
-  if (at < 0 || at >= t.width || t.width <= 1) return t
-  const width = t.width - 1
-  const rows = t.rows.map((row) => {
-    const cells = [...row.cells]
-    while (cells.length < t.width) cells.push('')
-    cells.splice(at, 1)
-    return { raw: null, cells } as TsvRow
-  })
-  return withRows(t, rows, width)
+  return deleteColumns(t, at, 1)
 }
 
 /** 빈 파일에 타입 행 · 헤더 행 · 빈 데이터 행을 만든다 */
@@ -131,4 +156,51 @@ export function pasteBlock(
   }
   const addedRows = Math.max(0, r + block.length - t.rows.length)
   return { table: setCells(t, edits), clippedCols, addedRows }
+}
+
+/** 범위의 셀 값들 (클립보드 블록용) */
+export function rangeBlock(t: TsvTable, g: CellRange): string[][] {
+  const out: string[][] = []
+  for (let r = g.r1; r <= g.r2; r++) {
+    const row: string[] = []
+    for (let c = g.c1; c <= g.c2; c++) row.push(t.rows[r]?.cells[c] ?? '')
+    out.push(row)
+  }
+  return out
+}
+
+/** 범위를 한 값으로 채운다 (빈 문자열이면 지우기) */
+export function fillRange(t: TsvTable, g: CellRange, v: string): TsvTable {
+  const edits: CellEdit[] = []
+  const rMax = Math.min(g.r2, t.rows.length - 1)
+  for (let r = g.r1; r <= rMax; r++) for (let c = g.c1; c <= g.c2; c++) edits.push({ r, c, v })
+  return setCells(t, edits)
+}
+
+/** Ctrl+D: 범위 첫 행을 아래 행들에 복사. 한 행이면 바로 위 행을 그 행에 복사 (Sheets 와 같다) */
+export function fillDown(t: TsvTable, g: CellRange): TsvTable {
+  let src = g.r1
+  let from = g.r1 + 1
+  if (g.r1 === g.r2) {
+    if (g.r1 === 0) return t
+    src = g.r1 - 1
+    from = g.r1
+  }
+  const edits: CellEdit[] = []
+  for (let r = from; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) edits.push({ r, c, v: t.rows[src]?.cells[c] ?? '' })
+  return setCells(t, edits)
+}
+
+/** Ctrl+R: 범위 첫 열을 오른쪽 열들에 복사. 한 열이면 바로 왼쪽 열을 복사 */
+export function fillRight(t: TsvTable, g: CellRange): TsvTable {
+  let src = g.c1
+  let from = g.c1 + 1
+  if (g.c1 === g.c2) {
+    if (g.c1 === 0) return t
+    src = g.c1 - 1
+    from = g.c1
+  }
+  const edits: CellEdit[] = []
+  for (let r = g.r1; r <= g.r2; r++) for (let c = from; c <= g.c2; c++) edits.push({ r, c, v: t.rows[r]?.cells[src] ?? '' })
+  return setCells(t, edits)
 }

@@ -15,6 +15,20 @@ export interface ChangeEvent {
   path: string
 }
 
+export type GitCode = 'M' | 'A' | 'D' | 'R' | 'U' | '?'
+export interface GitStatus {
+  repo: boolean
+  branch: string | null
+  entries: { path: string; status: GitCode; origPath?: string }[]
+}
+export interface GitLogEntry {
+  hash: string
+  shortHash: string
+  date: string
+  author: string
+  subject: string
+}
+
 /** 저장하려는 파일이 디스크에서 더 새로울 때 (낙관적 잠금 실패). 디스크 내용을 같이 돌려준다. */
 export class ConflictError extends Error {
   constructor(public mtime: number, public text: string) {
@@ -25,11 +39,18 @@ export class ConflictError extends Error {
 
 /** 파일·폴더 접근. 지금은 사이드카(HTTP) 하나, 나중에 File System Access 등을 붙일 수 있게 인터페이스로 둔다. */
 export interface Backend {
-  info(): Promise<{ root: string }>
+  info(): Promise<{ root: string; git?: boolean; branch?: string | null }>
   tree(): Promise<{ root: string; entries: TreeEntry[] }>
   read(path: string): Promise<FileData>
   write(path: string, text: string, baseMtime: number | null): Promise<{ mtime: number }>
   mkdir(path: string): Promise<void>
+  rename(from: string, to: string): Promise<void>
+  remove(path: string, recursive?: boolean): Promise<void>
+  gitStatus(): Promise<GitStatus>
+  gitShow(path: string, rev?: string): Promise<{ text: string }>
+  gitLog(path?: string, limit?: number): Promise<{ entries: GitLogEntry[] }>
+  gitCommit(paths: string[], message: string): Promise<{ hash: string; shortHash: string; summary: string }>
+  gitRestore(path: string): Promise<void>
   subscribe(handler: (e: ChangeEvent) => void): () => void
 }
 
@@ -47,7 +68,29 @@ export class HttpBackend implements Backend {
   }
 
   info() {
-    return this.call<{ root: string }>('GET', '/api/info')
+    return this.call<{ root: string; git?: boolean; branch?: string | null }>('GET', '/api/info')
+  }
+  async rename(from: string, to: string) {
+    await this.call<unknown>('POST', '/api/rename', { from, to })
+  }
+  async remove(path: string, recursive = false) {
+    await this.call<unknown>('POST', '/api/delete', { path, recursive })
+  }
+  gitStatus() {
+    return this.call<GitStatus>('GET', '/api/git/status')
+  }
+  gitShow(path: string, rev = 'HEAD') {
+    return this.call<{ text: string }>('GET', `/api/git/show?path=${encodeURIComponent(path)}&rev=${encodeURIComponent(rev)}`)
+  }
+  gitLog(path?: string, limit = 100) {
+    const q = path ? `path=${encodeURIComponent(path)}&` : ''
+    return this.call<{ entries: GitLogEntry[] }>('GET', `/api/git/log?${q}limit=${limit}`)
+  }
+  gitCommit(paths: string[], message: string) {
+    return this.call<{ hash: string; shortHash: string; summary: string }>('POST', '/api/git/commit', { paths, message })
+  }
+  async gitRestore(path: string) {
+    await this.call<unknown>('POST', '/api/git/restore', { path })
   }
   tree() {
     return this.call<{ root: string; entries: TreeEntry[] }>('GET', '/api/tree')

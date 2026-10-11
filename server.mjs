@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * JayDocs 사이드카.
- * 정적 파일(dist/) 서빙 + 파일 API + 파일 변경 알림(SSE). 런타임 의존성 없음 (Node 22+).
+ * 정적 파일(dist/) 서빙 + 파일 API + git API(PATH 의 git) + 파일 변경 알림(SSE). 런타임 의존성 없음 (Node 22+).
  *
  *   node server.mjs --root <문서 폴더> [--port 0] [--open] [--dev] [--token <값>] [--keep]
  *
@@ -17,7 +17,8 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -69,6 +70,8 @@ async function resolveSafe(rel) {
   const norm = rel.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
   if (norm === '' || norm.split('/').some((s) => s === '..' || s === '' || s === '.')) throw httpError(400, '잘못된 경로')
   if (/^[a-zA-Z]:/.test(norm)) throw httpError(400, '절대 경로는 쓸 수 없습니다')
+  // .git 안은 어떤 API 로도 읽고 쓸 수 없다 (hooks/config 를 토큰만으로 고치는 길을 막는다)
+  if (norm.split('/').some((s) => s.toLowerCase() === '.git')) throw httpError(400, '.git 폴더는 건드릴 수 없습니다')
   const abs = path.resolve(ROOT, norm)
   if (!isUnder(abs, ROOT)) throw httpError(400, '루트 밖 경로')
   let probe = abs
@@ -120,6 +123,225 @@ async function readTree(dirAbs, dirRel) {
 
 async function statOrNull(abs) {
   try { return await fsp.stat(abs) } catch { return null }
+}
+
+async function lstatOrNull(abs) {
+  try { return await fsp.lstat(abs) } catch { return null }
+}
+
+/** 트리에 보이는 문서인가 (.md/.tsv, 숨김·무시 폴더 밖). 경로는 root 기준, `/` 구분. */
+function isDocPath(rel) {
+  const segs = rel.split('/')
+  if (segs.some((s) => s.startsWith('.') || IGNORE_DIRS.has(s))) return false
+  return EXTS.has(path.posix.extname(rel).toLowerCase())
+}
+
+/** 이름 바꾸기·지우기용: resolveSafe + `.git` 폴더 안은 건드리지 않는다. */
+async function resolveEditable(rel) {
+  const r = await resolveSafe(rel)
+  if (r.rel.split('/').some((s) => s.toLowerCase() === '.git')) throw httpError(400, '.git 폴더는 건드릴 수 없습니다')
+  return r
+}
+
+const FS_ERRORS = {
+  ENOENT: '경로가 없습니다',
+  EEXIST: '이미 있습니다',
+  ENOTEMPTY: '비어 있지 않은 폴더입니다',
+  EPERM: '권한이 없거나 다른 프로그램이 쓰고 있습니다',
+  EBUSY: '다른 프로그램이 쓰고 있습니다',
+  EACCES: '권한이 없습니다',
+  EINVAL: '잘못된 대상입니다',
+  EXDEV: '다른 드라이브로는 옮길 수 없습니다',
+  ENOTDIR: '폴더가 아닙니다',
+  EISDIR: '폴더입니다',
+}
+/** 흔한 파일 시스템 오류는 400 으로, 나머지는 그대로(500). */
+function fsFail(e, what) {
+  const msg = FS_ERRORS[e?.code]
+  return msg ? httpError(400, `${what}: ${msg}`) : e
+}
+
+// ---------------------------------------------------------------- git
+// PATH 의 git 을 그대로 쓴다. 셸을 거치지 않고 인자 배열로만 넘기며, 경로 앞에는 항상 `--`.
+const execFileP = promisify(execFile)
+const GIT_OPTS = {
+  cwd: ROOT,
+  maxBuffer: 64 * 1024 * 1024,
+  windowsHide: true,
+  timeout: 120_000,
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0', // 자격 증명 프롬프트로 멈추지 않게
+    GIT_OPTIONAL_LOCKS: '0', // status 가 index.lock 을 잡지 않게
+    GIT_LITERAL_PATHSPECS: '1', // 파일 이름의 * ? : 를 패턴으로 해석하지 않게
+    LANGUAGE: 'en', // stderr 를 영어(ASCII)로 고정 — 인코딩 깨짐 방지
+  },
+}
+const REV_RE = /^(HEAD(~\d+)?|[0-9a-fA-F]{4,40})$/
+
+/** git 실행. 0 이 아닌 종료 코드에도 throw 하지 않는다. git 이 없으면 code -1. */
+async function git(args, { input } = {}) {
+  const p = execFileP('git', args, GIT_OPTS)
+  const stdin = p.child?.stdin
+  if (stdin) {
+    stdin.on('error', () => {}) // git 이 먼저 끝나면 EPIPE — 무시
+    stdin.end(input ?? '', 'utf8')
+  }
+  try {
+    const { stdout, stderr } = await p
+    return { stdout, stderr, code: 0 }
+  } catch (e) {
+    if (typeof e.code === 'number') return { stdout: e.stdout ?? '', stderr: e.stderr ?? '', code: e.code }
+    // ENOENT(git 없음), 시간 초과, maxBuffer 초과 등
+    return { stdout: e.stdout ?? '', stderr: e.code === 'ENOENT' ? 'git 을 찾을 수 없습니다' : String(e.message ?? e), code: -1 }
+  }
+}
+
+function gitMessage(r) {
+  return (r.stderr.trim() || r.stdout.trim() || `git 이 실패했습니다 (종료 코드 ${r.code})`).replace(/\r\n/g, '\n')
+}
+
+/** 실패하면 git 의 메시지로 400. 성공하면 stdout. */
+async function gitOrThrow(args, opts) {
+  const r = await git(args, opts)
+  if (r.code !== 0) throw httpError(400, gitMessage(r))
+  return r.stdout
+}
+
+/**
+ * 저장소 최상위와 ROOT 의 상대 위치. 성공한 결과만 캐시한다(나중에 git init 해도 잡히게).
+ * git 이 없거나 ROOT 가 저장소 밖이면 null.
+ */
+let gitTopCache = null
+async function gitTop() {
+  if (gitTopCache) return gitTopCache
+  const r = await git(['rev-parse', '--show-toplevel'])
+  if (r.code !== 0 || !r.stdout.trim()) return null
+  const top = path.resolve(r.stdout.trim())
+  const base = [ROOT, ROOT_REAL].find((p) => isUnder(p, top))
+  if (!base) return null
+  const prefix = path.relative(top, base).split(path.sep).join('/')
+  gitTopCache = { top, prefix }
+  return gitTopCache
+}
+
+async function requireRepo() {
+  const info = await gitTop()
+  if (!info) throw httpError(400, '문서 폴더가 git 저장소 안에 있지 않습니다 (또는 git 을 찾을 수 없습니다)')
+  return info
+}
+
+/** root 기준 경로 → 저장소 최상위 기준 경로 (`rev:path` 용). */
+function toTop(info, rel) {
+  return info.prefix ? `${info.prefix}/${rel}` : rel
+}
+
+/** 저장소 최상위 기준 경로 → root 기준 경로. root 밖이면 null. */
+function fromTop(info, p) {
+  if (!info.prefix) return p
+  const pre = info.prefix + '/'
+  const head = p.slice(0, pre.length)
+  if (WIN ? head.toLowerCase() !== pre.toLowerCase() : head !== pre) return null
+  return p.slice(pre.length)
+}
+
+async function gitBranch() {
+  const r = await git(['symbolic-ref', '--quiet', '--short', 'HEAD'])
+  return r.code === 0 ? r.stdout.trim() || null : null // detached HEAD 면 null
+}
+
+function checkRev(rev) {
+  if (typeof rev !== 'string' || !REV_RE.test(rev)) throw httpError(400, '잘못된 리비전')
+  return rev
+}
+
+/** 리비전을 커밋 해시로. 없으면 404. */
+async function resolveRev(rev) {
+  const r = await git(['rev-parse', '--verify', '--quiet', `${rev}^{commit}`])
+  if (r.code !== 0) throw httpError(404, '그 리비전을 찾을 수 없습니다')
+  return r.stdout.trim()
+}
+
+/** 공백으로 n 개 필드로 자른다. 마지막 필드(경로)는 공백을 포함해 나머지 전부. */
+function splitFields(s, n) {
+  const out = []
+  let pos = 0
+  for (let k = 0; k < n - 1; k++) {
+    const sp = s.indexOf(' ', pos)
+    if (sp < 0) return null
+    out.push(s.slice(pos, sp))
+    pos = sp + 1
+  }
+  out.push(s.slice(pos))
+  return out
+}
+
+function mapXY(xy, renamed) {
+  if (xy.includes('D')) return 'D'
+  if (xy.includes('A')) return 'A'
+  if (renamed) return 'R'
+  return 'M'
+}
+
+/** `git status --porcelain=v2 -z --branch` 출력 해석. 경로는 root 기준으로 바꾸고 root 밖·문서 아닌 것은 버린다. */
+function parseStatus(out, info) {
+  const recs = out.split('\0')
+  let branch = null
+  const entries = []
+  for (let i = 0; i < recs.length; i++) {
+    const r = recs[i]
+    if (!r) continue
+    if (r.startsWith('# ')) {
+      if (r.startsWith('# branch.head ')) {
+        const h = r.slice('# branch.head '.length)
+        branch = h === '(detached)' ? null : h
+      }
+      continue
+    }
+    let status, p, orig
+    if (r.startsWith('1 ')) {
+      // 1 XY sub mH mI mW hH hI path
+      const f = splitFields(r, 9)
+      if (!f) continue
+      status = mapXY(f[1], false)
+      p = f[8]
+    } else if (r.startsWith('2 ')) {
+      // 2 XY sub mH mI mW hH hI Xscore path \0 origPath
+      const f = splitFields(r, 10)
+      orig = recs[++i]
+      if (!f) continue
+      status = f[8].startsWith('C') ? mapXY(f[1] + 'A', false) : mapXY(f[1], true) // 복사는 새 파일로 본다
+      p = f[9]
+    } else if (r.startsWith('u ')) {
+      // u XY sub m1 m2 m3 mW h1 h2 h3 path
+      const f = splitFields(r, 11)
+      if (!f) continue
+      status = 'U'
+      p = f[10]
+    } else if (r.startsWith('? ')) {
+      status = '?'
+      p = r.slice(2)
+    } else continue // '!' (무시된 파일) 등
+
+    const rel = fromTop(info, p)
+    if (rel === null) continue
+    const origRel = orig ? fromTop(info, orig) : null
+    if (!isDocPath(rel) && !(origRel && isDocPath(origRel))) continue
+    const e = { path: rel, status }
+    if (origRel) e.origPath = origRel
+    entries.push(e)
+  }
+  entries.sort((a, b) => a.path.localeCompare(b.path, 'ko'))
+  return { branch, entries }
+}
+
+/** 쓰기 작업(commit/restore)은 한 번에 하나씩 — index.lock 충돌 방지. */
+let gitChain = Promise.resolve()
+function gitSerial(fn) {
+  const run = gitChain.then(fn, fn)
+  gitChain = run.catch(() => {})
+  return run
 }
 
 // ---------------------------------------------------------------- SSE + 감시
@@ -200,8 +422,10 @@ async function handleApi(req, res, url) {
   const route = `${req.method} ${url.pathname}`
 
   switch (route) {
-    case 'GET /api/info':
-      return json(res, 200, { root: ROOT, dev: DEV })
+    case 'GET /api/info': {
+      const repo = (await gitTop()) !== null
+      return json(res, 200, { root: ROOT, dev: DEV, git: repo, branch: repo ? await gitBranch() : null })
+    }
 
     case 'GET /api/tree':
       return json(res, 200, { root: ROOT, entries: await readTree(ROOT, '') })
@@ -234,6 +458,126 @@ async function handleApi(req, res, url) {
       const { abs, rel } = await resolveSafe(q.get('path'))
       await fsp.mkdir(abs, { recursive: true })
       return json(res, 200, { path: rel })
+    }
+
+    case 'POST /api/rename': {
+      const body = await readJson(req)
+      if (typeof body.from !== 'string' || typeof body.to !== 'string') throw httpError(400, 'from, to 가 필요합니다')
+      const from = await resolveEditable(body.from)
+      const to = await resolveEditable(body.to)
+      if (from.abs === to.abs) throw httpError(400, '같은 경로입니다')
+      const st = await lstatOrNull(from.abs)
+      if (!st) throw httpError(400, '원본이 없습니다')
+      // Windows 에서 대소문자만 바꾸는 경우는 대상이 "이미 있는" 것처럼 보이므로 따로 허용한다.
+      const caseOnly = WIN && from.abs.toLowerCase() === to.abs.toLowerCase()
+      if (!caseOnly && (await lstatOrNull(to.abs))) throw httpError(400, '대상이 이미 있습니다')
+      if (!caseOnly && st.isDirectory() && isUnder(to.abs, from.abs)) throw httpError(400, '폴더를 자기 안으로 옮길 수 없습니다')
+      try {
+        await fsp.mkdir(path.dirname(to.abs), { recursive: true })
+        await fsp.rename(from.abs, to.abs)
+      } catch (e) {
+        throw fsFail(e, '이름을 바꾸지 못했습니다')
+      }
+      return json(res, 200, { from: from.rel, to: to.rel })
+    }
+
+    case 'POST /api/delete': {
+      const body = await readJson(req)
+      const { abs, rel } = await resolveEditable(body.path)
+      if (isUnder(ROOT, abs) || isUnder(ROOT_REAL, abs)) throw httpError(400, '문서 폴더 자체는 지울 수 없습니다')
+      const st = await lstatOrNull(abs)
+      if (!st) throw httpError(404, '파일이 없습니다')
+      try {
+        if (!st.isDirectory()) await fsp.unlink(abs)
+        else if (body.recursive === true) await fsp.rm(abs, { recursive: true })
+        else await fsp.rmdir(abs)
+      } catch (e) {
+        if (e?.code === 'ENOTEMPTY' || (e?.code === 'EEXIST' && st.isDirectory())) throw httpError(400, '비어 있지 않은 폴더입니다')
+        throw fsFail(e, '지우지 못했습니다')
+      }
+      return json(res, 200, { path: rel })
+    }
+
+    case 'GET /api/git/status': {
+      const info = await gitTop()
+      if (!info) return json(res, 200, { repo: false, branch: null, entries: [] })
+      const out = await gitOrThrow(['status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all', '--', '.'])
+      return json(res, 200, { repo: true, ...parseStatus(out, info) })
+    }
+
+    case 'GET /api/git/show': {
+      const info = await requireRepo()
+      const { rel } = await resolveSafe(q.get('path'))
+      const rev = checkRev(q.get('rev') || 'HEAD')
+      const spec = `${await resolveRev(rev)}:${toTop(info, rel)}`
+      const t = await git(['cat-file', '-t', spec])
+      if (t.code !== 0) throw httpError(404, '그 리비전에 파일이 없습니다')
+      if (t.stdout.trim() !== 'blob') throw httpError(400, '파일이 아닙니다')
+      const r = await git(['show', spec])
+      if (r.code !== 0) throw httpError(404, '그 리비전에 파일이 없습니다')
+      return json(res, 200, { path: rel, rev, text: r.stdout })
+    }
+
+    case 'GET /api/git/log': {
+      await requireRepo()
+      const rawLimit = q.get('limit')
+      const limit = rawLimit === null || rawLimit === '' ? 100 : Number(rawLimit)
+      if (!Number.isInteger(limit) || limit < 1) throw httpError(400, 'limit 는 1 이상의 정수여야 합니다')
+      const rel = q.get('path') ? (await resolveSafe(q.get('path'))).rel : null
+      // 커밋이 하나도 없으면 git log 가 실패하므로 빈 목록.
+      if ((await git(['rev-parse', '--verify', '--quiet', 'HEAD'])).code !== 0) return json(res, 200, { entries: [] })
+      const fmt = '--format=%H%x1f%h%x1f%aI%x1f%an%x1f%s'
+      const max = `--max-count=${Math.min(limit, 10_000)}`
+      const out = await gitOrThrow(rel ? ['log', '--follow', '-z', max, fmt, '--', rel] : ['log', '-z', max, fmt, '--', '.'])
+      const entries = out
+        .split('\0')
+        .map((s) => s.replace(/^\n/, ''))
+        .filter(Boolean)
+        .map((s) => {
+          const [hash, shortHash, date, author, ...subject] = s.split('\x1f')
+          return { hash, shortHash, date, author, subject: subject.join('\x1f') }
+        })
+      return json(res, 200, { entries })
+    }
+
+    case 'POST /api/git/commit': {
+      await requireRepo()
+      const body = await readJson(req)
+      if (!Array.isArray(body.paths) || body.paths.length === 0) throw httpError(400, 'paths 가 필요합니다')
+      if (typeof body.message !== 'string' || body.message.trim() === '') throw httpError(400, '커밋 메시지가 필요합니다')
+      const resolved = [...new Map((await Promise.all(body.paths.map((p) => resolveSafe(p)))).map((r) => [r.rel, r])).values()]
+      const rels = resolved.map((r) => r.rel)
+      const message = body.message.replace(/\r\n?/g, '\n')
+      return await gitSerial(async () => {
+        // add 는 디스크에 있는 경로만(새 파일을 git 에 알리기 위해). 이미 지워진 경로(git mv 의 원래 이름 등)를
+        // add 에 넘기면 "pathspec did not match" 로 실패한다 — 수정·삭제는 commit --only 가 직접 반영한다.
+        const onDisk = []
+        for (const r of resolved) if (await lstatOrNull(r.abs)) onDisk.push(r.rel)
+        if (onDisk.length) await gitOrThrow(['add', '-A', '--', ...onDisk])
+        // 메시지는 stdin(UTF-8)으로 — 한글·여러 줄도 안전. --only: 이미 스테이징된 다른 파일은 섞지 않는다.
+        await gitOrThrow(['commit', '--only', '-F', '-', '--', ...rels], { input: message })
+        const hash = (await gitOrThrow(['rev-parse', 'HEAD'])).trim()
+        const [shortHash, summary = ''] = (await gitOrThrow(['log', '-1', '--format=%h%x1f%s'])).replace(/\n$/, '').split('\x1f')
+        return json(res, 200, { hash, shortHash, summary })
+      })
+    }
+
+    case 'POST /api/git/restore': {
+      const info = await requireRepo()
+      const body = await readJson(req)
+      const { rel } = await resolveSafe(body.path)
+      return await gitSerial(async () => {
+        // HEAD 에 없는 파일(추적 안 됨·새로 추가됨)은 거부 — restore 가 지워 버리지 않게. 폴더도 거부.
+        const t = await git(['cat-file', '-t', `HEAD:${toTop(info, rel)}`])
+        if (t.code !== 0) throw httpError(400, '추적되지 않은 파일은 되돌릴 수 없습니다')
+        if (t.stdout.trim() !== 'blob') throw httpError(400, '파일만 되돌릴 수 있습니다')
+        const r = await git(['restore', '--source=HEAD', '--staged', '--worktree', '--', rel])
+        if (r.code !== 0) {
+          if (/did not match any file|pathspec/i.test(r.stderr)) throw httpError(400, '추적되지 않은 파일은 되돌릴 수 없습니다')
+          throw httpError(400, gitMessage(r))
+        }
+        return json(res, 200, { path: rel })
+      })
     }
 
     case 'GET /api/events':
