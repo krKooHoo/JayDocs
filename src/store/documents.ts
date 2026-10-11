@@ -1,29 +1,60 @@
 import { useSyncExternalStore } from 'react'
 import { ChangeSet, Text } from '@codemirror/state'
-import { backend, ConflictError, type ChangeEvent } from '../lib/backend'
+import { backend, ConflictError, type ChangeEvent, type TreeEntry } from '../lib/backend'
+import type { TsvTable } from '../lib/tsv/model'
+import { openWarnings, parseTsv } from '../lib/tsv/parse'
+import { serializeTsv } from '../lib/tsv/serialize'
+import { parseFieldBlocks, type FieldFile } from '../lib/tsv/field'
+import { isFieldFile } from '../lib/tsv/schema'
 
 export type Eol = '\n' | '\r\n'
 
-/**
- * 열린 문서 하나. 경로당 하나만 있고, 창(페인)이 몇 개든 같은 객체를 본다.
- * 텍스트는 CodeMirror Text — 모든 수정은 ChangeSet 으로 들어와 모든 창에 같은 ChangeSet 이 전달된다.
- */
-export interface Doc {
+interface DocBase {
   path: string
   status: 'loading' | 'ready' | 'error'
   error: string | null
-  text: Text
-  savedText: Text
   /** 디스크의 mtime. 아직 디스크에 없는 새 파일이면 null */
   mtime: number | null
-  eol: Eol
-  bom: boolean
   /** 디스크가 더 새로워서 사용자가 골라야 하는 상태 */
   conflict: { text: string; mtime: number } | null
   saving: boolean
 }
 
+/**
+ * 텍스트 문서 (.md 등). 텍스트는 CodeMirror Text — 모든 수정은 ChangeSet 으로 들어와 모든 창에 같은 ChangeSet 이 전달된다.
+ * undo/redo 는 CM6 history (창마다).
+ */
+export interface TextDoc extends DocBase {
+  kind: 'text'
+  text: Text
+  savedText: Text
+  eol: Eol
+  bom: boolean
+}
+
+/**
+ * TSV 문서. 표는 불변 스냅샷 — 편집마다 새 표 객체가 되고 이전 객체가 되돌리기 스택에 쌓인다.
+ * 저장된 스냅샷과 같은 객체면 깨끗한 상태다 (되돌려서 저장 시점으로 오면 다시 깨끗해진다).
+ */
+export interface TsvDoc extends DocBase {
+  kind: 'tsv'
+  table: TsvTable
+  savedTable: TsvTable
+  past: TsvTable[]
+  future: TsvTable[]
+  /** 열 때 한 번 보여 주는 경고 (섞인 줄바꿈, 따옴표 셀) */
+  warnings: string[]
+}
+
+export type Doc = TextDoc | TsvDoc
+
 export type ChangeListener = (changes: ChangeSet, source: symbol | null) => void
+
+const UNDO_LIMIT = 300
+
+export function isTsvPath(path: string) {
+  return /\.tsv$/i.test(path)
+}
 
 /** 파일 → Text. BOM 과 줄바꿈 종류는 따로 기억해 저장 때 되돌린다. */
 function parseText(raw: string): { bom: boolean; eol: Eol; text: Text } {
@@ -34,6 +65,7 @@ function parseText(raw: string): { bom: boolean; eol: Eol; text: Text } {
 }
 
 function serialize(d: Doc): string {
+  if (d.kind === 'tsv') return serializeTsv(d.table)
   let s = d.text.toString()
   if (d.eol === '\r\n') s = s.replace(/\n/g, '\r\n')
   return (d.bom ? '﻿' : '') + s
@@ -45,6 +77,14 @@ class DocumentStore {
   private refs = new Map<string, number>()
   private listeners = new Set<() => void>()
   private changeListeners = new Map<string, Set<ChangeListener>>()
+
+  // ---- Field 시트 (스키마 힌트) ----
+  private fieldPaths: string[] = []
+  private fieldCache = new Map<string, { mtime: number; file: FieldFile }>()
+  private fieldLoading = new Set<string>()
+  private liveFieldParsed = new Map<string, { table: TsvTable; file: FieldFile }>()
+  private fieldsResult: FieldFile[] = []
+  private fieldsStale = true
 
   subscribe = (l: () => void) => {
     this.listeners.add(l)
@@ -60,7 +100,8 @@ class DocumentStore {
   all() { return [...this.docs.values()] }
   isDirty(path: string) {
     const d = this.docs.get(path)
-    return !!d && d.status === 'ready' && !d.text.eq(d.savedText)
+    if (!d || d.status !== 'ready') return false
+    return d.kind === 'tsv' ? d.table !== d.savedTable : !d.text.eq(d.savedText)
   }
   anyDirty() { return this.all().some((d) => this.isDirty(d.path)) }
   dirtyPaths() { return new Set(this.all().filter((d) => this.isDirty(d.path)).map((d) => d.path)) }
@@ -77,19 +118,30 @@ class DocumentStore {
     this.refs.delete(path)
     this.docs.delete(path)
     this.changeListeners.delete(path)
+    if (isFieldFile(path)) this.fieldsStale = true
     this.emit()
   }
 
   private async load(path: string) {
+    const base: DocBase = { path, status: 'loading', error: null, mtime: null, conflict: null, saving: false }
     const empty = Text.of([''])
-    const d: Doc = { path, status: 'loading', error: null, text: empty, savedText: empty, mtime: null, eol: '\n', bom: false, conflict: null, saving: false }
+    const d: Doc = isTsvPath(path)
+      ? { ...base, kind: 'tsv', table: parseTsv(''), savedTable: parseTsv(''), past: [], future: [], warnings: [] }
+      : { ...base, kind: 'text', text: empty, savedText: empty, eol: '\n', bom: false }
+    if (d.kind === 'tsv') d.savedTable = d.table
     this.docs.set(path, d)
     this.emit()
     try {
       const f = await backend().read(path)
       if (this.docs.get(path) !== d) return // 읽는 사이 닫힘
-      const p = parseText(f.text)
-      Object.assign(d, { status: 'ready', text: p.text, savedText: p.text, mtime: f.mtime, eol: p.eol, bom: p.bom })
+      if (d.kind === 'tsv') {
+        const table = parseTsv(f.text)
+        Object.assign(d, { status: 'ready', table, savedTable: table, past: [], future: [], warnings: openWarnings(table), mtime: f.mtime })
+        if (isFieldFile(path)) this.fieldsStale = true
+      } else {
+        const p = parseText(f.text)
+        Object.assign(d, { status: 'ready', text: p.text, savedText: p.text, mtime: f.mtime, eol: p.eol, bom: p.bom })
+      }
     } catch (e) {
       d.status = 'error'
       d.error = (e as Error).message
@@ -97,6 +149,7 @@ class DocumentStore {
     this.emit()
   }
 
+  // ---------------------------------------------------------------- 텍스트 문서
   onChanges(path: string, l: ChangeListener) {
     let set = this.changeListeners.get(path)
     if (!set) this.changeListeners.set(path, (set = new Set()))
@@ -107,18 +160,130 @@ class DocumentStore {
   /** 한 창의 수정을 문서에 반영하고 다른 창들에 알린다. source 는 보낸 창 (자기 것은 건너뛴다). */
   applyChanges(path: string, changes: ChangeSet, source: symbol | null) {
     const d = this.docs.get(path)
-    if (!d || d.status !== 'ready') return
+    if (!d || d.status !== 'ready' || d.kind !== 'text') return
     d.text = changes.apply(d.text)
     for (const l of this.changeListeners.get(path) ?? []) l(changes, source)
     this.emit()
   }
 
+  // ---------------------------------------------------------------- TSV 문서
+  /** 표를 바꾼다. fn 이 같은 객체를 돌려주면 (바뀐 게 없으면) 아무 일도 없다. */
+  editTable(path: string, fn: (t: TsvTable) => TsvTable) {
+    const d = this.docs.get(path)
+    if (!d || d.status !== 'ready' || d.kind !== 'tsv') return
+    const next = fn(d.table)
+    if (next === d.table) return
+    d.past.push(d.table)
+    if (d.past.length > UNDO_LIMIT) d.past.shift()
+    d.future = []
+    d.table = next
+    if (isFieldFile(path)) this.fieldsStale = true
+    this.emit()
+  }
+  canUndo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.past.length > 0 }
+  canRedo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.future.length > 0 }
+  undo(path: string) {
+    const d = this.docs.get(path)
+    if (!d || d.kind !== 'tsv' || d.past.length === 0) return
+    d.future.push(d.table)
+    d.table = d.past.pop()!
+    if (isFieldFile(path)) this.fieldsStale = true
+    this.emit()
+  }
+  redo(path: string) {
+    const d = this.docs.get(path)
+    if (!d || d.kind !== 'tsv' || d.future.length === 0) return
+    d.past.push(d.table)
+    d.table = d.future.pop()!
+    if (isFieldFile(path)) this.fieldsStale = true
+    this.emit()
+  }
+
+  // ---------------------------------------------------------------- Field 시트
+  /** 파일 트리가 바뀌면 호출. `*_Field.tsv` 목록을 갱신한다. */
+  setTree(entries: TreeEntry[]) {
+    const paths: string[] = []
+    const walk = (es: TreeEntry[]) => {
+      for (const e of es) {
+        if (e.type === 'dir') walk(e.children ?? [])
+        else if (isFieldFile(e.path)) paths.push(e.path)
+      }
+    }
+    walk(entries)
+    paths.sort()
+    if (paths.join('\n') !== this.fieldPaths.join('\n')) {
+      this.fieldPaths = paths
+      for (const p of [...this.fieldCache.keys()]) if (!paths.includes(p)) this.fieldCache.delete(p)
+      this.fieldsStale = true
+      this.emit()
+    }
+    this.ensureFieldsLoaded()
+  }
+
+  private ensureFieldsLoaded() {
+    for (const p of this.fieldPaths) {
+      if (this.fieldCache.has(p) || this.fieldLoading.has(p) || this.docs.has(p)) continue
+      this.fieldLoading.add(p)
+      backend().read(p)
+        .then((f) => {
+          this.fieldCache.set(p, { mtime: f.mtime, file: parseFieldBlocks(p, parseTsv(f.text)) })
+          this.fieldsStale = true
+          this.emit()
+        })
+        .catch(() => { /* 못 읽으면 힌트 없이 간다 */ })
+        .finally(() => this.fieldLoading.delete(p))
+    }
+  }
+
+  /**
+   * 스키마 유도에 쓸 Field 파일들. 열려 있는 Field 문서는 편집 중인 내용을 그대로 쓰고, 나머지는 디스크에서 읽은 것.
+   * 바뀐 게 없으면 같은 배열을 돌려준다 (useMemo 의존성으로 쓸 수 있게).
+   */
+  fieldFiles(): FieldFile[] {
+    this.ensureFieldsLoaded()
+    // 열린 Field 문서의 표가 바뀌었는지
+    for (const p of this.fieldPaths) {
+      const d = this.docs.get(p)
+      if (d?.kind === 'tsv' && d.status === 'ready' && this.liveFieldParsed.get(p)?.table !== d.table) this.fieldsStale = true
+    }
+    if (!this.fieldsStale) return this.fieldsResult
+    const out: FieldFile[] = []
+    for (const p of this.fieldPaths) {
+      const d = this.docs.get(p)
+      if (d?.kind === 'tsv' && d.status === 'ready') {
+        let live = this.liveFieldParsed.get(p)
+        if (!live || live.table !== d.table) {
+          live = { table: d.table, file: parseFieldBlocks(p, d.table) }
+          this.liveFieldParsed.set(p, live)
+        }
+        out.push(live.file)
+      } else {
+        const c = this.fieldCache.get(p)
+        if (c) out.push(c.file)
+      }
+    }
+    this.fieldsResult = out
+    this.fieldsStale = false
+    return out
+  }
+
+  // ---------------------------------------------------------------- 저장 · 외부 변경
   private replaceAll(d: Doc, raw: string, mtime: number) {
-    const p = parseText(raw)
-    d.eol = p.eol
-    d.bom = p.bom
-    this.applyChanges(d.path, ChangeSet.of({ from: 0, to: d.text.length, insert: p.text }, d.text.length), null)
-    d.savedText = d.text
+    if (d.kind === 'tsv') {
+      const table = parseTsv(raw)
+      d.table = table
+      d.savedTable = table
+      d.past = []
+      d.future = []
+      d.warnings = openWarnings(table)
+      if (isFieldFile(d.path)) this.fieldsStale = true
+    } else {
+      const p = parseText(raw)
+      d.eol = p.eol
+      d.bom = p.bom
+      this.applyChanges(d.path, ChangeSet.of({ from: 0, to: d.text.length, insert: p.text }, d.text.length), null)
+      d.savedText = d.text
+    }
     d.mtime = mtime
     d.conflict = null
     this.emit()
@@ -130,10 +295,11 @@ class DocumentStore {
     if (d.conflict && baseMtime === undefined) return // 배너에서 골라야 한다
     d.saving = true
     this.emit()
-    const snapshot = d.text
+    const snapshot = d.kind === 'tsv' ? d.table : d.text
     try {
       const r = await backend().write(path, serialize(d), baseMtime === undefined ? d.mtime : baseMtime)
-      d.savedText = snapshot
+      if (d.kind === 'tsv') d.savedTable = snapshot as TsvTable
+      else d.savedText = snapshot as Text
       d.mtime = r.mtime
       d.conflict = null
       d.error = null
@@ -164,7 +330,12 @@ class DocumentStore {
   /** 사이드카의 파일 변경 알림. 내가 방금 저장한 것이면 mtime 이 같아 무시된다. */
   async handleExternal(e: ChangeEvent) {
     const d = this.docs.get(e.path)
-    if (!d || d.status !== 'ready' || d.saving) return
+    if (!d) {
+      // 열려 있지 않은 Field 시트가 바뀌면 캐시를 버리고 다시 읽는다
+      if (this.fieldCache.has(e.path)) { this.fieldCache.delete(e.path); this.fieldsStale = true; this.ensureFieldsLoaded() }
+      return
+    }
+    if (d.status !== 'ready' || d.saving) return
     let f
     try { f = await backend().read(e.path) } catch { return } // 삭제 등
     if (d.mtime !== null && Math.abs(f.mtime - d.mtime) < 1) return

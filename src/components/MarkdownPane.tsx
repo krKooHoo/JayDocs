@@ -78,12 +78,12 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   }, [path])
 
   const d = store.get(path)
-  const ready = d?.status === 'ready'
+  const ready = d?.status === 'ready' && d.kind === 'text'
 
   useEffect(() => {
     if (!ready || !host.current) return
     const doc = store.get(path)
-    if (!doc) return
+    if (!doc || doc.kind !== 'text') return
     const source = Symbol(path)
     const view = new EditorView({
       state: EditorState.create({

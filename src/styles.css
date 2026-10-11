@@ -96,3 +96,73 @@ code { font-family: var(--mono); background: var(--code-bg); padding: 1px 4px; b
 /* ---- flexlayout 보정 ---- */
 .flexlayout__layout { font-family: var(--font); font-size: 13px; }
 .flexlayout__tab { background: var(--bg); overflow: hidden; }
+
+/* ---- TSV 그리드 ---- */
+.grid-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.grid-scroll { position: absolute; inset: 0; overflow: auto; outline: none; }
+.grid-inner { position: relative; }
+.grid-head { position: sticky; top: 0; z-index: 3; }
+.grid-row { display: flex; height: 26px; }
+.grid-row.is-body { position: absolute; top: 0; left: 0; will-change: transform; }
+.grid-row.is-letters { height: 22px; }
+.grid-rownum {
+  position: sticky; left: 0; z-index: 2;
+  flex: 0 0 48px; width: 48px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; user-select: none;
+}
+.grid-rownum.is-active-row { background: #e4ecfb; color: var(--accent); font-weight: 600; }
+.grid-corner { z-index: 4; height: 22px; }
+.grid-letter {
+  position: relative; flex: 0 0 auto; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; user-select: none;
+}
+.grid-letter.is-active-col { background: #e4ecfb; color: var(--accent); font-weight: 600; }
+.grid-errcount { position: absolute; right: 7px; color: var(--danger); font-size: 10px; font-weight: 600; }
+.grid-resize { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 1; }
+.grid-resize:hover { background: var(--accent); opacity: 0.5; }
+.grid-cell {
+  flex: 0 0 auto; height: 26px; padding: 0 6px; line-height: 25px;
+  white-space: pre; overflow: hidden; text-overflow: ellipsis;
+  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.grid-row.is-head .grid-cell { background: var(--panel); font-weight: 600; }
+.grid-row.is-type .grid-cell { font-weight: 400; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.grid-cell.is-comment { color: var(--muted); background: #fafbfc; }
+.grid-cell.is-key { font-weight: 600; }
+.grid-cell.is-num { text-align: right; font-variant-numeric: tabular-nums; }
+.grid-cell.has-error { box-shadow: inset 0 -2px 0 var(--danger); background: #fff6f5; }
+.grid-cell.is-active { outline: 2px solid var(--accent); outline-offset: -2px; }
+.grid-bool { display: flex; align-items: center; justify-content: center; height: 100%; }
+.grid-bool input { margin: 0; cursor: pointer; }
+.grid-input {
+  position: absolute; z-index: 5; box-sizing: border-box; margin: 0;
+  border: 2px solid var(--accent); padding: 2px 4px; border-radius: 0;
+  font: inherit; font-size: 13px; line-height: 20px; resize: none; background: #fff; color: var(--fg);
+  outline: none; white-space: pre-wrap; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.grid-input:not(.is-editing) { opacity: 0; width: 1px !important; height: 1px !important; border: 0; padding: 0; pointer-events: none; box-shadow: none; }
+.grid-dropdown {
+  position: absolute; z-index: 6; background: #fff; border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14); max-height: 280px; overflow: auto; font-size: 13px;
+}
+.grid-dropdown div { padding: 3px 9px; cursor: pointer; white-space: nowrap; }
+.grid-dropdown div.is-hl, .grid-dropdown div:hover { background: #e4ecfb; }
+.grid-toolbar {
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 3px 8px; border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.grid-toolbar button { padding: 2px 7px; }
+.grid-toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.grid-toolbar-label { color: var(--muted); font-size: 12px; }
+.grid-notice { color: var(--accent); font-size: 12px; white-space: nowrap; }
+.grid-foot {
+  display: flex; gap: 14px; align-items: center;
+  padding: 3px 8px; border-top: 1px solid var(--border); background: var(--panel);
+  color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
+}
+.grid-foot .is-err { color: var(--danger); font-weight: 600; }
+.grid-foot-btn { padding: 0 6px; font-size: 11px; line-height: 16px; }

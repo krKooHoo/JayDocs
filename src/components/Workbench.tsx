@@ -1,9 +1,10 @@
 import { forwardRef, useCallback, useImperativeHandle, useState } from 'react'
 import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
-import { store, useStoreVersion } from '../store/documents'
+import { isTsvPath, store, useStoreVersion } from '../store/documents'
 import { FileTree } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
+import { GridPane } from './grid/GridPane'
 
 export interface WorkbenchHandle {
   openFile(path: string): void
@@ -57,7 +58,7 @@ function loadModel(root: string): Model {
 }
 
 function tabJson(path: string) {
-  return { type: 'tab', name: path.split('/').pop() ?? path, component: 'md', config: { path } }
+  return { type: 'tab', name: path.split('/').pop() ?? path, component: isTsvPath(path) ? 'tsv' : 'md', config: { path } }
 }
 
 function firstTabSet(model: Model): TabSetNode | undefined {
@@ -125,7 +126,11 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
           />
         )
       case 'md':
-        return <MarkdownPane path={node.getConfig().path as string} onSplit={splitActive} />
+      case 'tsv': {
+        // 저장된 레이아웃에는 예전 이름(md)이 남아 있을 수 있으니 확장자로 고른다
+        const path = node.getConfig().path as string
+        return isTsvPath(path) ? <GridPane path={path} onSplit={splitActive} /> : <MarkdownPane path={path} onSplit={splitActive} />
+      }
       default:
         return <div className="pane-empty">알 수 없는 창: {node.getComponent()}</div>
     }

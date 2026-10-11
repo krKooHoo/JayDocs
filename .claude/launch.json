@@ -4,7 +4,7 @@
     {
       "name": "jaydocs",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server.mjs", "--dev", "--port", "5190", "--token", "dev", "--root", "C:\\Users\\gaber\\Documents\\GitHub\\SagaDocs"],
+      "runtimeArgs": ["server.mjs", "--dev", "--port", "5190", "--token", "dev", "--root", "C:\\Users\\user\\SagaDocs"],
       "port": 5190
     }
   ]

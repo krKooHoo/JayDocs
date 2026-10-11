@@ -37,6 +37,7 @@ function Workspace() {
     try {
       const t = await backend().tree()
       setTree(t.entries)
+      store.setTree(t.entries)
       setError(null)
     } catch (e) {
       setError((e as Error).message)
