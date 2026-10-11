@@ -452,7 +452,17 @@ JayDocs/
 - 스키마: 타입 행 + Field 블록 유도, 툴팁, enum 드롭다운(리스트 포함), bool 체크박스, byte/uint/float 검증, Key 중복.
 - **검증** Tile_Table에 Peak 행 하나 추가 → `git diff`가 그 한 줄. 한글 설명 셀에 타이핑해도 자모가 안 빠진다. Sheets에서 3×3 복사 → 붙여넣기.
 
-### Phase 2 — 미리보기 · git · 결합(읽기) (2일)  → R3, R7, R8, R9 읽기
+### Phase 2 — 미리보기 · git · 결합(읽기) (2일)  → R3, R7, R8, R9 읽기  ✅ 2026-10-11 완료
+
+구현 메모:
+- 미리보기는 react-markdown 10 + remark-gfm. mermaid 12 는 `import()` 로 첫 다이어그램 때만 내려받는다(lazy chunk, ELK 등 레이아웃 엔진은 그 안에서 또 나뉜다). 소스/분할/미리보기 모드는 문서별로 localStorage 에 남는다.
+- `tsv-view` 본문은 YAML 전체가 아니라 **작은 부분집합**(스칼라 · `[a, b]` · 블록 목록 · `|` 블록)만 자체 파싱. `where` 는 토크나이저 + 재귀 하강(`== != > < >= <= in / not in && || ! ()`), 숫자끼리는 숫자 비교, 리스트 셀은 `in` 에 항목 단위로 걸린다. `file` 은 리포 상대, `./`·`../` 면 md 기준. 마크다운 링크는 md 기준(`/` 면 리포 루트).
+- tsv-view 는 스토어의 같은 `TsvDoc` 을 바라보므로 그리드 수정이 바로 보이고 "● 저장 전 내용" 을 표시한다. 행 클릭 → `nav.openPath(path, {r, c})` 로 그리드 탭을 열고 그 행을 활성화.
+- git 은 사이드카가 CLI 를 `execFile` 로 호출(`-z` 포맷, `--` 구분, `GIT_LITERAL_PATHSPECS`, 커밋 메시지는 stdin). `commit --only -- <paths>` 로 고른 파일만. `restore` 는 HEAD 에 있는 파일만. ROOT 가 리포의 하위 폴더여도 경로를 변환한다.
+- diff: md 는 `@codemirror/merge` MergeView(왼쪽 HEAD 읽기 전용, 오른쪽은 스토어와 동기화된 편집 가능 뷰, 청크 되돌리기 화살표). tsv 는 `lib/tsv/diff.ts` 가 Key 로 행을 맞춰 셀 변경을 나열, 항목 클릭 → 그리드의 그 셀로.
+- "이 버전으로" 는 git 을 건드리지 않고 그 리비전 내용을 **문서에 넣기만** 한다(저장은 사용자가). "되돌리기" 는 `git restore` + 문서 재로드.
+- 이름 바꾸기/삭제는 트리 오른쪽 클릭. 저장 전 문서가 걸려 있으면 거부. 열린 탭은 경로를 따라 바꾸거나 닫는다. 사이드카는 `.git` 경로를 모든 API 에서 거부한다.
+- 레이아웃: 기존 localStorage 레이아웃에 아래쪽 git 패널(border)이 없으면 덧붙인다(버전 올리지 않음).
 
 - PreviewPane(react-markdown + mermaid 동적 로드), 페인 모드 소스/미리보기/분할.
 - `tsv-view` 블록: 파서, `where`/`columns`/`sort`, 읽기 전용 표, 행 클릭 → 그리드 열기.
