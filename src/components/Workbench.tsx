@@ -4,6 +4,8 @@ import type { TreeEntry } from '../lib/backend'
 import { registerCommands } from '../lib/commands'
 import { paneAction, setOpener } from '../lib/nav'
 import { isTsvPath, store, useStoreVersion } from '../store/documents'
+import { isMarkdownPath } from '../lib/cm'
+import { fileTypeOf } from '../lib/filetypes.mjs'
 import { git, useGitVersion } from '../store/git'
 import { FileTree } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
@@ -244,7 +246,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'focusGit', label: 'git 패널(커밋 메시지)로 포커스', run: focusGit },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
-    { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && !isTsvPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && !isTsvPath(path) } },
+    { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
+    { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'diffActive', label: '현재 문서를 HEAD 와 비교', run: () => { const path = activePath(); if (path) openDiff(path) }, enabled: () => activePath() !== null && git.repo },
     { id: 'historyActive', label: '현재 문서의 커밋 기록', run: () => { const path = activePath(); if (path) { toggleBorder('git', true); git.requestLog(path) } }, enabled: () => activePath() !== null && git.repo },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },

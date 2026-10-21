@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GitCode, TreeEntry } from '../lib/backend'
+import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 
 interface Props {
   entries: TreeEntry[]
@@ -33,9 +34,7 @@ function allDirs(entries: TreeEntry[], out: string[] = []) {
 }
 
 function fileIcon(name: string) {
-  if (/\.tsv$/i.test(name)) return '⊞'
-  if (/\.md$/i.test(name)) return '≡'
-  return '·'
+  return fileTypeOf(name)?.icon ?? '·'
 }
 
 function dirHasChange(dir: string, status: Map<string, GitCode>) {
@@ -216,7 +215,7 @@ export function FileTree(p: Props) {
         onKeyDown={onKeyDown}
         onFocus={() => { if (!cursor && rows.length) setCursor(p.activePath ?? rows[0].entry.path) }}
       >
-        {p.entries.length === 0 && <div className="tree-empty">.md / .tsv 파일이 없습니다</div>}
+        {p.entries.length === 0 && <div className="tree-empty">{DOC_EXTS_LABEL} 파일이 없습니다</div>}
         {rows.map(renderRow)}
       </div>
       {menu && (

@@ -10,12 +10,15 @@
     "build": "tsc -b && vite build",
     "start": "node server.mjs --open",
     "test": "vitest run",
-    "shortcuts": "node scripts/gen-shortcuts.mjs"
+    "shortcuts": "node scripts/gen-shortcuts.mjs",
+    "pack": "npm run build && node scripts/pack.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.7",
     "@codemirror/merge": "^6.12.2",
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
@@ -36,5 +39,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
+  },
+  "bin": {
+    "jaydocs": "bin/jaydocs.mjs"
   }
 }

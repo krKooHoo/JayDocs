@@ -420,6 +420,7 @@ JayDocs/
 
 - `npm run dev` — Vite 개발 서버가 `/api`를 사이드카로 프록시. `npm run build` → `dist/`.
 - 배포 형태는 `JayDocs/` 폴더 그대로(`dist/` + `server.mjs` + `start.cmd`). Node만 있으면 된다.
+  - (2026-10-13 추가) 다른 리포에서도 쓰기: `bin/jaydocs.mjs` + package.json `bin` → `npm link` 한 번이면 어디서나 `jaydocs [폴더]`. 다른 PC 로는 `npm run pack` 이 `release/jaydocs/`(+zip)를 만든다 — node_modules 없이 Node 22+ 만. `--ignore a,b` 로 큰 폴더를 트리·감시에서 뺀다. 창 제목은 `<폴더 이름> — JayDocs`.
 - 이 리포의 관행대로 README에 사용법을 적고, 루트 README 도구 목록에 한 줄 추가한다.
 
 ---

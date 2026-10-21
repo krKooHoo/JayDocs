@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HttpBackend, backend, setBackend, type TreeEntry } from './lib/backend'
 import { getToken } from './lib/token'
+import { DOC_EXTS_LABEL, isDocName } from './lib/filetypes.mjs'
 import { allCommands, commandByCombo, registerCommands, runCommand, useCommandsVersion } from './lib/commands'
 import { comboFromEvent } from './lib/keys'
 import { toggleTheme, useTheme } from './lib/theme'
@@ -67,7 +68,11 @@ function Workspace() {
   }, [])
 
   useEffect(() => {
-    backend().info().then((i) => setRoot(i.root)).catch((e) => setError((e as Error).message))
+    backend().info().then((i) => {
+      setRoot(i.root)
+      // 창 제목에 폴더 이름 — 리포를 여러 개 열어 두어도 구분된다
+      document.title = `${i.root.split(/[\\/]/).filter(Boolean).pop() ?? i.root} — JayDocs`
+    }).catch((e) => setError((e as Error).message))
     void refreshTree()
     void git.refresh()
   }, [refreshTree])
@@ -88,10 +93,10 @@ function Workspace() {
   }, [refreshTree])
 
   const newFile = useCallback(async (dir: string) => {
-    const name = window.prompt('새 파일 이름 (.md 또는 .tsv)', dir ? `${dir}/새 문서.md` : '새 문서.md')
+    const name = window.prompt(`새 파일 이름 (${DOC_EXTS_LABEL})`, dir ? `${dir}/새 문서.md` : '새 문서.md')
     if (!name) return
     const path = name.replace(/\\/g, '/').replace(/^\/+/, '')
-    if (!/\.(md|tsv)$/i.test(path)) { window.alert('.md 또는 .tsv 로 끝나야 합니다'); return }
+    if (!isDocName(path)) { window.alert(`${DOC_EXTS_LABEL} 중 하나로 끝나야 합니다`); return }
     try {
       await backend().write(path, '', null)
       await refreshTree()
@@ -122,7 +127,7 @@ function Workspace() {
     const to = window.prompt(isDir ? '폴더의 새 경로' : '파일의 새 경로 (폴더를 바꾸면 옮겨진다)', path)
     if (!to || to === path) return
     const next = to.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
-    if (!isDir && !/\.(md|tsv)$/i.test(next)) { window.alert('.md 또는 .tsv 로 끝나야 합니다'); return }
+    if (!isDir && !isDocName(next)) { window.alert(`${DOC_EXTS_LABEL} 중 하나로 끝나야 합니다`); return }
     try {
       await backend().rename(path, next)
       bench.current?.renamePaths(path, next, isDir)

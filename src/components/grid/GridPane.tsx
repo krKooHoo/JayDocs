@@ -10,6 +10,7 @@ import { baseName, deriveSchema } from '../../lib/tsv/schema'
 import { sanitizeCell } from '../../lib/tsv/serialize'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
+import { EncodingBanner } from '../EncodingBanner'
 
 const NO_HITS: FindHit[] = []
 const NO_KEYS: ReadonlySet<number> = new Set()
@@ -112,7 +113,10 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     if (r !== active.r || c !== active.c) setActive({ r, c })
   }, [table, active])
 
-  const edit = useCallback((fn: (t: TsvTable) => TsvTable) => store.editTable(path, fn), [path])
+  const edit = useCallback((fn: (t: TsvTable) => TsvTable) => {
+    if (store.isReadOnly(path)) { showNotice('읽기 전용 파일입니다 — 위의 "UTF-8 로 바꿔 저장" 뒤에 고칠 수 있습니다'); return }
+    store.editTable(path, fn)
+  }, [path, showNotice])
   const undo = useCallback(() => store.undo(path), [path])
   const redo = useCallback(() => store.redo(path), [path])
   const refocus = () => window.setTimeout(() => grid.current?.focus(), 0)
@@ -279,7 +283,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   if (query) findCount = hits.length ? `${hitIdx >= 0 ? hitIdx + 1 : '–'} / ${hits.length}` : '결과 없음'
 
   const dirty = store.isDirty(path)
-  const status = doc?.saving ? '저장 중…' : doc?.conflict ? '충돌' : dirty ? '● 수정됨' : '저장됨'
+  const readOnly = store.isReadOnly(path)
+  const status = doc?.saving ? '저장 중…' : doc?.conflict ? '충돌' : readOnly ? '🔒 읽기 전용' : dirty ? '● 수정됨' : '저장됨'
   const canUndo = store.canUndo(path)
   const canRedo = store.canRedo(path)
 
@@ -301,6 +306,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
           <button onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
         </div>
       )}
+      {readOnly && <EncodingBanner path={path} encoding={doc?.encoding ?? ''} />}
       {d?.status === 'error' && <div className="banner is-error">{d.error}</div>}
       {doc?.error && !doc.conflict && <div className="banner is-error">{doc.error}</div>}
       {doc?.warnings.map((w) => <div key={w} className="banner">{w}</div>)}

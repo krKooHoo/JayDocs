@@ -23,9 +23,35 @@ start.cmd "C:\Users\user\SagaDocs"
 Edge(없으면 Chrome) 앱 모드 창이 열린다. 창을 닫으면 서버도 15초 뒤 꺼진다.
 주소에 붙은 `#token=…` 이 접속 키다. 터미널에 찍힌 주소를 그대로 쓰면 된다. `git` 이 PATH 에 있어야 git 기능이 켜진다.
 
+### 아무 리포에서나 한 단어로 — `jaydocs`
+
+SagaDocs 전용이 아니다. 어떤 폴더든 `.md`/`.tsv` 가 있으면 열린다(git 리포가 아니어도 편집·저장은 된다).
+
+```bash
+npm link          # JayDocs/ 에서 한 번 — 전역 명령 jaydocs 가 생긴다 (지우기: npm unlink -g jaydocs)
+```
+
+```bash
+jaydocs                     # 현재 폴더를 연다
+jaydocs D:\Docs             # 그 폴더를 연다
+jaydocs --no-open           # 브라우저를 열지 않고 주소만 찍는다
+jaydocs --ignore Library,Temp   # 큰 폴더(유니티 프로젝트 등)는 트리·감시에서 뺀다
+```
+
+폴더를 여러 개 동시에 열어도 된다(각자 다른 포트, 창 제목이 `<폴더 이름> — JayDocs`). 옵션은 `jaydocs --help`.
+
+### 다른 PC 로 가져가기 — `npm run pack`
+
+```bash
+npm run pack      # build → release/jaydocs/ + release/jaydocs-<버전>.zip
+```
+
+zip 을 풀면 `server.mjs` + `dist/` + `start.cmd` + `jaydocs.cmd` 뿐이라 **node_modules 없이 Node 22+ 만 있으면** 돈다.
+`start.cmd "<폴더>"` 로 바로 쓰거나, 그 폴더를 PATH 에 넣거나 `npm install -g .` 하면 어디서나 `jaydocs`.
+
 ## 쓰는 법
 
-- 왼쪽 트리에서 `.md` / `.tsv` 를 클릭하면 가운데 탭으로 열린다. 탭은 끌어서 옮기거나 다른 탭셋에 붙일 수 있다. 오른쪽 클릭 → **이름 바꾸기 / 옮기기 · 삭제 · 새 파일 · 새 폴더**.
+- 왼쪽 트리에서 `.md` · `.tsv` · `.txt` · `.json` 을 클릭하면 가운데 탭으로 열린다(형식 목록은 `src/lib/filetypes.mjs` 한 곳 — 사이드카와 앱이 같이 읽는다). 탭은 끌어서 옮기거나 다른 탭셋에 붙일 수 있다. 오른쪽 클릭 → **이름 바꾸기 / 옮기기 · 삭제 · 새 파일 · 새 폴더**.
 - **오른쪽에 분할** (`Ctrl+\`) — 같은 문서를 오른쪽 창에도 연다. 한쪽에서 고치면 다른 쪽도 즉시 바뀐다.
 - `Ctrl+S` 저장, `Ctrl+Shift+S` 모두 저장. 탭 이름 옆 `●` 가 미저장, `M/A/?/D` 배지가 git 상태.
 - 다른 프로그램이 파일을 바꾸면: 내가 손대지 않은 문서는 조용히 다시 읽고, 수정 중이던 문서는 위에 배너가 떠서 **디스크 내용 받기 / 내 내용으로 덮어쓰기** 를 고른다.
@@ -46,6 +72,17 @@ Edge(없으면 Chrome) 앱 모드 창이 열린다. 창을 닫으면 서버도 1
 - 미리보기의 `.md`/`.tsv` 링크를 누르면 그 문서가 탭으로 열린다(링크는 그 md 파일 위치 기준, `/` 로 시작하면 리포 루트 기준).
 - 이미지는 `![alt](_assets/x.png)` 처럼 리포 안 경로(그 md 위치 기준, `/` 면 리포 루트)를 쓰면 사이드카가 내보낸다(png·jpg·gif·webp·svg·bmp·avif). 바깥 주소도 된다.
 - 저장은 소스 그대로다 — 미리보기는 파일을 바꾸지 않는다.
+
+### 텍스트 · JSON
+
+- `.txt` 는 고정폭 평문 에디터로 연다(미리보기 없음). 찾기/바꾸기·여러 선택·되돌리기는 마크다운과 같고, 줄바꿈·BOM·끝 개행은 파일 그대로 저장된다.
+- `.json` 은 구문 강조 + 문법 검사(거터의 빨간 점·밑줄, 창 위 `JSON ✓` / `JSON 오류`). 문법이 틀려도 저장은 된다.
+- **JSON 정렬**(창 위 **정렬** 버튼, 팔레트 "JSON 정렬") — 들여쓰기 2칸으로 다시 쓴다. 저절로는 하지 않는다(diff 가 통째로 바뀌므로). `1.0` → `1`, 큰 정수, 중복 키처럼 정렬하면 **내용이** 바뀌는 파일은 바꾸지 않고 알린다. `Ctrl+Z` 로 되돌린다.
+
+### UTF-8 이 아닌 파일 · 열 수 없는 파일
+
+- 메모장 "ANSI"·한글 Excel 처럼 **CP949(EUC-KR)** 로 저장된 파일은 한글이 제대로 보이지만 🔒 **읽기 전용**으로 열린다(저장하면 깨지던 것을 막는다). 고치려면 배너의 **UTF-8 로 바꿔 저장** — 지금 보이는 내용 그대로 UTF-8 로 다시 쓰고, 그 뒤엔 보통 문서처럼 편집한다. 원래 인코딩으로 되쓰지는 않는다.
+- NUL 바이트가 든 파일(이름만 txt 인 바이너리), UTF-16 파일, 5 MB 넘는 파일은 열지 않고 이유를 보여 준다. 사이드카도 UTF-8 이 아닌 파일의 덮어쓰기를 거부한다.
 
 ### md 안에 TSV 표 넣기 (`tsv-view`)
 
@@ -131,25 +168,31 @@ FoodCost[Ocean-Ocean]	=255	이 행만
 npm run serve   # 사이드카: 127.0.0.1:5190, 토큰 dev, 자동 종료 없음
 npm run dev     # Vite 5173 — /api 는 5190 으로 프록시. http://localhost:5173 을 연다
 npm run build   # dist/ 생성 (사이드카가 서빙)
-npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·스키마·검증·tsv-view·diff
+npm run pack    # build + release/jaydocs/ 와 zip (독립 실행 묶음)
+npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·스키마·검증·tsv-view·diff·계산식
 ```
 
 빌드한 `dist/` 를 사이드카로 바로 보려면 `http://127.0.0.1:5190/#token=dev`.
 `.claude/launch.json`(여기와 JayTools 루트)의 `--root` 경로는 PC마다 다르므로 clone 한 뒤 맞춘다.
 테스트의 SagaDocs 왕복 항목은 `../../SagaDocs`, `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾고, 없으면 건너뛴다.
 
-다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](TESTCASES.md)(101개 TC).
+다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](TESTCASES.md)(117개 TC).
 
 ## 구조
 
 ```
-server.mjs            사이드카 — 정적 파일 + /api/tree,file,mkdir,rename,delete,raw(이미지) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임) + /api/events(SSE). 런타임 의존성 0
-start.cmd             실행기
+server.mjs            사이드카 — 정적 파일 + /api/tree,file(인코딩 감지 · 바이너리/크기 거부),mkdir,rename,delete,raw(이미지) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임) + /api/events(SSE). 런타임 의존성 0
+start.cmd             실행기 (폴더를 끌어다 놓거나 인자로)
+bin/jaydocs.mjs       전역 명령 jaydocs — 위치 인자 → --root, 기본 --open, --help
+scripts/pack.mjs      npm run pack — release/jaydocs/ 와 zip 묶기
+scripts/gen-shortcuts.mjs  npm run shortcuts — SHORTCUTS.md 생성
 src/
   lib/backend.ts      Backend 인터페이스 + HttpBackend (토큰 헤더, 409 → ConflictError, git 메서드)
   lib/token.ts        #token=… → sessionStorage
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
-  lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · diff 창 · 이전 버전 보기)
+  lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘) — 사이드카도 import
+  lib/jsonText.ts     JSON 문법 확인 · 정렬 (내용이 바뀌는 정렬은 거부)
+  lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · 평문/JSON 창 · diff 창 · 이전 버전 보기)
   lib/md/tsvView.ts   tsv-view 펜스 파서(YAML 부분집합) · where 식 · 필터/정렬 적용
   lib/md/template.ts  Mermaid 생성용 Mustache 부분집합 (each · if · .list · .id)
   lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산
@@ -172,7 +215,8 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인. md/tsv/diff/rev 탭, 아래 git 패널
     FileTree.tsx      파일 트리 (git 배지, 오른쪽 클릭 메뉴)
-    MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드
+    MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
+    EncodingBanner.tsx UTF-8 이 아닌 파일의 읽기 전용 배너 + "UTF-8 로 바꿔 저장"
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯)
     GitPane.tsx       변경 목록 · 커밋 · 기록 · 되돌리기

@@ -24,7 +24,7 @@ JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md
   - Phase 3(DESIGN §11, §7): tsv-view 그 자리 편집 · `bake: true`(저장 시 파이프 표) · `render: mermaid` 템플릿(Mustache 부분집합) · 하이브리드 Live Preview(`components/hybrid.ts`, CM6 StateField 자체 구현) · 그리드 찾기/바꾸기 · 채우기 핸들 · 열 드래그.
   - 키보드·테마(DESIGN §16): 명령 팔레트 `Ctrl+Shift+P` · 빠른 열기 `Ctrl+P` · 탭/패널 키 · 트리 키보드 탐색 · 그리드 범위 선택과 Sheets 식 복사/붙여넣기/채우기 · md 여러 선택 표시 · 다크 모드. 단축키 원본은 `src/lib/shortcuts-table.mjs`, `npm run shortcuts` → `SHORTCUTS.md`(테스트가 동기화를 검사).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
-- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1 은 `b4c7597` 로 커밋·push 됨. Phase 2 와 피드백 반영은 Jay 지시 전이라 **커밋하지 않았을 수 있다** — `git status` 로 확인.
+- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식은 모두 커밋됨(`b4c7597` → `e3b9427`). push 와 그 뒤 라운드는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
@@ -46,6 +46,7 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 
 - `JayTools/.claude/launch.json` 과 `JayDocs/.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 **JayTools 루트의** launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
 - 확인: `npm run serve` 후 `http://127.0.0.1:5190/#token=dev` 를 열어 트리·편집·저장·git 패널이 되는지. 또는 `start.cmd "<SagaDocs 경로>"`.
+- 다른 리포에서 쓰는 길(2026-10-13): `npm link` → 어디서나 `jaydocs [폴더]`(`bin/jaydocs.mjs`). 다른 PC 로는 `npm run pack` → `release/jaydocs-<버전>.zip`(Node 22+ 만 필요). `release/` 는 커밋하지 않는다.
 - **커밋 같은 git 쓰기 기능을 시험할 때는 SagaDocs 가 아니라 임시 리포**(`git archive HEAD | tar -x` 로 복사 → `git init`)에 사이드카를 하나 더 띄운다(`node server.mjs --root <임시> --port 5195 --token dev --dev --keep`). Phase 2 검증을 그렇게 했다.
 - Node 22+, git 필요. 설치 시점 버전: Vite 8, TypeScript 7, flexlayout-react 0.11, CodeMirror 6.43, @codemirror/merge 6.12, react-markdown 10, remark-gfm 4, mermaid 12. (@tanstack/react-virtual 은 뺐다 — 숨은 탭에서 마운트된 그리드가 보인 뒤에도 행을 안 그리는 일이 있어 고정 높이 윈도잉을 직접 계산한다.)
 

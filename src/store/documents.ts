@@ -7,6 +7,7 @@ import { serializeTsv } from '../lib/tsv/serialize'
 import { parseFieldBlocks, type FieldFile } from '../lib/tsv/field'
 import { deriveSchema, isFieldFile } from '../lib/tsv/schema'
 import { bakeMarkdown, bakeTargets, type BakeSource } from '../lib/md/bake'
+import { fileTypeOf } from '../lib/filetypes.mjs'
 
 export type Eol = '\n' | '\r\n'
 
@@ -17,8 +18,10 @@ interface DocBase {
   /** 디스크의 mtime. 아직 디스크에 없는 새 파일이면 null */
   mtime: number | null
   /** 디스크가 더 새로워서 사용자가 골라야 하는 상태 */
-  conflict: { text: string; mtime: number } | null
+  conflict: { text: string; mtime: number; encoding: string } | null
   saving: boolean
+  /** 디스크의 인코딩. 'utf-8' 이 아니면 읽기 전용 — "UTF-8 로 바꿔 저장" 으로만 쓴다 */
+  encoding: string
 }
 
 /**
@@ -55,8 +58,9 @@ export type ChangeListener = (changes: ChangeSet, source: symbol | null) => void
 
 const UNDO_LIMIT = 300
 
+/** 그리드로 여는 표 파일인가 (형식 표의 kind 'table') */
 export function isTsvPath(path: string) {
-  return /\.tsv$/i.test(path)
+  return fileTypeOf(path)?.kind === 'table'
 }
 
 /** 파일 → Text. BOM 과 줄바꿈 종류는 따로 기억해 저장 때 되돌린다. */
@@ -109,6 +113,11 @@ class DocumentStore {
     if (!d || d.status !== 'ready') return false
     return d.kind === 'tsv' ? d.table !== d.savedTable : !d.text.eq(d.savedText)
   }
+  /** UTF-8 이 아닌 파일 — 편집·저장을 막는다 */
+  isReadOnly(path: string) {
+    const d = this.docs.get(path)
+    return !!d && d.status === 'ready' && d.encoding !== 'utf-8'
+  }
   anyDirty() { return this.all().some((d) => this.isDirty(d.path)) }
   dirtyPaths() { return new Set(this.all().filter((d) => this.isDirty(d.path)).map((d) => d.path)) }
 
@@ -129,7 +138,7 @@ class DocumentStore {
   }
 
   private async load(path: string) {
-    const base: DocBase = { path, status: 'loading', error: null, mtime: null, conflict: null, saving: false }
+    const base: DocBase = { path, status: 'loading', error: null, mtime: null, conflict: null, saving: false, encoding: 'utf-8' }
     const empty = Text.of([''])
     const d: Doc = isTsvPath(path)
       ? { ...base, kind: 'tsv', table: parseTsv(''), savedTable: parseTsv(''), past: [], future: [], warnings: [] }
@@ -140,6 +149,7 @@ class DocumentStore {
     try {
       const f = await backend().read(path)
       if (this.docs.get(path) !== d) return // 읽는 사이 닫힘
+      d.encoding = f.encoding ?? 'utf-8'
       if (d.kind === 'tsv') {
         const table = parseTsv(f.text)
         Object.assign(d, { status: 'ready', table, savedTable: table, past: [], future: [], warnings: openWarnings(table), mtime: f.mtime })
@@ -176,7 +186,7 @@ class DocumentStore {
   /** 표를 바꾼다. fn 이 같은 객체를 돌려주면 (바뀐 게 없으면) 아무 일도 없다. */
   editTable(path: string, fn: (t: TsvTable) => TsvTable) {
     const d = this.docs.get(path)
-    if (!d || d.status !== 'ready' || d.kind !== 'tsv') return
+    if (!d || d.status !== 'ready' || d.kind !== 'tsv' || d.encoding !== 'utf-8') return
     const next = fn(d.table)
     if (next === d.table) return
     d.past.push(d.table)
@@ -296,7 +306,8 @@ class DocumentStore {
   }
 
   // ---------------------------------------------------------------- 저장 · 외부 변경
-  private replaceAll(d: Doc, raw: string, mtime: number) {
+  private replaceAll(d: Doc, raw: string, mtime: number, encoding = 'utf-8') {
+    d.encoding = encoding
     if (d.kind === 'tsv') {
       const table = parseTsv(raw)
       d.table = table
@@ -317,23 +328,25 @@ class DocumentStore {
     this.emit()
   }
 
-  async save(path: string, baseMtime?: number | null) {
+  async save(path: string, baseMtime?: number | null, opts: { convert?: boolean } = {}) {
     const d = this.docs.get(path)
     if (!d || d.status !== 'ready' || d.saving) return
     if (d.conflict && baseMtime === undefined) return // 배너에서 골라야 한다
+    if (d.encoding !== 'utf-8' && !opts.convert) return // 읽기 전용 — 배너의 "UTF-8 로 바꿔 저장" 만
     d.saving = true
     this.emit()
-    if (d.kind === 'text' && /\.md$/i.test(path)) await this.bakeIfNeeded(d)
+    if (d.kind === 'text' && fileTypeOf(path)?.kind === 'md') await this.bakeIfNeeded(d)
     const snapshot = d.kind === 'tsv' ? d.table : d.text
     try {
-      const r = await backend().write(path, serialize(d), baseMtime === undefined ? d.mtime : baseMtime)
+      const r = await backend().write(path, serialize(d), baseMtime === undefined ? d.mtime : baseMtime, opts)
+      if (opts.convert) d.encoding = 'utf-8'
       if (d.kind === 'tsv') d.savedTable = snapshot as TsvTable
       else d.savedText = snapshot as Text
       d.mtime = r.mtime
       d.conflict = null
       d.error = null
     } catch (e) {
-      if (e instanceof ConflictError) d.conflict = { text: e.text, mtime: e.mtime }
+      if (e instanceof ConflictError) d.conflict = { text: e.text, mtime: e.mtime, encoding: e.encoding }
       else d.error = (e as Error).message
     } finally {
       d.saving = false
@@ -343,6 +356,16 @@ class DocumentStore {
 
   async saveAll() {
     for (const d of this.all()) if (this.isDirty(d.path)) await this.save(d.path)
+  }
+
+  /**
+   * UTF-8 이 아닌 파일(EUC-KR 등)을 지금 보이는 내용 그대로 UTF-8 로 다시 쓴다.
+   * 원래 인코딩으로 되쓰지는 않는다 (브라우저·Node 에 CP949 인코더가 없다). 쓰고 나면 편집할 수 있다.
+   */
+  async convertToUtf8(path: string) {
+    const d = this.docs.get(path)
+    if (!d || d.status !== 'ready' || d.encoding === 'utf-8') return
+    await this.save(path, undefined, { convert: true })
   }
 
   /**
@@ -378,7 +401,7 @@ class DocumentStore {
     if (!d || d.status !== 'ready') return
     try {
       const f = await backend().read(path)
-      this.replaceAll(d, f.text, f.mtime)
+      this.replaceAll(d, f.text, f.mtime, f.encoding)
     } catch (e) {
       d.error = (e as Error).message
       this.emit()
@@ -388,7 +411,7 @@ class DocumentStore {
   /** 내용을 통째로 바꾼다 (이전 버전 복원 등). 저장은 따로 한다. TSV 는 되돌리기 가능 */
   setText(path: string, text: string) {
     const d = this.docs.get(path)
-    if (!d || d.status !== 'ready') return
+    if (!d || d.status !== 'ready' || d.encoding !== 'utf-8') return
     if (d.kind === 'tsv') {
       this.editTable(path, () => parseTsv(text))
     } else {
@@ -416,7 +439,7 @@ class DocumentStore {
   /** 충돌: 디스크 내용을 받아들인다 (내 수정은 버린다) */
   takeDisk(path: string) {
     const d = this.docs.get(path)
-    if (d?.conflict) this.replaceAll(d, d.conflict.text, d.conflict.mtime)
+    if (d?.conflict) this.replaceAll(d, d.conflict.text, d.conflict.mtime, d.conflict.encoding)
   }
 
   /** 사이드카의 파일 변경 알림. 내가 방금 저장한 것이면 mtime 이 같아 무시된다. */
@@ -431,8 +454,9 @@ class DocumentStore {
     let f
     try { f = await backend().read(e.path) } catch { return } // 삭제 등
     if (d.mtime !== null && Math.abs(f.mtime - d.mtime) < 1) return
-    if (!this.isDirty(e.path)) this.replaceAll(d, f.text, f.mtime)
-    else { d.conflict = { text: f.text, mtime: f.mtime }; this.emit() }
+    const encoding = f.encoding ?? 'utf-8'
+    if (!this.isDirty(e.path)) this.replaceAll(d, f.text, f.mtime, encoding)
+    else { d.conflict = { text: f.text, mtime: f.mtime, encoding }; this.emit() }
   }
 }
 

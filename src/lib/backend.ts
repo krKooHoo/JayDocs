@@ -8,6 +8,8 @@ export interface FileData {
   path: string
   text: string
   mtime: number
+  /** 디스크의 인코딩. 'utf-8' 이 아니면 (EUC-KR 등) 앱은 읽기 전용으로 연다 */
+  encoding?: string
 }
 export interface ChangeEvent {
   type: 'change'
@@ -41,7 +43,7 @@ export interface GitLogEntry {
 
 /** 저장하려는 파일이 디스크에서 더 새로울 때 (낙관적 잠금 실패). 디스크 내용을 같이 돌려준다. */
 export class ConflictError extends Error {
-  constructor(public mtime: number, public text: string) {
+  constructor(public mtime: number, public text: string, public encoding = 'utf-8') {
     super('디스크의 파일이 더 새롭습니다')
     this.name = 'ConflictError'
   }
@@ -52,7 +54,8 @@ export interface Backend {
   info(): Promise<{ root: string; git?: boolean; branch?: string | null }>
   tree(): Promise<{ root: string; entries: TreeEntry[] }>
   read(path: string): Promise<FileData>
-  write(path: string, text: string, baseMtime: number | null): Promise<{ mtime: number }>
+  /** convert: UTF-8 이 아닌 파일을 UTF-8 로 바꿔 쓸 때만 true (서버가 그 외엔 덮어쓰기를 막는다) */
+  write(path: string, text: string, baseMtime: number | null, opts?: { convert?: boolean }): Promise<{ mtime: number }>
   mkdir(path: string): Promise<void>
   rename(from: string, to: string): Promise<void>
   remove(path: string, recursive?: boolean): Promise<void>
@@ -76,7 +79,7 @@ export class HttpBackend implements Backend {
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     const res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    if (res.status === 409) throw new ConflictError(Number(data.mtime), String(data.text ?? ''))
+    if (res.status === 409) throw new ConflictError(Number(data.mtime), String(data.text ?? ''), String(data.encoding ?? 'utf-8'))
     if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`)
     return data as T
   }
@@ -122,8 +125,8 @@ export class HttpBackend implements Backend {
   read(path: string) {
     return this.call<FileData>('GET', `/api/file?path=${encodeURIComponent(path)}`)
   }
-  write(path: string, text: string, baseMtime: number | null) {
-    return this.call<{ mtime: number }>('PUT', `/api/file?path=${encodeURIComponent(path)}`, { text, baseMtime })
+  write(path: string, text: string, baseMtime: number | null, opts: { convert?: boolean } = {}) {
+    return this.call<{ mtime: number }>('PUT', `/api/file?path=${encodeURIComponent(path)}`, { text, baseMtime, convert: opts.convert === true })
   }
   async mkdir(path: string) {
     await this.call<unknown>('POST', `/api/mkdir?path=${encodeURIComponent(path)}`)

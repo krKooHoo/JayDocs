@@ -3,12 +3,14 @@
  * JayDocs 사이드카.
  * 정적 파일(dist/) 서빙 + 파일 API + git API(PATH 의 git) + 파일 변경 알림(SSE). 런타임 의존성 없음 (Node 22+).
  *
- *   node server.mjs --root <문서 폴더> [--port 0] [--open] [--dev] [--token <값>] [--keep]
+ *   node server.mjs --root <문서 폴더> [--port 0] [--open] [--dev] [--token <값>] [--keep] [--ignore a,b]
+ *   (아무 폴더에서 한 단어로 쓰려면 bin/jaydocs.mjs — `npm link` 뒤 `jaydocs [폴더]`)
  *
  * --open   기본 브라우저(Edge/Chrome 앱 모드)로 연다. 창이 닫히면 서버도 종료된다.
  * --dev    Vite 개발 서버(localhost:5173)의 프록시 요청을 허용하고 자동 종료를 끈다.
  * --token  고정 토큰(개발용). 기본은 시작할 때마다 난수.
  * --keep   브라우저가 끊겨도 종료하지 않는다.
+ * --ignore 트리·파일 감시에서 뺄 폴더 이름(쉼표 구분). .git, node_modules, 점으로 시작하는 폴더는 항상 뺀다.
  *
  * 보안: 127.0.0.1 에만 바인딩, 모든 /api 요청에 토큰, Host/Origin 검사, 경로는 root 아래로만.
  */
@@ -20,6 +22,7 @@ import crypto from 'node:crypto'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { DOC_EXTS, MAX_TEXT_BYTES } from './src/lib/filetypes.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const WIN = process.platform === 'win32'
@@ -29,8 +32,9 @@ const DEV = args.dev === true
 const AUTO_EXIT = args.open === true && args.keep !== true && !DEV
 const TOKEN = typeof args.token === 'string' ? args.token : crypto.randomBytes(16).toString('hex')
 const DIST = path.join(HERE, 'dist')
-const EXTS = new Set(['.md', '.tsv'])
+const EXTS = new Set(DOC_EXTS)
 const IGNORE_DIRS = new Set(['.git', 'node_modules'])
+for (const n of String(args.ignore ?? '').split(',').map((s) => s.trim()).filter(Boolean)) IGNORE_DIRS.add(n)
 const MAX_BODY = 50 * 1024 * 1024
 
 if (!fs.existsSync(ROOT) || !fs.statSync(ROOT).isDirectory()) {
@@ -121,6 +125,29 @@ async function readTree(dirAbs, dirRel) {
   return entries
 }
 
+/** 문서 파일을 바이트로. 너무 크면 거부 (그리드·에디터 보호) */
+async function readTextFile(abs, st) {
+  if (st.size > MAX_TEXT_BYTES) throw httpError(413, `파일이 너무 큽니다 (${(st.size / 1024 / 1024).toFixed(1)} MB, 최대 ${MAX_TEXT_BYTES / 1024 / 1024} MB)`)
+  return fsp.readFile(abs)
+}
+
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+const EUCKR = new TextDecoder('euc-kr', { ignoreBOM: true })
+/**
+ * 바이트 → 텍스트. UTF-8 로 읽히면 그대로 (BOM 은 남긴다 — 앱이 보존한다).
+ * 아니면 EUC-KR(CP949) 로 읽고 encoding 으로 알린다 — 앱은 읽기 전용으로 연다.
+ * NUL 바이트나 UTF-16 BOM 이 있으면 텍스트 파일이 아니다.
+ */
+function decodeText(buf) {
+  if ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff)) throw httpError(415, 'UTF-16 파일은 열 수 없습니다 — UTF-8 로 저장한 뒤 여세요')
+  if (buf.includes(0)) throw httpError(415, '텍스트 파일이 아닙니다 (바이너리)')
+  try {
+    return { text: UTF8.decode(buf), encoding: 'utf-8' }
+  } catch {
+    return { text: EUCKR.decode(buf), encoding: 'euc-kr' }
+  }
+}
+
 async function statOrNull(abs) {
   try { return await fsp.stat(abs) } catch { return null }
 }
@@ -129,7 +156,7 @@ async function lstatOrNull(abs) {
   try { return await fsp.lstat(abs) } catch { return null }
 }
 
-/** 트리에 보이는 문서인가 (.md/.tsv, 숨김·무시 폴더 밖). 경로는 root 기준, `/` 구분. */
+/** 트리에 보이는 문서인가 (형식 표의 확장자, 숨김·무시 폴더 밖). 경로는 root 기준, `/` 구분. */
 function isDocPath(rel) {
   const segs = rel.split('/')
   if (segs.some((s) => s.startsWith('.') || IGNORE_DIRS.has(s))) return false
@@ -443,7 +470,8 @@ async function handleApi(req, res, url) {
       const { abs, rel } = await resolveSafe(q.get('path'))
       const st = await statOrNull(abs)
       if (!st || !st.isFile()) throw httpError(404, '파일이 없습니다')
-      return json(res, 200, { path: rel, text: await fsp.readFile(abs, 'utf8'), mtime: st.mtimeMs })
+      const { text, encoding } = decodeText(await readTextFile(abs, st))
+      return json(res, 200, { path: rel, text, encoding, mtime: st.mtimeMs })
     }
 
     case 'PUT /api/file': {
@@ -455,7 +483,12 @@ async function handleApi(req, res, url) {
       const base = typeof body.baseMtime === 'number' ? body.baseMtime : null
       // 낙관적 잠금: 디스크가 더 새로우면 409 와 함께 디스크 내용을 돌려준다.
       if (st && (base === null || Math.abs(st.mtimeMs - base) >= 1)) {
-        return json(res, 409, { error: '디스크의 파일이 더 새롭습니다', mtime: st.mtimeMs, text: await fsp.readFile(abs, 'utf8') })
+        const disk = decodeText(await readTextFile(abs, st))
+        return json(res, 409, { error: '디스크의 파일이 더 새롭습니다', mtime: st.mtimeMs, text: disk.text, encoding: disk.encoding })
+      }
+      // UTF-8 이 아닌 파일(바이너리 포함)은 앱이 읽기 전용으로 연다. 덮어쓰기는 "UTF-8 로 바꿔 저장"(convert) 때만
+      if (st && body.convert !== true && decodeText(await readTextFile(abs, st)).encoding !== 'utf-8') {
+        throw httpError(400, 'UTF-8 이 아닌 파일입니다 — "UTF-8 로 바꿔 저장" 으로만 덮어쓸 수 있습니다')
       }
       await fsp.mkdir(path.dirname(abs), { recursive: true })
       await fsp.writeFile(abs, body.text, 'utf8')

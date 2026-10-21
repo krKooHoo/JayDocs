@@ -5,6 +5,9 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
+import { json, jsonParseLinter } from '@codemirror/lang-json'
+import { linter, lintGutter } from '@codemirror/lint'
+import { fileTypeOf } from './filetypes.mjs'
 
 /** CodeMirror 공통 설정 — 마크다운 창, diff 창, 이전 버전 보기가 같이 쓴다. */
 
@@ -26,6 +29,14 @@ const mdHighlight = HighlightStyle.define([
   { tag: t.processingInstruction, color: 'var(--muted)' },
   { tag: t.contentSeparator, color: 'var(--muted)' },
   { tag: t.labelName, color: 'var(--accent)' },
+])
+
+/** JSON 등 코드형 text 파일 */
+const codeHighlight = HighlightStyle.define([
+  { tag: t.propertyName, color: 'var(--syn-key)' },
+  { tag: t.string, color: 'var(--syn-string)' },
+  { tag: [t.number, t.bool, t.null], color: 'var(--syn-number)' },
+  { tag: [t.brace, t.squareBracket, t.separator, t.punctuation], color: 'var(--muted)' },
 ])
 
 /**
@@ -50,6 +61,8 @@ const commonTheme = EditorView.theme({
   '.cm-panel input, .cm-panel button': { background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: '4px' },
   '.cm-panel.cm-search label': { color: 'var(--fg)' },
   '.cm-tooltip': { background: 'var(--elev)', color: 'var(--fg)', border: '1px solid var(--border)' },
+  '.cm-gutters': { backgroundColor: 'var(--bg)', color: 'var(--muted)', border: 'none' },
+  '.cm-diagnostic-error': { borderLeftColor: 'var(--danger)' },
 })
 
 const proseTheme = EditorView.theme({
@@ -71,7 +84,15 @@ const compactTheme = EditorView.theme({
 })
 
 export function isMarkdownPath(path: string) {
-  return /\.md$/i.test(path)
+  return fileTypeOf(path)?.kind === 'md'
+}
+
+/** 파일 형식별 언어 지원 (마크다운이 아닌 text 파일). 편집 창이면 문법 검사도 */
+function languageExtensions(path: string, readOnly: boolean): Extension[] {
+  if (fileTypeOf(path)?.lang === 'json') {
+    return [json(), syntaxHighlighting(codeHighlight), ...(readOnly ? [] : [linter(jsonParseLinter(), { delay: 300 }), lintGutter()])]
+  }
+  return []
 }
 
 export interface EditorOptions {
@@ -93,7 +114,7 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
     highlightSelectionMatches(),
     bracketMatching(),
     commonTheme,
-    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), EditorView.lineWrapping, proseTheme] : [plainTheme]),
+    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), EditorView.lineWrapping, proseTheme] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
     ...(opts.compact ? [compactTheme] : []),
   ]
   if (opts.readOnly) {
