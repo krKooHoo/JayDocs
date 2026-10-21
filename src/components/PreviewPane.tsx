@@ -13,6 +13,7 @@ import { issueKey, validateTable } from '../lib/tsv/validate'
 import { setCell } from '../lib/tsv/edits'
 import { sanitizeCell } from '../lib/tsv/serialize'
 import type { TsvTable } from '../lib/tsv/model'
+import { isDocName } from '../lib/filetypes.mjs'
 
 /**
  * 마크다운 미리보기 (DESIGN D2 v1). 스토어의 텍스트를 react-markdown 으로 그린다.
@@ -314,9 +315,12 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
 }
 
 // ---------------------------------------------------------------- 링크 · 이미지
-/** 마크다운 링크는 그 md 파일 위치 기준. `/` 로 시작하면 리포 루트 기준 */
-export function resolveLink(href: string, mdPath: string): string {
-  if (href.startsWith('/')) return href.replace(/^\/+/, '')
+/** 마크다운 링크는 그 md 파일 위치 기준. `/` 로 시작하면 그 md 가 속한 루트(주 폴더 또는 가져온 폴더) 기준 */
+export function resolveLink(rawHref: string, mdPath: string): string {
+  // react-markdown 이 한글 등을 %XX 로 바꿔 넘긴다 → 파일 경로로 되돌린다
+  let href = rawHref
+  try { href = decodeURIComponent(rawHref) } catch { /* 잘못된 % 는 그대로 */ }
+  if (href.startsWith('/')) return resolveViewPath(href, mdPath)
   return resolveViewPath(href.startsWith('./') || href.startsWith('../') ? href : './' + href, mdPath)
 }
 
@@ -359,7 +363,7 @@ export function PreviewPane({ path }: { path: string }) {
     a: ({ node, href, children, ...rest }) => {
       if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('#')) {
         const target = resolveLink(href.split('#')[0], path)
-        if (/\.(md|tsv)$/i.test(target)) {
+        if (isDocName(target)) {
           return <a href={href} {...rest} onClick={(e) => { e.preventDefault(); openPath(target) }}>{children}</a>
         }
       }

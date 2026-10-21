@@ -10,7 +10,8 @@ import { baseName, deriveSchema } from '../../lib/tsv/schema'
 import { sanitizeCell } from '../../lib/tsv/serialize'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
-import { EncodingBanner } from '../EncodingBanner'
+import { ReadOnlyBanner } from '../ReadOnlyBanner'
+import { inRootOf } from '../../lib/roots.mjs'
 
 const NO_HITS: FindHit[] = []
 const NO_KEYS: ReadonlySet<number> = new Set()
@@ -61,13 +62,15 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const calcTable = hasCalc ? store.auxTable(calcPath) : null
   const calcRules = useMemo(() => (calcTable ? parseCalcRules(calcTable) : null), [calcTable])
   const lookupFiles = useMemo(() => (calcRules ? calcLookupFiles(calcRules.rules) : []), [calcRules])
-  useEffect(() => { for (const f of lookupFiles) store.ensureAux(f) }, [lookupFiles])
+  // lookup 파일 이름은 이 표가 속한 루트(주 폴더 또는 가져온 폴더) 기준
+  useEffect(() => { for (const f of lookupFiles) store.ensureAux(inRootOf(path, f)) }, [lookupFiles, path])
   // lookup 표가 읽히거나 바뀌면 다시 계산되게 — 표 객체 번호로 의존성을 만든다
-  const lookupKey = lookupFiles.map((f) => { const t = store.auxTable(f); return t ? `${f}#${tableId(t)}` : `${f}#-` }).join('|')
+  const lookupKey = lookupFiles.map((f) => { const t = store.auxTable(inRootOf(path, f)); return t ? `${f}#${tableId(t)}` : `${f}#-` }).join('|')
   const lookupSource = useCallback((f: string): LookupSource | null => {
-    const t = store.auxTable(f)
-    return t ? { table: t, schema: deriveSchema(t, f, fields) } : null
-  }, [fields])
+    const p = inRootOf(path, f)
+    const t = store.auxTable(p)
+    return t ? { table: t, schema: deriveSchema(t, p, fields) } : null
+  }, [fields, path])
   const calcResult = useMemo<CalcResult | null>(
     () => (table && schema && calcRules ? computeCalc(table, schema, calcRules.rules, lookupSource) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,7 +117,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   }, [table, active])
 
   const edit = useCallback((fn: (t: TsvTable) => TsvTable) => {
-    if (store.isReadOnly(path)) { showNotice('읽기 전용 파일입니다 — 위의 "UTF-8 로 바꿔 저장" 뒤에 고칠 수 있습니다'); return }
+    if (store.isReadOnly(path)) { showNotice('읽기 전용입니다 — 위의 안내 막대를 보세요'); return }
     store.editTable(path, fn)
   }, [path, showNotice])
   const undo = useCallback(() => store.undo(path), [path])
@@ -306,7 +309,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
           <button onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
         </div>
       )}
-      {readOnly && <EncodingBanner path={path} encoding={doc?.encoding ?? ''} />}
+      {readOnly && <ReadOnlyBanner path={path} />}
       {d?.status === 'error' && <div className="banner is-error">{d.error}</div>}
       {doc?.error && !doc.conflict && <div className="banner is-error">{doc.error}</div>}
       {doc?.warnings.map((w) => <div key={w} className="banner">{w}</div>)}

@@ -3,6 +3,36 @@ export interface TreeEntry {
   name: string
   path: string
   children?: TreeEntry[]
+  /** 가져온 폴더의 루트 노드 (`@별칭`) 일 때만 */
+  mount?: MountInfo
+}
+
+/** 가져온 폴더 (PLAN-folder-import). 앱 경로는 `@별칭/…` */
+export interface MountInfo {
+  alias: string
+  /** 디스크의 실제 경로 */
+  path: string
+  readOnly: boolean
+  /** 설정 파일에 남는가 (`--mount` 로 이번 실행에만 가져왔으면 false) */
+  persist: boolean
+  /** 항목이 너무 많아 트리를 다 훑지 못했다 */
+  truncated: boolean
+}
+export interface MountTree extends MountInfo {
+  entries: TreeEntry[]
+  error: string | null
+}
+/** 최근에 해제한 폴더 · 설정에는 있지만 이번에 찾지 못한 폴더 */
+export interface RecentMount {
+  alias: string
+  path: string
+  readOnly: boolean
+}
+export interface RootsInfo {
+  platform: string
+  mounts: MountInfo[]
+  recent: RecentMount[]
+  missing: RecentMount[]
 }
 export interface FileData {
   path: string
@@ -52,7 +82,20 @@ export class ConflictError extends Error {
 /** 파일·폴더 접근. 지금은 사이드카(HTTP) 하나, 나중에 File System Access 등을 붙일 수 있게 인터페이스로 둔다. */
 export interface Backend {
   info(): Promise<{ root: string; git?: boolean; branch?: string | null }>
-  tree(): Promise<{ root: string; entries: TreeEntry[] }>
+  tree(): Promise<{ root: string; entries: TreeEntry[]; mounts: MountTree[] }>
+  /** 가져온 폴더 목록 · 최근 해제한 폴더 */
+  roots(): Promise<RootsInfo>
+  addRoot(path: string, opts?: { alias?: string; readOnly?: boolean }): Promise<MountInfo>
+  setRootReadOnly(alias: string, readOnly: boolean): Promise<MountInfo>
+  removeRoot(alias: string): Promise<void>
+  /** 최근·못 찾은 목록에서 지우기 */
+  forgetRoot(path: string): Promise<void>
+  /** 경로 자동 완성 — prefix 로 시작하는 폴더들 (절대 경로) */
+  listDirs(prefix: string): Promise<string[]>
+  /** Windows 폴더 고르기 대화상자. 취소하면 null */
+  pickFolder(start?: string): Promise<string | null>
+  /** 탐색기에서 보기 (앱 경로, 가져온 폴더 루트는 `@별칭`) */
+  reveal(path: string): Promise<void>
   read(path: string): Promise<FileData>
   /** convert: UTF-8 이 아닌 파일을 UTF-8 로 바꿔 쓸 때만 true (서버가 그 외엔 덮어쓰기를 막는다) */
   write(path: string, text: string, baseMtime: number | null, opts?: { convert?: boolean }): Promise<{ mtime: number }>
@@ -120,7 +163,31 @@ export class HttpBackend implements Backend {
     return `/api/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(this.token)}`
   }
   tree() {
-    return this.call<{ root: string; entries: TreeEntry[] }>('GET', '/api/tree')
+    return this.call<{ root: string; entries: TreeEntry[]; mounts: MountTree[] }>('GET', '/api/tree')
+  }
+  roots() {
+    return this.call<RootsInfo>('GET', '/api/roots')
+  }
+  addRoot(path: string, opts: { alias?: string; readOnly?: boolean } = {}) {
+    return this.call<MountInfo>('POST', '/api/roots', { path, ...opts })
+  }
+  setRootReadOnly(alias: string, readOnly: boolean) {
+    return this.call<MountInfo>('PATCH', `/api/roots?alias=${encodeURIComponent(alias)}`, { readOnly })
+  }
+  async removeRoot(alias: string) {
+    await this.call<unknown>('DELETE', `/api/roots?alias=${encodeURIComponent(alias)}`)
+  }
+  async forgetRoot(path: string) {
+    await this.call<unknown>('POST', '/api/roots/forget', { path })
+  }
+  async listDirs(prefix: string) {
+    return (await this.call<{ dirs: string[] }>('GET', `/api/fs/dirs?prefix=${encodeURIComponent(prefix)}`)).dirs
+  }
+  async pickFolder(start = '') {
+    return (await this.call<{ path: string | null }>('POST', '/api/fs/pick', { start })).path
+  }
+  async reveal(path: string) {
+    await this.call<unknown>('POST', '/api/reveal', { path })
   }
   read(path: string) {
     return this.call<FileData>('GET', `/api/file?path=${encodeURIComponent(path)}`)

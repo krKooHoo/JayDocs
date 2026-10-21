@@ -7,7 +7,7 @@ import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
 import { store, useStoreVersion } from '../store/documents'
 import { PreviewPane } from './PreviewPane'
-import { EncodingBanner } from './EncodingBanner'
+import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { hybrid } from './hybrid'
 
 type Mode = 'source' | 'hybrid' | 'preview' | 'split'
@@ -149,7 +149,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           <button onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
         </div>
       )}
-      {readOnly && <EncodingBanner path={path} encoding={d?.encoding ?? ''} />}
+      {readOnly && <ReadOnlyBanner path={path} />}
       {d?.status === 'error' && <div className="banner is-error">{d.error}</div>}
       {d?.status === 'ready' && d.error && !d.conflict && <div className="banner is-error">{d.error}</div>}
       {notice && <div className="banner">{notice}<button onClick={() => setNotice(null)}>닫기</button></div>}

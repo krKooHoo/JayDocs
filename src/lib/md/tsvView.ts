@@ -1,4 +1,5 @@
 import type { TsvTable } from '../tsv/model'
+import { inRootOf, splitRootPath } from '../roots.mjs'
 import type { ColumnSchema, TableSchema } from '../tsv/schema'
 
 /**
@@ -335,15 +336,19 @@ export function applyTsvView(spec: TsvViewSpec, table: TsvTable, schema: TableSc
   }
 }
 
-/** 펜스 안의 file 경로를 리포 상대 경로로. `./`, `../` 로 시작하면 md 파일 위치 기준 */
+/**
+ * 펜스 안의 file 경로를 앱 경로로. 그냥 쓰거나 `/` 로 시작하면 **md 가 속한 루트**(주 폴더 또는 가져온 폴더) 기준,
+ * `./`, `../` 로 시작하면 md 파일 위치 기준. `../` 는 루트 밖으로 나가지 않는다.
+ */
 export function resolveViewPath(file: string, mdPath: string): string {
   const norm = file.replace(/\\/g, '/').trim()
-  if (!norm.startsWith('./') && !norm.startsWith('../')) return norm.replace(/^\/+/, '')
-  const base = mdPath.includes('/') ? mdPath.slice(0, mdPath.lastIndexOf('/')).split('/') : []
+  if (!norm.startsWith('./') && !norm.startsWith('../')) return inRootOf(mdPath, norm)
+  const rel = splitRootPath(mdPath).rel
+  const base = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')).split('/') : []
   for (const seg of norm.split('/')) {
     if (seg === '.' || seg === '') continue
     if (seg === '..') base.pop()
     else base.push(seg)
   }
-  return base.join('/')
+  return inRootOf(mdPath, base.join('/'))
 }

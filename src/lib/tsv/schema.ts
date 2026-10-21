@@ -1,5 +1,6 @@
 import { entryNotes, type FieldBlock, type FieldFile } from './field'
 import type { TsvTable } from './model'
+import { sameRoot } from '../roots.mjs'
 
 /**
  * 열 스키마 유도 (DESIGN §6.2). 별도 스키마 파일 없이 열 때마다 타입 행 + Field 블록에서 만든다.
@@ -112,7 +113,9 @@ function distinctColumnValues(t: TsvTable, headerRows: number, c: number): strin
   return [...set].sort((a, b) => a.localeCompare(b))
 }
 
-export function deriveSchema(t: TsvTable, path: string, fields: readonly FieldFile[]): TableSchema {
+export function deriveSchema(t: TsvTable, path: string, allFields: readonly FieldFile[]): TableSchema {
+  // Field 시트는 같은 루트(주 폴더 또는 같은 가져온 폴더) 안에서만 찾는다
+  const fields = allFields.filter((f) => sameRoot(f.path, path))
   const prefix = tablePrefix(path)
   const sibling = siblingFieldPath(path)
   const typed = t.rows.length > 0 && isTypeRow(t.rows[0].cells)

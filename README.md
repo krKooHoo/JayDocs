@@ -154,6 +154,17 @@ FoodCost[Ocean-Ocean]	=255	이 행만
 - 그리드에서 식이 걸린 셀은 왼쪽에 파란 띠, 지금 값이 식과 다르면 노란 배경. 툴바 **계산 (n)** 또는 `F9` 가 바뀔 셀을 한 번에 써 넣는다(되돌리기 한 단계). 식 오류는 위에 빨간 배너로.
 - Calc 파일은 보통 TSV 처럼 그리드에서 고치고, 저장 전 내용이 바로 표에 반영된다(바뀔 셀 수가 실시간으로 바뀐다).
 
+### 폴더 가져오기 (다른 폴더를 같이 열기)
+
+- `Ctrl+Shift+O` 또는 상단 **📂 가져오기** — 수업 자료 · Unity 프로젝트 문서 · 수강생 제출물처럼 다른 곳의 폴더를 **복사하지 않고 원래 자리에서** 연다. 트리 맨 아래에 `🔗 @별칭` 으로 붙고, 그 안 파일 경로는 `@별칭/…` 이다.
+- 경로는 붙여 넣는다(탐색기 "경로로 복사" 의 따옴표는 알아서 뗀다). 치는 동안 하위 폴더가 후보로 뜨고 `↓`/`↑` 로 골라 `Tab` 으로 채운다, `Enter` 가져오기. Windows 면 **찾아보기…** 가 폴더 고르기 창을 띄운다. 별칭은 비우면 폴더 이름.
+- **읽기 전용**으로 가져오면(`🔒`) 저장·새 파일·이름 바꾸기·삭제가 막힌다. 가져온 폴더엔 **git 이 없어 저장을 되돌릴 수 없으니** 제출물처럼 보기만 할 폴더는 읽기 전용으로. 트리의 `@별칭` 오른쪽 클릭(또는 팔레트, 창 위 배너)으로 켜고 끈다.
+- 트리 오른쪽 클릭: **탐색기에서 보기**(모든 파일·폴더) · 읽기 전용 켜기/끄기 · 새로 고침 · **가져오기 해제**(파일은 그대로). 해제한 폴더는 가져오기 창의 "최근 폴더" 에서 한 번에 다시 가져온다.
+- 목록은 `~/.jaydocs/workspaces.json` 에 **주 폴더별로** 남아 다음에 열 때 돌아온다(리포에는 아무것도 안 남는다). 이번 실행에만 열려면 `jaydocs <주 폴더> --mount <폴더>`. 폴더를 못 찾으면(드라이브 빠짐) 그 탭은 닫고 알린다.
+- Unity 프로젝트를 통째로 가져와도 `Library` `Temp` `Logs` `obj` `Build(s)` `UserSettings` `MemoryCaptures` 는 빠지고, 문서가 없는 폴더는 트리에 안 보인다. 항목이 2만 개를 넘으면 `⚠` — 하위 폴더를 가져온다.
+- 안 되는 것: 주 폴더나 다른 가져온 폴더와 **겹치는** 폴더(안에 있거나 감싸는), 드라이브 전체, 사용자 폴더 전체. 주 폴더 ↔ 가져온 폴더 사이 이동. 가져온 파일의 git(배지·diff·기록·커밋) — git 은 주 폴더만.
+- `tsv-view` 의 `file:`, `/` 로 시작하는 링크, 계산식 `lookup`, `_Field` 찾기는 **그 문서가 속한 폴더 안에서** 풀린다(가져온 폴더의 md 는 가져온 폴더 기준).
+
 ### git (아래 **변경 (git)** 패널)
 
 - 바뀐 `.md`/`.tsv` 목록 + 배지. 체크를 풀면 커밋에서 뺀다. 메시지를 쓰고 **커밋** (`Ctrl+Enter`). 저장하지 않은 문서가 섞여 있으면 먼저 저장할지 묻는다.
@@ -181,7 +192,7 @@ npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·
 ## 구조
 
 ```
-server.mjs            사이드카 — 정적 파일 + /api/tree,file(인코딩 감지 · 바이너리/크기 거부),mkdir,rename,delete,raw(이미지) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임) + /api/events(SSE). 런타임 의존성 0
+server.mjs            사이드카 — 정적 파일 + /api/tree,file(인코딩 감지 · 바이너리/크기 거부),mkdir,rename,delete,raw(이미지) + /api/roots(가져온 폴더 목록·추가·읽기 전용·해제, ~/.jaydocs/workspaces.json),fs/dirs(경로 자동 완성),fs/pick(Windows 폴더 창),reveal(탐색기) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임, 주 폴더만) + /api/events(SSE, 루트마다 감시). 런타임 의존성 0
 start.cmd             실행기 (폴더를 끌어다 놓거나 인자로)
 bin/jaydocs.mjs       전역 명령 jaydocs — 위치 인자 → --root, 기본 --open, --help
 scripts/pack.mjs      npm run pack — release/jaydocs/ 와 zip 묶기
@@ -191,6 +202,7 @@ src/
   lib/token.ts        #token=… → sessionStorage
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
   lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘) — 사이드카도 import
+  lib/roots.mjs       가져온 폴더 경로 규칙 (`@별칭/…` 나누기·합치기, 같은 루트 안 경로, 별칭 규칙, 기본 무시 폴더) — 사이드카도 import
   lib/jsonText.ts     JSON 문법 확인 · 정렬 (내용이 바뀌는 정렬은 거부)
   lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · 평문/JSON 창 · diff 창 · 이전 버전 보기)
   lib/md/tsvView.ts   tsv-view 펜스 파서(YAML 부분집합) · where 식 · 필터/정렬 적용
@@ -214,9 +226,10 @@ src/
   store/git.ts        git 상태 (경로 → 배지), 뭉친 새로고침, HEAD 변경 카운터
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인. md/tsv/diff/rev 탭, 아래 git 패널
-    FileTree.tsx      파일 트리 (git 배지, 오른쪽 클릭 메뉴)
+    FileTree.tsx      파일 트리 (git 배지, 오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
+    ImportDialog.tsx  폴더 가져오기 창 (경로 자동 완성 · 찾아보기 · 별칭 · 읽기 전용 · 최근 폴더)
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
-    EncodingBanner.tsx UTF-8 이 아닌 파일의 읽기 전용 배너 + "UTF-8 로 바꿔 저장"
+    ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯)
     GitPane.tsx       변경 목록 · 커밋 · 기록 · 되돌리기
@@ -227,4 +240,4 @@ src/
 
 ## 보안 (로컬 도구 기준)
 
-127.0.0.1 에만 바인딩 · 모든 `/api` 요청에 토큰 · `Host`/`Origin` 검사 · 경로는 문서 폴더 아래로만(`..`, 절대 경로, 루트 밖 링크, `.git` 안 거부) · git 은 인자 배열로만 호출(셸 없음, 경로 앞 `--`).
+127.0.0.1 에만 바인딩 · 모든 `/api` 요청에 토큰 · `Host`/`Origin` 검사 · 경로는 문서 폴더(주 폴더 또는 가져온 폴더) 아래로만(`..`, 절대 경로, 루트 밖 링크, `.git` 안 거부) · git 은 인자 배열로만 호출(셸 없음, 경로 앞 `--`). 폴더 가져오기도 같은 토큰이 있어야 하고, 드라이브 전체·사용자 폴더 전체·겹치는 폴더는 거부한다.

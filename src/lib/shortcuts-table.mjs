@@ -23,6 +23,7 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+Shift+S', label: '모두 저장', command: 'saveAll' },
       { keys: 'Ctrl+Alt+N', label: '새 파일 (트리에서 고른 폴더 아래)', command: 'newFile' },
       { keys: 'Ctrl+Alt+Shift+N', label: '새 폴더', command: 'newFolder' },
+      { keys: 'Ctrl+Shift+O', label: '폴더 가져오기 — 다른 폴더를 원래 자리에서 열기 (해제·읽기 전용은 트리 오른쪽 클릭 또는 팔레트)', command: 'importFolder' },
       { keys: 'Ctrl+Alt+D', label: '다크 / 라이트 전환', command: 'toggleTheme' },
       { keys: 'Esc', label: '팔레트 · 도움말 · 메뉴 · 드롭다운 닫기, 셀 편집 취소' },
     ],

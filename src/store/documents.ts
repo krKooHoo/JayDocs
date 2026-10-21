@@ -8,6 +8,8 @@ import { parseFieldBlocks, type FieldFile } from '../lib/tsv/field'
 import { deriveSchema, isFieldFile } from '../lib/tsv/schema'
 import { bakeMarkdown, bakeTargets, type BakeSource } from '../lib/md/bake'
 import { fileTypeOf } from '../lib/filetypes.mjs'
+import { splitRootPath } from '../lib/roots.mjs'
+import type { MountInfo } from '../lib/backend'
 
 export type Eol = '\n' | '\r\n'
 
@@ -113,10 +115,28 @@ class DocumentStore {
     if (!d || d.status !== 'ready') return false
     return d.kind === 'tsv' ? d.table !== d.savedTable : !d.text.eq(d.savedText)
   }
-  /** UTF-8 이 아닌 파일 — 편집·저장을 막는다 */
-  isReadOnly(path: string) {
+  // ---- 읽기 전용: 읽기 전용으로 가져온 폴더(mount) 또는 UTF-8 이 아닌 파일(encoding)
+  private readOnlyAliases = new Set<string>()
+
+  /** 가져온 폴더 목록이 바뀌면 (트리를 읽을 때마다) */
+  setMounts(mounts: readonly MountInfo[]) {
+    const next = new Set(mounts.filter((m) => m.readOnly).map((m) => m.alias))
+    if ([...next].sort().join('\n') === [...this.readOnlyAliases].sort().join('\n')) return
+    this.readOnlyAliases = next
+    this.emit()
+  }
+
+  /** 왜 읽기 전용인가. 가져온 폴더가 우선 (그때는 UTF-8 변환도 막는다) */
+  readOnlyReason(path: string): 'mount' | 'encoding' | null {
+    const { alias } = splitRootPath(path)
+    if (alias !== null && this.readOnlyAliases.has(alias)) return 'mount'
     const d = this.docs.get(path)
-    return !!d && d.status === 'ready' && d.encoding !== 'utf-8'
+    return d && d.status === 'ready' && d.encoding !== 'utf-8' ? 'encoding' : null
+  }
+
+  /** 편집·저장을 막는다 */
+  isReadOnly(path: string) {
+    return this.readOnlyReason(path) !== null
   }
   anyDirty() { return this.all().some((d) => this.isDirty(d.path)) }
   dirtyPaths() { return new Set(this.all().filter((d) => this.isDirty(d.path)).map((d) => d.path)) }
@@ -186,7 +206,7 @@ class DocumentStore {
   /** 표를 바꾼다. fn 이 같은 객체를 돌려주면 (바뀐 게 없으면) 아무 일도 없다. */
   editTable(path: string, fn: (t: TsvTable) => TsvTable) {
     const d = this.docs.get(path)
-    if (!d || d.status !== 'ready' || d.kind !== 'tsv' || d.encoding !== 'utf-8') return
+    if (!d || d.status !== 'ready' || d.kind !== 'tsv' || this.isReadOnly(path)) return
     const next = fn(d.table)
     if (next === d.table) return
     d.past.push(d.table)
@@ -332,7 +352,9 @@ class DocumentStore {
     const d = this.docs.get(path)
     if (!d || d.status !== 'ready' || d.saving) return
     if (d.conflict && baseMtime === undefined) return // 배너에서 골라야 한다
-    if (d.encoding !== 'utf-8' && !opts.convert) return // 읽기 전용 — 배너의 "UTF-8 로 바꿔 저장" 만
+    // 읽기 전용 — 가져온 폴더면 아무것도, UTF-8 아닌 파일이면 배너의 "UTF-8 로 바꿔 저장" 만
+    const ro = this.readOnlyReason(path)
+    if (ro === 'mount' || (ro === 'encoding' && !opts.convert)) return
     d.saving = true
     this.emit()
     if (d.kind === 'text' && fileTypeOf(path)?.kind === 'md') await this.bakeIfNeeded(d)
@@ -411,7 +433,7 @@ class DocumentStore {
   /** 내용을 통째로 바꾼다 (이전 버전 복원 등). 저장은 따로 한다. TSV 는 되돌리기 가능 */
   setText(path: string, text: string) {
     const d = this.docs.get(path)
-    if (!d || d.status !== 'ready' || d.encoding !== 'utf-8') return
+    if (!d || d.status !== 'ready' || this.isReadOnly(path)) return
     if (d.kind === 'tsv') {
       this.editTable(path, () => parseTsv(text))
     } else {

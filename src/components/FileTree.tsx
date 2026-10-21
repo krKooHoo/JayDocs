@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { GitCode, TreeEntry } from '../lib/backend'
+import type { GitCode, MountInfo, TreeEntry } from '../lib/backend'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
+import { splitRootPath } from '../lib/roots.mjs'
+
+/** 가져온 폴더·탐색기 관련 동작 (트리 오른쪽 클릭) */
+export type RootAction = 'unmount' | 'toggleReadOnly' | 'reveal' | 'refresh'
 
 interface Props {
   entries: TreeEntry[]
@@ -13,6 +17,7 @@ interface Props {
   onRename: (path: string, isDir: boolean) => void
   onDelete: (path: string, isDir: boolean) => void
   onRefresh: () => void
+  onRootAction: (action: RootAction, path: string) => void
 }
 
 interface Menu {
@@ -69,6 +74,24 @@ export function FileTree(p: Props) {
   useEffect(() => {
     if (!initialized && p.entries.length) { setExpanded(new Set(allDirs(p.entries))); setInitialized(true) }
   }, [p.entries, initialized])
+
+  // 가져온 폴더 (트리 맨 위 단계의 `@별칭` 노드). 새로 가져온 폴더는 그 루트를 펼쳐 보여 준다
+  const mounts = useMemo(() => new Map(p.entries.filter((e) => e.mount).map((e) => [e.mount!.alias, e.mount!])), [p.entries])
+  const seenMounts = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!initialized) return
+    if (!seenMounts.current) { seenMounts.current = new Set(mounts.keys()); return }
+    const fresh = [...mounts.keys()].filter((a) => !seenMounts.current!.has(a))
+    seenMounts.current = new Set(mounts.keys())
+    if (fresh.length) setExpanded((s) => new Set([...s, ...fresh.map((a) => `@${a}`)]))
+  }, [mounts, initialized])
+
+  /** 경로가 속한 가져온 폴더 (주 폴더면 null) · 그 폴더의 루트 노드인가 */
+  const mountOf = (path: string): { mount: MountInfo | null; isRoot: boolean } => {
+    const { alias, rel } = splitRootPath(path)
+    const mount = alias === null ? null : mounts.get(alias) ?? null
+    return { mount, isRoot: !!mount && rel === '' }
+  }
 
   useEffect(() => {
     if (!menu) return
@@ -135,11 +158,12 @@ export function FileTree(p: Props) {
         return
       case 'F2':
         e.preventDefault()
-        if (cursorRow) p.onRename(cursorRow.entry.path, cursorRow.entry.type === 'dir')
+        if (cursorRow && !cursorRow.entry.mount) p.onRename(cursorRow.entry.path, cursorRow.entry.type === 'dir')
         return
       case 'Delete':
         e.preventDefault()
-        if (cursorRow) p.onDelete(cursorRow.entry.path, cursorRow.entry.type === 'dir')
+        // 가져온 폴더의 루트는 지우지 않는다 (해제는 메뉴에서)
+        if (cursorRow && !cursorRow.entry.mount) p.onDelete(cursorRow.entry.path, cursorRow.entry.type === 'dir')
         return
       case 'F10':
       case 'ContextMenu':
@@ -162,17 +186,21 @@ export function FileTree(p: Props) {
     const isCursor = cursor === e.path
     if (e.type === 'dir') {
       const open = expanded.has(e.path)
+      const m = e.mount
       return (
         <div
           key={e.path}
           data-path={e.path}
-          className={'tree-row is-dir' + (selectedDir === e.path ? ' is-selected' : '') + (isCursor ? ' is-cursor' : '')}
+          className={'tree-row is-dir' + (m ? ' is-mount' : '') + (selectedDir === e.path ? ' is-selected' : '') + (isCursor ? ' is-cursor' : '')}
           style={indent}
+          title={m ? `가져온 폴더${m.readOnly ? ' (읽기 전용)' : ''}${m.persist ? '' : ' — 이번 실행에만 (--mount)'}\n${m.path}` : undefined}
           onClick={() => activate(row)}
           onContextMenu={(ev) => { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, e.path, true) }}
         >
           <span className="tree-caret">{open ? '▾' : '▸'}</span>
+          {m && <span className="tree-mount-icon">{m.readOnly ? '🔒' : '🔗'}</span>}
           <span className="tree-name">{e.name}</span>
+          {m?.truncated && <span className="tree-warn" title="항목이 너무 많아 일부만 보입니다 — 하위 폴더를 가져오세요">⚠</span>}
           {!open && dirHasChange(e.path, p.gitStatus) && <span className="git-dot" title="아래에 바뀐 파일이 있음">●</span>}
         </div>
       )
@@ -218,15 +246,24 @@ export function FileTree(p: Props) {
         {p.entries.length === 0 && <div className="tree-empty">{DOC_EXTS_LABEL} 파일이 없습니다</div>}
         {rows.map(renderRow)}
       </div>
-      {menu && (
-        <div className="ctx-menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
-          <div className="ctx-title">{menu.path}</div>
-          {menu.isDir && <button onClick={() => { setMenu(null); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
-          {menu.isDir && <button onClick={() => { setMenu(null); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
-          <button onClick={() => { setMenu(null); p.onRename(menu.path, menu.isDir) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>
-          <button className="is-danger" onClick={() => { setMenu(null); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>
-        </div>
-      )}
+      {menu && (() => {
+        const { mount, isRoot } = mountOf(menu.path)
+        const writable = !mount?.readOnly
+        const act = (a: RootAction) => { setMenu(null); p.onRootAction(a, menu.path) }
+        return (
+          <div className="ctx-menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="ctx-title">{isRoot ? mount!.path : menu.path}</div>
+            {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
+            {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
+            {!isRoot && writable && <button onClick={() => { setMenu(null); p.onRename(menu.path, menu.isDir) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
+            {!isRoot && writable && <button className="is-danger" onClick={() => { setMenu(null); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}
+            <button onClick={() => act('reveal')}>탐색기에서 보기</button>
+            {isRoot && <button onClick={() => act('toggleReadOnly')}>{mount!.readOnly ? '읽기 전용 끄기' : '읽기 전용 켜기'}</button>}
+            {isRoot && <button onClick={() => act('refresh')}>새로 고침</button>}
+            {isRoot && <button onClick={() => act('unmount')}>가져오기 해제 (파일은 그대로)</button>}
+          </div>
+        )
+      })()}
     </div>
   )
 }

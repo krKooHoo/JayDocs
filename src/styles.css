@@ -171,6 +171,11 @@ kbd {
 .brand { font-weight: 700; letter-spacing: 0.2px; }
 .root { color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-error { color: var(--danger); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 300; max-width: min(520px, 90vw);
+  padding: 8px 12px; border-radius: 6px; background: var(--elev); color: var(--fg);
+  border: 1px solid var(--border); border-left: 3px solid var(--ok); box-shadow: var(--shadow); font-size: 12.5px; cursor: pointer;
+}
 .conn { color: var(--border); font-size: 10px; }
 .conn.is-on { color: var(--ok); }
 .workbench { flex: 1; position: relative; min-height: 0; }
@@ -218,6 +223,10 @@ kbd {
 .tree-row.is-dir.is-selected .tree-name { color: var(--accent); }
 .tree-caret { width: 12px; color: var(--muted); font-size: 11px; }
 .tree-icon { width: 12px; color: var(--muted); font-size: 11px; }
+/* 가져온 폴더의 루트 노드 */
+.tree-row.is-mount { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 3px; font-weight: 600; }
+.tree-mount-icon { font-size: 11px; }
+.tree-warn { color: var(--dirty); font-size: 11px; margin-left: 4px; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 
 /* ---- git 배지 ---- */
@@ -473,6 +482,21 @@ kbd {
 .palette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-hint { color: var(--muted); font-size: 11px; font-family: var(--mono); white-space: nowrap; }
 .palette-empty { padding: 14px; color: var(--muted); }
+/* 폴더 가져오기 */
+.palette.import { max-height: 80vh; }
+.import-row { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+.import-row + .import-row { margin-top: 4px; }
+.import-path { flex: 1; margin-left: 0; margin-right: 0; font-family: var(--mono); font-size: 13px; }
+.import-dirs { max-height: 180px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 0 10px 6px; padding: 0; }
+.import-dirs .palette-item { padding: 3px 8px; font-family: var(--mono); font-size: 12.5px; }
+.import-field { display: flex; align-items: center; gap: 4px; }
+.import-field input { width: 180px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); }
+.import-at { color: var(--muted); }
+.import-check { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.import-hint { padding: 8px 12px; font-size: 12px; color: var(--muted); }
+.import-recent { border-top: 1px solid var(--border); overflow: auto; padding-bottom: 6px; }
+.import-forget { margin-left: auto; padding: 0 6px; }
+button.is-primary { background: var(--accent); color: var(--badge-fg); border-color: var(--accent); }
 .help {
   width: min(820px, 94vw); max-height: 84vh; display: flex; flex-direction: column;
   background: var(--elev); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); outline: none;

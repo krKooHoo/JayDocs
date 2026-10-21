@@ -7,7 +7,8 @@ import { isTsvPath, store, useStoreVersion } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { git, useGitVersion } from '../store/git'
-import { FileTree } from './FileTree'
+import { FileTree, type RootAction } from './FileTree'
+import { isMountPath } from '../lib/roots.mjs'
 import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
 import { GitPane } from './GitPane'
@@ -23,6 +24,8 @@ export interface WorkbenchHandle {
   renamePaths(from: string, to: string, isDir: boolean): void
   /** 파일·폴더가 지워지면 그 탭들을 닫는다 */
   closePaths(path: string, isDir: boolean): void
+  /** 열린 문서 탭의 경로들 */
+  openPaths(): string[]
 }
 
 interface Props {
@@ -33,6 +36,7 @@ interface Props {
   onNewFolder: (dir: string) => void
   onRename: (path: string, isDir: boolean) => void
   onDelete: (path: string, isDir: boolean) => void
+  onRootAction: (action: RootAction, path: string) => void
 }
 
 const LAYOUT_VERSION = 1
@@ -248,8 +252,9 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
-    { id: 'diffActive', label: '현재 문서를 HEAD 와 비교', run: () => { const path = activePath(); if (path) openDiff(path) }, enabled: () => activePath() !== null && git.repo },
-    { id: 'historyActive', label: '현재 문서의 커밋 기록', run: () => { const path = activePath(); if (path) { toggleBorder('git', true); git.requestLog(path) } }, enabled: () => activePath() !== null && git.repo },
+    // git 은 주 폴더 문서만 (가져온 폴더는 git 없이 파일 편집만)
+    { id: 'diffActive', label: '현재 문서를 HEAD 와 비교', run: () => { const path = activePath(); if (path && !isMountPath(path)) openDiff(path) }, enabled: () => { const path = activePath(); return !!path && !isMountPath(path) && git.repo } },
+    { id: 'historyActive', label: '현재 문서의 커밋 기록', run: () => { const path = activePath(); if (path && !isMountPath(path)) { toggleBorder('git', true); git.requestLog(path) } }, enabled: () => { const path = activePath(); return !!path && !isMountPath(path) && git.repo } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
   ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusGit, focusEditor, openDiff])
 
@@ -276,7 +281,13 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     }
   }, [model])
 
-  useImperativeHandle(ref, () => ({ openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths }), [openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths])
+  const openPaths = useCallback(() => {
+    const out = new Set<string>()
+    for (const tab of findTabs(model, (cfg) => typeof cfg.path === 'string')) out.add(((tab.getConfig() ?? {}) as Record<string, string>).path)
+    return [...out]
+  }, [model])
+
+  useImperativeHandle(ref, () => ({ openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths])
 
   const factory = (node: TabNode) => {
     const cfg = (node.getConfig() ?? {}) as Record<string, unknown>
@@ -294,6 +305,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
             onNewFolder={p.onNewFolder}
             onRename={p.onRename}
             onDelete={p.onDelete}
+            onRootAction={p.onRootAction}
           />
         )
       case 'md':

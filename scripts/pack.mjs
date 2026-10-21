@@ -2,7 +2,7 @@
 /**
  * 독립 실행 묶음 만들기:  npm run pack  →  release/jaydocs/  +  release/jaydocs-<버전>.zip
  *
- * 묶음 = server.mjs + src/lib/filetypes.mjs + bin/ + dist/ + start.cmd + jaydocs.cmd + package.json(bin 만) + README + SHORTCUTS.
+ * 묶음 = server.mjs + src/lib/{filetypes,roots}.mjs + bin/ + dist/ + start.cmd + jaydocs.cmd + package.json(bin 만) + README + SHORTCUTS.
  * node_modules 없이 Node 22+ 만 있으면 어디서나 돈다 (git 기능은 PATH 의 git).
  */
 import fs from 'node:fs'
@@ -27,7 +27,7 @@ for (const f of ['server.mjs', 'start.cmd', 'SHORTCUTS.md']) fs.copyFileSync(pat
 fs.cpSync(path.join(ROOT, 'bin'), path.join(OUT, 'bin'), { recursive: true })
 // server.mjs 가 import 하는 공유 표 (앱과 같은 파일)
 fs.mkdirSync(path.join(OUT, 'src', 'lib'), { recursive: true })
-fs.copyFileSync(path.join(ROOT, 'src', 'lib', 'filetypes.mjs'), path.join(OUT, 'src', 'lib', 'filetypes.mjs'))
+for (const f of ['filetypes.mjs', 'roots.mjs']) fs.copyFileSync(path.join(ROOT, 'src', 'lib', f), path.join(OUT, 'src', 'lib', f))
 fs.cpSync(path.join(ROOT, 'dist'), path.join(OUT, 'dist'), { recursive: true })
 fs.writeFileSync(
   path.join(OUT, 'package.json'),
