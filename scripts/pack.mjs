@@ -70,7 +70,9 @@ git 기능(배지·diff·커밋·push/pull)은 PATH 에 git 이 있을 때 켜�
 - ` + '`start.cmd`' + String.raw` 에 문서 폴더를 **끌어다 놓거나** 인자로: ` + '`start.cmd "D:\\Docs"`' + String.raw`
 - 아무 폴더에서 한 단어로: 이 폴더를 PATH 에 넣고 ` + '`jaydocs`' + String.raw`(현재 폴더) 또는 ` + '`jaydocs D:\\Docs`' + String.raw`
   - 또는 이 폴더에서 ` + '`npm install -g .`' + String.raw` 한 번 → 어디서나 ` + '`jaydocs`' + String.raw` (지우기: ` + '`npm uninstall -g jaydocs`' + String.raw`)
-- 옵션: ` + '`jaydocs --help`' + String.raw` — ` + '`--no-open`' + String.raw`(주소만 찍기) · ` + '`--port N`' + String.raw` · ` + '`--keep`' + String.raw`(창 닫아도 유지) · ` + '`--ignore Library,Temp`' + String.raw`(큰 폴더 빼기)
+- 옵션: ` + '`jaydocs --help`' + String.raw` — ` + '`--no-open`' + String.raw`(주소만 찍기) · ` + '`--port N`' + String.raw` · ` + '`--keep`' + String.raw`(창 닫아도 유지) · ` + '`--ignore Library,Temp`' + String.raw`(큰 폴더 빼기) · ` + '`--mount D:\\Other`' + String.raw`(다른 폴더를 이번 실행에만 같이 열기)
+- 다른 폴더를 같이 열려면 앱에서 ` + '`Ctrl+Shift+O`' + String.raw`(폴더 가져오기) — 복사하지 않고 원래 자리에서 연다. 목록은 ` + '`~/.jaydocs/workspaces.json`' + String.raw` 에 남는다.
+- 여는 형식: .md · .tsv · .csv · .txt · .json
 
 Edge(없으면 Chrome) 앱 모드 창이 뜬다. 창을 닫으면 서버도 15초 뒤 꺼진다. 주소 뒤의 ` + '`#token=…`' + String.raw` 이 접속 키다.
 폴더를 여러 개 동시에 열어도 된다(각자 다른 포트). 단축키는 SHORTCUTS.md, 그 외는 F1.

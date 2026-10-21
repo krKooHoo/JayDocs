@@ -1,6 +1,6 @@
 # JayDocs — Markdown + TSV 결합 편집기 설계
 
-작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 위치 `JayTools/JayDocs/`
+작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 `JayTools/JayDocs/`
 
 > 이름: **JayDocs** — "Jay의 문서". Notion·Asana·Google Sheets를 오가던 기획 문서와 데이터를 한곳(git)에 모으는 Jay 전용 Docs라는 뜻.
 > 폴더명도 `JayDocs`(리포의 `TeamBuilder`·`MemoryBoard`처럼 PascalCase).
@@ -393,6 +393,7 @@ template: |
 | WS | `/ws` | `{ type: 'change', path }` |
 
 모든 요청에 `X-Token` 헤더. 경로는 root 아래로 정규화하고 심볼릭 링크는 따르지 않는다.
+(2026-10-21) 가져온 폴더·인코딩·폴더 고르기 API 는 §18.4.
 
 ---
 
@@ -609,6 +610,62 @@ Jay 가 미뤄 둔 "수식" 을 넣으려면 파일 계약(§2: 셀은 값 그�
 - **계산** (`lib/calc/calc.ts`): 규칙 전부를 행마다 평가, 규칙이 규칙 결과를 읽을 수 있어 값이 안정될 때까지 최대 5바퀴. 결과는 **stale 맵**(지금 값 ≠ 계산값)으로 먼저 보여 주고(파란 띠·노란 배경·툴팁), F9 가 바뀐 셀만 `setCells` 한 번으로 써 넣는다(되돌리기 한 단계). 자동 적용은 하지 않는다 — Jay 가 눌러야 파일이 바뀐다.
 - **스토어**: Field 캐시를 보조 표 캐시(`auxTable`)로 일반화해 Calc 파일과 lookup 대상 표도 같은 길로 읽는다. 열려 있으면 저장 전 표를 우선하므로 Calc 파일을 고치는 즉시 바뀔 셀 수가 따라온다.
 - 하지 않은 것: 식 자동완성, 순환 참조 감지(5바퀴 뒤 멈춤), 행 간 집계(sum 등 — 필요하면 `lookup` 처럼 표 단위 함수로).
+
+---
+
+## 18. 폴더 가져오기 · 형식 확장 (2026-10-21)
+
+계획·결정 과정·단계별 완료 메모는 [PLAN-folder-import.md](PLAN-folder-import.md). 여기에는 확정된 결과만 적는다.
+
+### 18.1 요구 (Jay, 2026-10-21)
+
+| # | 요구 | 답으로 정해진 것 |
+|---|---|---|
+| R13 | 특정 경로의 폴더를 Import | **연결(마운트)** — 복사하지 않고 원래 자리에서 열고 고친다. 대상은 수업 자료 · Unity 프로젝트 문서 · 수강생 제출물 |
+| R14 | Import 한 곳의 md · tsv · txt 등을 열고 편집 | 형식 표로 `.md` `.tsv` `.csv` `.txt` `.json`. json·csv 는 "이번에 같이" |
+| R15 | (R13 에서 나옴) 보기만 할 폴더 보호 | 읽기 전용 가져오기. 가져온 폴더의 **git 은 하지 않는다**(Jay: "일단 필요 없음") |
+
+### 18.2 결정
+
+| # | 결정 | 근거 · 대가 |
+|---|---|---|
+| F1 | 경로 = 주 폴더는 그대로, 가져온 폴더는 `@별칭/…` (`src/lib/roots.mjs`, 사이드카와 공유) | 기존 경로·레이아웃·tsv-view·테스트가 하나도 안 바뀐다. 주 폴더 최상위 `@이름` 폴더와 같은 별칭은 거부 |
+| F2 | 목록은 `~/.jaydocs/workspaces.json` 에 주 폴더 실제 경로별로 (`mounts` · `recent`). `--mount` 는 이번 실행만, `--config` 로 파일 바꾸기 | 리포를 더럽히지 않는다(D4 와 같은 원칙). 서버가 경로를 허가해야 하므로 localStorage 가 아니라 서버 쪽 |
+| F3 | 폴더 고르기 = 경로 붙여넣기 + 사이드카 자동 완성(`/api/fs/dirs`) + Windows 폴더 창(`/api/fs/pick`, PowerShell WinForms) | 브라우저는 폴더의 절대 경로를 주지 않는다. 키보드만으로 끝나는 길이 기본 |
+| F4 | 겹치는 폴더(주 폴더·다른 마운트를 품거나 그 안)·드라이브 전체·사용자 폴더 전체 거부. 마운트는 Unity 폴더(`Library` `Temp` `Logs` `obj` `Build(s)` `UserSettings` `MemoryCaptures`)를 빼고 **문서 없는 폴더는 숨기고** 2만 항목에서 멈춘다 | 같은 파일이 두 경로로 열리면 스토어 동기화가 깨진다. Unity Assets 같은 큰 트리 대비 |
+| F5 | 형식 표 `src/lib/filetypes.mjs` 한 곳 (`kind`: md · table · text, `lang`, `codec`) | 사이드카·트리·창·새 파일 검사가 같은 표를 읽는다. 형식 추가 = 한 줄 |
+| F6 | UTF-8 이 아니면 EUC-KR 로 읽고 **읽기 전용**, "UTF-8 로 바꿔 저장"(CSV 는 BOM 붙임). NUL·UTF-16·5 MB 초과는 열지 않음. 사이드카도 convert 없이 덮어쓰지 않음 | 예전엔 CP949 파일을 열어 저장하면 한글이 조용히 깨졌다. CP949 인코더가 없어 원래 인코딩으로 되쓰지는 않는다 |
+| F7 | git 은 주 폴더만 — 가져온 경로는 git API 가 400, 배지·diff·기록 명령 없음 | 가져온 폴더 저장은 되돌릴 수 없다 → 읽기 전용 옵션과 대화창 안내로 보완 |
+| F8 | CSV = 같은 그리드·같은 표 모델(`TsvTable.format`), 읽기·쓰기만 `lib/tsv/csv.ts`(RFC 4180). 레코드 원문 + `quoted[]` 로 왕복 보존. 타입 행 없는 CSV 는 첫 줄을 머리글로 | 그리드·되돌리기·찾기·채우기를 다시 만들 필요가 없다. `_Field`·계산식은 TSV 전용으로 둔다 |
+| F9 | JSON 은 텍스트 창 + 구문 강조 + 문법 검사, 정렬은 명령으로만, 내용이 바뀌는 정렬(`1.0`, 큰 정수, 중복 키, 숫자 키 순서)은 거부 | 자동 정렬은 diff 를 통째로 바꾼다 |
+
+### 18.3 구조에 생긴 것
+
+- **사이드카**: `PRIMARY` + `MOUNTS`(별칭 → `{ abs, real, readOnly, persist, watcher }`). `resolveSafe(appPath)` → `{ abs, rel, inner, root }`, 쓰기는 `resolveWritable`(읽기 전용 403), git 은 `primaryOnly`. 감시는 루트마다 `watchRoot`(폴더가 사라져도 프로세스는 산다). `decodeText`·`readTextFile` 이 인코딩·바이너리·크기를 본다.
+- **스토어**: `encoding` · `setMounts` · `readOnlyReason(path)`(`'mount' | 'encoding' | null`) · `convertToUtf8`. 표 읽기·쓰기는 `lib/tsv/table.ts`(`parseTable(text, path)` · `serializeTable` · `tableOpenWarnings` · `sanitizeFor`).
+- **루트 안 해석**: tsv-view `file:` · `/` 링크 · 이미지 · `_Field` 찾기 · 계산식 `lookup` 은 그 문서가 속한 루트 안에서 (`inRootOf`, `sameRoot`). `../` 는 루트 밖으로 못 나간다.
+- **화면**: 트리 맨 아래 `@별칭` 노드(🔗/🔒)와 오른쪽 클릭(읽기 전용 · 새로 고침 · 해제 · 탐색기에서 보기), 가져오기 창(`Ctrl+Shift+O`), `ReadOnlyBanner`, 오른쪽 아래 알림. 팔레트에 폴더별 해제·읽기 전용 명령(동적 등록).
+- **클립보드**: 줄바꿈·탭이 든 칸만 Sheets·Excel 관행대로 `"…"` 로 주고받는다(그 밖의 `"` 는 글자 그대로 — §2 규칙 유지).
+
+### 18.4 API 추가 (§9 에 더해)
+
+| 메서드 | 경로 | 역할 |
+|---|---|---|
+| GET | `/api/tree` | 응답에 `mounts: [{ alias, path, readOnly, persist, truncated, entries, error }]` 추가 |
+| GET | `/api/file` | 응답에 `encoding` 추가. 415(바이너리·UTF-16) · 413(5 MB 초과) |
+| PUT | `/api/file` | 본문 `convert: true` 일 때만 UTF-8 아닌 파일을 덮어쓴다. 읽기 전용 폴더면 403 |
+| GET · POST · PATCH · DELETE | `/api/roots` | 목록(+ `recent` · `missing` · `platform`) · 가져오기 `{ path, alias?, readOnly? }` · `?alias=` 읽기 전용 `{ readOnly }` · 해제 |
+| POST | `/api/roots/forget` | 최근·못 찾은 목록에서 지우기 `{ path }` |
+| GET | `/api/fs/dirs?prefix=` | 하위 폴더 자동 완성(최대 50, 빈 입력이면 드라이브) |
+| POST | `/api/fs/pick` | Windows 폴더 고르기 창 → `{ path \| null }` |
+| POST | `/api/reveal` | 탐색기에서 보기 `{ path }` (파일은 선택한 채, `@별칭` 은 그 폴더) |
+
+### 18.5 하지 않은 것 · 알려진 한계
+
+- 가져온 폴더의 git(필요해지면 루트별 `rev-parse --show-toplevel` + 리포별 묶음 패널, 약 1일 — PLAN F7 끝).
+- 세미콜론 CSV, CSV 의 `_Field`·계산식, `.yaml`·`.mmd` 형식(형식 표에 한 줄씩이면 된다).
+- git diff·이전 버전 보기는 `git show` 를 UTF-8 로 읽는다 — CP949 파일의 diff 는 깨져 보인다(변환 저장 뒤엔 정상).
+- 자동으로 시험하지 못한 것: PowerShell 폴더 창, 탐색기 열기, 실제 Excel 과의 복사·붙여넣기와 Excel 에서 열기(TC-1203 · 1214 · 1304 · 1305 · 1307).
 
 ---
 

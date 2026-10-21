@@ -1,6 +1,6 @@
 # JayDocs 폴더 가져오기 · 형식 확장(txt·json·csv) — 개발 계획
 
-작성 2026-10-21 · 상태 **Phase A·B·C 완료(2026-10-21), D(마무리) 다음** · 확정되면 DESIGN §18 로 옮긴다.
+작성 2026-10-21 · 상태 **Phase A~D 완료(2026-10-21)** · 확정된 결과는 [DESIGN §18](DESIGN.md) 로 옮겼다. 이 문서는 계획·결정 과정과 단계별 완료 메모로 남긴다.
 
 ---
 
@@ -200,6 +200,7 @@ export const FILE_TYPES = [
 
 - `README.md` 사용법, `DESIGN.md` §18(이 문서 요약), `TESTCASES.md` 11절(TC-1101~), `HANDOFF.md` 상태, `bin/jaydocs.mjs` 도움말에 `--mount`.
 - `npm run pack` 묶음에 새 파일이 들어가는지.
+- ✅ **완료 메모 (2026-10-21)** README·TESTCASES 는 각 Phase 에서 같이 고쳤다(11~13절, 156개). 이번에 DESIGN §18(요구 R13~R15 · 결정 F1~F9 · 구조 · API · 한계), §9 에 §18 안내, HANDOFF(상태 · 커밋 · 시험 때 `--config` · 핵심 사실 · 다음 작업 · 주의), 루트 README 도구 설명, pack 묶음 README(`--mount` · 가져오기 · 형식). `npm run pack` → `release/jaydocs/src/lib/{filetypes,roots}.mjs` 가 들어가고 묶음의 server.mjs 가 `--mount` 와 함께 뜨는 것을 확인.
 
 ---
 

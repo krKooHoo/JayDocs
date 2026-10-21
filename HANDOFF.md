@@ -1,4 +1,4 @@
-# JayDocs 인수인계 (2026-10-11, Phase 3 완료 시점)
+# JayDocs 인수인계 (2026-10-21, 폴더 가져오기·형식 확장 완료 시점)
 
 다른 PC의 **새 세션**에 아래 프롬프트를 그대로 붙여 넣으면 된다. 이 문서 자체가 그 세션이 처음 읽을 문서다.
 
@@ -23,12 +23,19 @@ JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md
   - git: 상태 배지, HEAD diff(md 는 merge view, tsv 는 Key 셀 diff), 선택 커밋, 파일 기록, 이전 버전 보기/문서에 넣기, `git restore`.
   - Phase 3(DESIGN §11, §7): tsv-view 그 자리 편집 · `bake: true`(저장 시 파이프 표) · `render: mermaid` 템플릿(Mustache 부분집합) · 하이브리드 Live Preview(`components/hybrid.ts`, CM6 StateField 자체 구현) · 그리드 찾기/바꾸기 · 채우기 핸들 · 열 드래그.
   - 키보드·테마(DESIGN §16): 명령 팔레트 `Ctrl+Shift+P` · 빠른 열기 `Ctrl+P` · 탭/패널 키 · 트리 키보드 탐색 · 그리드 범위 선택과 Sheets 식 복사/붙여넣기/채우기 · md 여러 선택 표시 · 다크 모드. 단축키 원본은 `src/lib/shortcuts-table.mjs`, `npm run shortcuts` → `SHORTCUTS.md`(테스트가 동기화를 검사).
+  - 계산식(DESIGN §17): `X_Calc.tsv` 규칙을 F9 로 값 열에 써 넣기. 이미지 미리보기 · git push/pull.
+  - 독립 실행(2026-10-13): `npm link` → 어디서나 `jaydocs [폴더]`, `npm run pack` → node_modules 없는 묶음.
+  - **폴더 가져오기·형식 확장(2026-10-21, DESIGN §18, 계획·과정은 `PLAN-folder-import.md`)**:
+    - 형식 표 `src/lib/filetypes.mjs` — `.md` `.tsv` `.csv` `.txt` `.json`. txt 는 평문 창, json 은 구문 강조·문법 검사·"JSON 정렬".
+    - UTF-8 이 아닌 파일(CP949)은 읽기 전용 + "UTF-8 로 바꿔 저장"(CSV 는 BOM). 바이너리·5 MB 초과는 열지 않는다.
+    - 폴더 가져오기(`Ctrl+Shift+O`) — 다른 폴더를 원래 자리에서 `@별칭/…` 로 연다. 읽기 전용 옵션, 해제·최근 폴더, `~/.jaydocs/workspaces.json` 에 주 폴더별로 남음, `--mount`. git 은 주 폴더만.
+    - CSV — 같은 그리드, RFC 4180 왕복 보존(`lib/tsv/csv.ts`, `table.ts`), `Alt+Enter` 칸 안 줄바꿈, 타입 행 없으면 첫 줄 머리글.
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
-- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식은 모두 커밋됨(`b4c7597` → `e3b9427`). push 와 그 뒤 라운드는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
+- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`b4c7597` → `e3b9427`), 형식 확장·독립 실행(`7447a6b`), 폴더 가져오기(`8444ca2`), CSV(`a59dbbe`) 까지 커밋됨. push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
-1. `JayDocs/DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조.
+1. `JayDocs/DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계).
 2. `JayDocs/README.md` — 실행·개발 명령, 소스 구조, 사용법(그리드 · tsv-view · git).
 3. `JayDocs/REPORT-unity-importer-saga.md` — **"먼저 알아야 할 것 (요약)" 네 줄만.** 나머지는 참고용(게임 쪽 임포터 사정). JayDocs 계약과 무관하다.
 4. `SagaDocs/README.md`, `SagaDocs/00-Overview/용어집.md` — 실제 데이터와 규칙.
@@ -41,8 +48,10 @@ git pull
 cd JayDocs
 npm install          # node_modules 와 dist 는 커밋하지 않는다
 npm run build        # dist/ 생성
-npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
+npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
 ```
+
+- **가져오기 기능을 시험할 때는 `--config <임시 파일>` 을 꼭 준다.** 안 주면 사용자 홈의 `~/.jaydocs/workspaces.json`(Jay 가 실제로 쓰는 목록)을 고친다. 예: `node server.mjs --root <시험 폴더> --port 5198 --token dev --dev --config <scratch>/ws.json`.
 
 - `JayTools/.claude/launch.json` 과 `JayDocs/.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 **JayTools 루트의** launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
 - 확인: `npm run serve` 후 `http://127.0.0.1:5190/#token=dev` 를 열어 트리·편집·저장·git 패널이 되는지. 또는 `start.cmd "<SagaDocs 경로>"`.
@@ -62,10 +71,15 @@ npm test             # 67개 — SagaDocs 실제 파일 왕복 포함 (리포를
 - Jay 의 사용 기준(2026-10-11 피드백): **가볍고, git 으로 바로 커밋되는 것**이 핵심 가치. 모든 작업이 키보드로 되어야 하고, 단축키는 Sheets·Excel 관행을 따르며 `SHORTCUTS.md` 에 계속 쌓는다(한 곳 `shortcuts-table.mjs` 에서 생성). 새 기능을 넣을 때 단축키 표와 팔레트 명령을 같이 넣을 것.
 - Claude Code 의 Bash 도구는 명령 문자열의 백슬래시를 한 단계 벗긴다 → `sed`/`node -e`/heredoc 으로 `\\` 가 든 치환은 조용히 실패하고, CSS 처럼 따옴표·백슬래시가 섞인 heredoc 은 깨진다. 그런 편집은 Edit/Write 도구로.
 - 사이드카처럼 **자체 완결적인 조각은 Opus 에이전트에 맡겨도 된다**(Phase 2 의 git API 가 그 예 — 계약을 표로 적어 주면 잘 한다). 공유 파일을 여러 에이전트가 동시에 고치는 구조는 피한다.
+- (2026-10-21) Jay 는 유니티 강사이기도 하다. 폴더 가져오기의 대상은 **수업 자료 · Unity 프로젝트 문서 · 수강생 제출물**. 가져오기는 복사가 아니라 **원래 자리에서 편집**, 가져온 폴더의 git 은 **하지 않기로** 했다(필요해지면 DESIGN §18.5).
+- 파일 형식은 `src/lib/filetypes.mjs`, 가져온 폴더 경로 규칙은 `src/lib/roots.mjs` 한 곳 — 둘 다 사이드카도 import 하므로 `npm run pack` 이 같이 묶는다.
+- UTF-8 이 아닌 파일은 절대 그대로 덮어쓰지 않는다(사이드카가 막는다). CSV 를 UTF-8 로 바꿀 때는 BOM 을 붙인다(Excel 한글).
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-Phase 0~3 의 계획 범위는 끝났다. **`TESTCASES.md`(101개 TC)** 를 Jay 가 돌려 ❌/⚠ 가 나온 것부터 고친다. 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** 를 Jay 가 돌려 ❌/⚠ 가 나온 것부터 고친다. 특히 자동으로 시험하지 못한 TC-1203(폴더 고르기 창) · 1214(탐색기에서 보기) · 1304/1305/1307(실제 Excel 과 주고받기). 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+
+폴더 가져오기 쪽 후보(PLAN-folder-import §4, 써 보고 필요하면): **전체 검색**(`Ctrl+Alt+F`, 권고했지만 아직 안 함) · 첫 저장 전 백업 · 주 폴더로 복사 · 트리 이름 필터 · `.yaml`/`.mmd` · 세미콜론 CSV · 가져온 폴더 git.
 
 남은 숙제:
 1. ~~수식~~ — (b) 안으로 구현했다: `X_Calc.tsv` 의 규칙을 F9 로 값 열에 써 넣는다(`lib/calc/`). 남은 것: 식 자동완성, Calc 파일 전용 편집 UI(지금은 보통 그리드).
@@ -91,3 +105,7 @@ Phase 0~3 의 계획 범위는 끝났다. **`TESTCASES.md`(101개 TC)** 를 Jay 
 - 레이아웃·열 너비·md 보기 모드는 `localStorage`에 root 경로별 저장. 경로가 다른 PC에서는 새 레이아웃으로 시작한다. Phase 1 레이아웃에는 git 패널이 없으므로 로드할 때 덧붙인다.
 - 자동화 테스트에서 flexlayout 의 숨은 탭은 높이 0 이라 그리드 행이 안 그려진다 → 보이는 창만 고르고, 탭을 바꾼 뒤 행이 그려질 때까지 기다릴 것.
 - Phase 0에서 설계와 달라진 점: WebSocket 대신 SSE, chokidar 대신 `fs.watch`. Phase 1·2 구현 메모는 DESIGN §11.
+- 가져온 폴더 경로는 `@별칭/…`. 주 폴더 경로는 예전 그대로다. 레이아웃 복원 때 없는 별칭의 탭은 닫고 알린다. 가져온 폴더 트리는 문서 없는 폴더를 숨긴다(주 폴더는 빈 폴더도 보인다).
+- git diff·이전 버전 보기는 `git show` 를 UTF-8 로 읽어 CP949 파일의 diff 는 깨져 보인다(변환 저장 뒤엔 정상).
+- 브라우저 자동화에서는 `Ctrl+C`/`Ctrl+V` 가 clipboard 이벤트를 일으키지 않는다 → JS 로 `ClipboardEvent` + `DataTransfer` 를 dispatch 해서 시험한다. 한글 타이핑도 자동화가 IME 를 거치며 바뀔 수 있으니 경로·이름은 ASCII 로 치고 Tab 자동 완성을 쓴다.
+- `Ctrl+Shift+O`(폴더 가져오기)는 내장 브라우저에서 동작을 확인했다. Edge/Chrome 일반 창에서는 북마크 관리자와 겹칠 수 있다 — 앱 모드 창에서 한 번 확인할 것(안 되면 표에서 키만 바꾼다).
