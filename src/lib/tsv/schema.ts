@@ -27,7 +27,7 @@ export interface ColumnSchema {
 export interface TableSchema {
   /** 1행이 타입 행이고 2행이 헤더인 표 */
   typed: boolean
-  /** 고정(헤더) 행 수 — typed 면 2, 아니면 0 */
+  /** 고정(헤더) 행 수 — typed 면 2, 타입 행 없는 CSV 면 1(첫 줄 머리글), 아니면 0 */
   headerRows: number
   columns: ColumnSchema[]
   /** `Tile_Table.tsv` → `Tile` */
@@ -59,7 +59,7 @@ export function baseName(path: string): string {
 
 /** `10-World/Tile/Tile_Table.tsv` → `Tile` */
 export function tablePrefix(path: string): string {
-  return baseName(path).replace(/\.tsv$/i, '').replace(/_(Table|Field)$/i, '')
+  return baseName(path).replace(/\.(tsv|csv)$/i, '').replace(/_(Table|Field)$/i, '')
 }
 
 /** 짝이 되는 Field 파일 경로 (같은 폴더, `_Table` ↔ `_Field`) */
@@ -119,9 +119,11 @@ export function deriveSchema(t: TsvTable, path: string, allFields: readonly Fiel
   const prefix = tablePrefix(path)
   const sibling = siblingFieldPath(path)
   const typed = t.rows.length > 0 && isTypeRow(t.rows[0].cells)
-  const headerRows = typed ? 2 : 0
+  // 타입 행 없는 CSV 는 관례대로 첫 줄이 머리글(열 이름) — 고정하고 tsv-view 가 열 이름으로 쓴다
+  const csvHeader = !typed && t.format === 'csv' && t.rows.length > 0
+  const headerRows = typed ? 2 : csvHeader ? 1 : 0
   const typeRow = typed ? t.rows[0].cells : []
-  const headRow = typed ? (t.rows[1]?.cells ?? []) : []
+  const headRow = typed ? (t.rows[1]?.cells ?? []) : csvHeader ? t.rows[0].cells : []
   const def = typed ? findBlock(fields, `${prefix}Def`, sibling) : null
 
   const columns: ColumnSchema[] = []

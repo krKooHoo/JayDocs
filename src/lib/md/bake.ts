@@ -67,7 +67,8 @@ export function findTsvViewFences(text: string): TsvViewFence[] {
 }
 
 function esc(v: string): string {
-  return v.replace(/\|/g, '\\|')
+  // 파이프 표 칸은 한 줄이어야 한다 — CSV 칸 안 줄바꿈은 <br>
+  return v.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>')
 }
 
 /** 결과를 GFM 파이프 표로 */

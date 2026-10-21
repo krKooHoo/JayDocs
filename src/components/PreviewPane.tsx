@@ -11,7 +11,7 @@ import { stripBaked } from '../lib/md/bake'
 import { columnLetter, deriveSchema, type TableSchema } from '../lib/tsv/schema'
 import { issueKey, validateTable } from '../lib/tsv/validate'
 import { setCell } from '../lib/tsv/edits'
-import { sanitizeCell } from '../lib/tsv/serialize'
+import { sanitizeFor, tableFormatOf } from '../lib/tsv/table'
 import type { TsvTable } from '../lib/tsv/model'
 import { isDocName } from '../lib/filetypes.mjs'
 
@@ -177,7 +177,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   const commit = useCallback((move: 'up' | 'down' | 'left' | 'right' | null) => {
     const el = ta.current
     if (!el || !sel || !file || !editing) return
-    const [clean] = sanitizeCell(el.value)
+    const [clean] = sanitizeFor(tableFormatOf(file), el.value)
     const r = sel.r
     const c = colIndexOf(sel.ci)
     store.editTable(file, (t) => setCell(t, r, c, clean))

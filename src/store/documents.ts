@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { ChangeSet, Text } from '@codemirror/state'
 import { backend, ConflictError, type ChangeEvent, type TreeEntry } from '../lib/backend'
 import type { TsvTable } from '../lib/tsv/model'
-import { openWarnings, parseTsv } from '../lib/tsv/parse'
-import { serializeTsv } from '../lib/tsv/serialize'
+import { parseTable, serializeTable, tableOpenWarnings } from '../lib/tsv/table'
 import { parseFieldBlocks, type FieldFile } from '../lib/tsv/field'
 import { deriveSchema, isFieldFile } from '../lib/tsv/schema'
 import { bakeMarkdown, bakeTargets, type BakeSource } from '../lib/md/bake'
@@ -74,7 +73,7 @@ function parseText(raw: string): { bom: boolean; eol: Eol; text: Text } {
 }
 
 function serialize(d: Doc): string {
-  if (d.kind === 'tsv') return serializeTsv(d.table)
+  if (d.kind === 'tsv') return serializeTable(d.table)
   let s = d.text.toString()
   if (d.eol === '\r\n') s = s.replace(/\n/g, '\r\n')
   return (d.bom ? '﻿' : '') + s
@@ -161,7 +160,7 @@ class DocumentStore {
     const base: DocBase = { path, status: 'loading', error: null, mtime: null, conflict: null, saving: false, encoding: 'utf-8' }
     const empty = Text.of([''])
     const d: Doc = isTsvPath(path)
-      ? { ...base, kind: 'tsv', table: parseTsv(''), savedTable: parseTsv(''), past: [], future: [], warnings: [] }
+      ? { ...base, kind: 'tsv', table: parseTable('', path), savedTable: parseTable('', path), past: [], future: [], warnings: [] }
       : { ...base, kind: 'text', text: empty, savedText: empty, eol: '\n', bom: false, bakeErrors: [] }
     if (d.kind === 'tsv') d.savedTable = d.table
     this.docs.set(path, d)
@@ -171,8 +170,8 @@ class DocumentStore {
       if (this.docs.get(path) !== d) return // 읽는 사이 닫힘
       d.encoding = f.encoding ?? 'utf-8'
       if (d.kind === 'tsv') {
-        const table = parseTsv(f.text)
-        Object.assign(d, { status: 'ready', table, savedTable: table, past: [], future: [], warnings: openWarnings(table), mtime: f.mtime })
+        const table = parseTable(f.text, path)
+        Object.assign(d, { status: 'ready', table, savedTable: table, past: [], future: [], warnings: tableOpenWarnings(table), mtime: f.mtime })
         if (isFieldFile(path)) this.fieldsStale = true
       } else {
         const p = parseText(f.text)
@@ -269,7 +268,7 @@ class DocumentStore {
     this.auxLoading.add(path)
     backend().read(path)
       .then((f) => {
-        this.auxCache.set(path, { mtime: f.mtime, table: parseTsv(f.text) })
+        this.auxCache.set(path, { mtime: f.mtime, table: parseTable(f.text, path) })
         if (isFieldFile(path)) this.fieldsStale = true
         this.emit()
       })
@@ -329,12 +328,12 @@ class DocumentStore {
   private replaceAll(d: Doc, raw: string, mtime: number, encoding = 'utf-8') {
     d.encoding = encoding
     if (d.kind === 'tsv') {
-      const table = parseTsv(raw)
+      const table = parseTable(raw, d.path)
       d.table = table
       d.savedTable = table
       d.past = []
       d.future = []
-      d.warnings = openWarnings(table)
+      d.warnings = tableOpenWarnings(table)
       if (isFieldFile(d.path)) this.fieldsStale = true
     } else {
       const p = parseText(raw)
@@ -387,6 +386,11 @@ class DocumentStore {
   async convertToUtf8(path: string) {
     const d = this.docs.get(path)
     if (!d || d.status !== 'ready' || d.encoding === 'utf-8') return
+    // CSV 는 BOM 을 붙인다 — Excel 은 BOM 없는 UTF-8 CSV 의 한글을 깨뜨린다 ("CSV UTF-8" 저장 형식과 같다)
+    if (d.kind === 'tsv' && d.table.format === 'csv' && !d.table.bom) {
+      d.table = { ...d.table, bom: true }
+      d.savedTable = d.table
+    }
     await this.save(path, undefined, { convert: true })
   }
 
@@ -403,7 +407,7 @@ class DocumentStore {
       let table: TsvTable | null = null
       if (open?.kind === 'tsv' && open.status === 'ready') table = open.table
       else {
-        try { table = parseTsv((await backend().read(file)).text) } catch { table = null }
+        try { table = parseTable((await backend().read(file)).text, file) } catch { table = null }
       }
       if (table) sources.set(file, { table, schema: deriveSchema(table, file, this.fieldFiles()) })
     }
@@ -435,7 +439,7 @@ class DocumentStore {
     const d = this.docs.get(path)
     if (!d || d.status !== 'ready' || this.isReadOnly(path)) return
     if (d.kind === 'tsv') {
-      this.editTable(path, () => parseTsv(text))
+      this.editTable(path, () => parseTable(text, path))
     } else {
       const p = parseText(text)
       this.applyChanges(path, ChangeSet.of({ from: 0, to: d.text.length, insert: p.text }, d.text.length), null)

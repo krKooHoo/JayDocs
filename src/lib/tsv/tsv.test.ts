@@ -4,7 +4,7 @@ import path from 'node:path'
 import { parseTsv } from './parse'
 import { serializeTsv } from './serialize'
 import { deleteColumn, deleteRows, duplicateRow, fillSeries, fillTarget, insertColumn, insertRows, moveColumns, moveSpan, pasteBlock, setCell, setCells } from './edits'
-import { parseClipboardTsv } from './clipboard'
+import { formatClipboardTsv, parseClipboardTsv } from './clipboard'
 import { parseFieldBlocks } from './field'
 import { deriveSchema, isTypeRow, siblingFieldPath, tablePrefix } from './schema'
 import { validateTable } from './validate'
@@ -250,6 +250,21 @@ describe('clipboard', () => {
   it('한 셀', () => {
     expect(parseClipboardTsv('x')).toEqual([['x']])
     expect(parseClipboardTsv('')).toEqual([['']])
+  })
+  it('빈 칸·빈 줄은 그대로', () => {
+    expect(parseClipboardTsv('a\t\tc\n\nd\n')).toEqual([['a', '', 'c'], [''], ['d']])
+  })
+  it('줄바꿈이 든 칸만 따옴표 칸으로 읽는다 (Sheets·Excel)', () => {
+    expect(parseClipboardTsv('"첫\n둘"\tx\r\ny\t"말 ""따옴"" \n끝"\r\n')).toEqual([['첫\n둘', 'x'], ['y', '말 "따옴" \n끝']])
+    // 줄바꿈이 없으면 따옴표는 글자 그대로 (파일 규칙과 같다)
+    expect(parseClipboardTsv('"a"\t"b c"\n')).toEqual([['"a"', '"b c"']])
+    expect(parseClipboardTsv('"안 닫힘\tx')).toEqual([['"안 닫힘', 'x']])
+  })
+  it('복사: 줄바꿈 칸만 감싸고 다시 붙이면 같다', () => {
+    const block = [['a', '첫\n둘'], ['"q"', 'x']]
+    const text = formatClipboardTsv(block)
+    expect(text).toBe('a\t"첫\n둘"\n"q"\tx')
+    expect(parseClipboardTsv(text)).toEqual(block)
   })
 })
 

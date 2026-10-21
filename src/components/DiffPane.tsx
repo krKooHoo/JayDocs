@@ -6,7 +6,7 @@ import { backend } from '../lib/backend'
 import { baseExtensions, normalizeForEditor, remote } from '../lib/cm'
 import { openPath } from '../lib/nav'
 import { diffTables } from '../lib/tsv/diff'
-import { parseTsv } from '../lib/tsv/parse'
+import { parseTable } from '../lib/tsv/table'
 import { deriveSchema } from '../lib/tsv/schema'
 import { store, useStoreVersion, type TsvDoc } from '../store/documents'
 import { git, useGitVersion } from '../store/git'
@@ -82,7 +82,7 @@ function TextDiff({ path, headText }: { path: string; headText: string }) {
 
 // ---------------------------------------------------------------- 표 diff
 function TsvDiff({ path, headText, doc }: { path: string; headText: string; doc: TsvDoc }) {
-  const before = useMemo(() => parseTsv(headText), [headText])
+  const before = useMemo(() => parseTable(headText, path), [headText, path])
   const fields = store.fieldFiles()
   const schema = useMemo(() => deriveSchema(doc.table, path, fields), [doc.table, path, fields])
   const diff = useMemo(() => diffTables(before, doc.table, schema), [before, doc.table, schema])

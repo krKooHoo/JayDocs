@@ -5,15 +5,17 @@
  *
  * kind — md: 마크다운 창(미리보기·하이브리드·bake) · table: 그리드 · text: 평문 에디터
  * lang — text 창의 구문 강조 (지금은 json 만)
+ * codec — table 의 읽기·쓰기 방식 (src/lib/tsv/table.ts)
  *
  * @typedef {'md' | 'table' | 'text'} FileKind
- * @typedef {{ ext: string; kind: FileKind; icon: string; label: string; lang?: 'json' }} FileType
+ * @typedef {{ ext: string; kind: FileKind; icon: string; label: string; lang?: 'json'; codec?: 'tsv' | 'csv' }} FileType
  */
 
 /** @type {FileType[]} */
 export const FILE_TYPES = [
   { ext: '.md', kind: 'md', icon: '≡', label: '마크다운' },
-  { ext: '.tsv', kind: 'table', icon: '⊞', label: 'TSV 표' },
+  { ext: '.tsv', kind: 'table', icon: '⊞', label: 'TSV 표', codec: 'tsv' },
+  { ext: '.csv', kind: 'table', icon: '⊟', label: 'CSV 표', codec: 'csv' },
   { ext: '.txt', kind: 'text', icon: '¶', label: '텍스트' },
   { ext: '.json', kind: 'text', icon: '{}', label: 'JSON', lang: 'json' },
 ]

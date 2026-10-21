@@ -14,7 +14,7 @@ function joinCells(r: TsvRow, width: number): string {
   return cells.join('\t')
 }
 
-/** 셀에 들어가면 TSV 로 표현할 수 없는 글자를 치운다. 바뀐 게 있으면 두 번째 값이 true */
+/** 셀에 들어가면 TSV 로 표현할 수 없는 글자를 치운다. 바뀐 게 있으면 두 번째 값이 true (CSV 는 table.ts 의 sanitizeFor) */
 export function sanitizeCell(v: string): [string, boolean] {
   if (!/[\t\r\n]/.test(v)) return [v, false]
   return [v.replace(/\r\n|\r|\n/g, ' ').replace(/\t/g, ' '), true]

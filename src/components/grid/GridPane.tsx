@@ -4,10 +4,10 @@ import { backend } from '../../lib/backend'
 import { store, useStoreVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
-import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
+import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
 import { baseName, deriveSchema } from '../../lib/tsv/schema'
-import { sanitizeCell } from '../../lib/tsv/serialize'
+import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
 import { ReadOnlyBanner } from '../ReadOnlyBanner'
@@ -233,8 +233,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   }, [table, query, findOpen, hits, findOpts, active, openFind, showNotice])
 
   const cleanReplacement = (): string => {
-    const [rep, changed] = sanitizeCell(replacement)
-    if (changed) showNotice('탭·줄바꿈은 셀에 넣을 수 없어 공백으로 바꿨습니다')
+    const [rep, changed] = sanitizeFor(table?.format, replacement)
+    if (changed) showNotice('탭·줄바꿈은 TSV 셀에 넣을 수 없어 공백으로 바꿨습니다')
     return rep
   }
 
@@ -293,6 +293,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   let schemaLabel = '스키마 없음 (타입 행 없음)'
   if (schema?.typed) schemaLabel = schema.defBlock ? `스키마: 타입 행 + ${baseName(schema.defBlock.file)}` : '스키마: 타입 행만'
+  else if (schema?.headerRows) schemaLabel = 'CSV — 첫 줄을 머리글로'
 
   return (
     <div className="pane">
@@ -355,7 +356,9 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             {table.rows.length === 0 && (
               <>
                 <span className="sep" />
-                <button onClick={() => { edit(seedTypedTable); refocus() }}>타입 행·헤더 행 만들기</button>
+                {table.format === 'csv'
+                  ? <button onClick={() => { edit((t) => seedHeaderTable(t)); refocus() }} title="첫 줄은 머리글(열 이름)">머리글 행 만들기</button>
+                  : <button onClick={() => { edit(seedTypedTable); refocus() }}>타입 행·헤더 행 만들기</button>}
               </>
             )}
             <span className="spacer" />
@@ -434,7 +437,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <span>{table.rows.length}행 × {table.width}열</span>
             <span>{active.r + 1}행 {active.c + 1}열{schema.columns[active.c]?.name ? ` · ${schema.columns[active.c].name}` : ''}</span>
             <span className={validation.count ? 'is-err' : ''}>{validation.count ? `오류 ${validation.count}` : '오류 없음'}</span>
-            <span>{table.eol === '\r\n' ? 'CRLF' : 'LF'}{table.bom ? ' · BOM' : ''}{table.trailingNewline ? '' : ' · 끝 개행 없음'}</span>
+            <span>{table.format === 'csv' ? 'CSV · ' : ''}{table.eol === '\r\n' ? 'CRLF' : 'LF'}{table.bom ? ' · BOM' : ''}{table.trailingNewline ? '' : ' · 끝 개행 없음'}</span>
             {!table.trailingNewline && (
               <button
                 className="grid-foot-btn"

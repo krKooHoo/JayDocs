@@ -5,7 +5,7 @@ import { columnLetter, type ColumnSchema, type TableSchema } from '../../lib/tsv
 import { issueKey, type Validation } from '../../lib/tsv/validate'
 import { fillDown, fillRange, fillRight, fillSeries, fillTarget, moveSpan, pasteBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
 import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
-import { sanitizeCell } from '../../lib/tsv/serialize'
+import { sanitizeFor } from '../../lib/tsv/table'
 import type { CalcCell } from '../../lib/calc/calc'
 
 /**
@@ -187,7 +187,8 @@ const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill
           <input type="checkbox" checked={/^true$/i.test(v)} readOnly tabIndex={-1} />
         </span>
       ) : (
-        v
+        // CSV 칸 안 줄바꿈은 한 줄 높이에 ↵ 로 보인다 (편집하면 그대로 나온다)
+        v.includes('\n') ? v.replace(/\r?\n/g, ' ↵ ') : v
       )}
     </div>
   )
@@ -401,8 +402,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const commitEdit = useCallback((move: Move | null, override?: string) => {
     const el = ta.current
     if (!editing || !el) return
-    const [clean, changed] = sanitizeCell(override ?? el.value)
-    if (changed) onNotice('탭·줄바꿈은 셀에 넣을 수 없어 공백으로 바꿨습니다')
+    const [clean, changed] = sanitizeFor(table.format, override ?? el.value)
+    if (changed) onNotice('탭·줄바꿈은 TSV 셀에 넣을 수 없어 공백으로 바꿨습니다')
     const { r, c } = editing
     onEdit((t) => setCell(t, r, c, clean))
     el.value = ''
@@ -410,7 +411,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     setDraft('')
     setDdActive(null)
     if (move) moveActive(move)
-  }, [editing, onEdit, onNotice, moveActive])
+  }, [editing, onEdit, onNotice, moveActive, table.format])
 
   const cancelEdit = useCallback(() => {
     const el = ta.current
@@ -552,6 +553,13 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       switch (e.key) {
         case 'Enter': {
           e.preventDefault()
+          // CSV 는 칸 안 줄바꿈을 담을 수 있다 — Excel 처럼 Alt+Enter 가 줄을 바꾼다
+          if (e.altKey && table.format === 'csv') {
+            const el = e.currentTarget
+            el.setRangeText('\n', el.selectionStart, el.selectionEnd, 'end')
+            setDraft(el.value)
+            return
+          }
           const pick = ddItems && ddActive !== null ? ddItems[ddActive] : undefined
           commitEdit(e.shiftKey ? 'up' : 'down', pick !== undefined ? applyItem(pick) : undefined)
           return

@@ -1,6 +1,6 @@
 # JayDocs 폴더 가져오기 · 형식 확장(txt·json·csv) — 개발 계획
 
-작성 2026-10-21 · 상태 **Phase A·B 완료(2026-10-21), C(CSV) 다음** · 확정되면 DESIGN §18 로 옮긴다.
+작성 2026-10-21 · 상태 **Phase A·B·C 완료(2026-10-21), D(마무리) 다음** · 확정되면 DESIGN §18 로 옮긴다.
 
 ---
 
@@ -185,6 +185,15 @@ export const FILE_TYPES = [
 ### Phase C — CSV (1–1.5일)
 
 - F8: `lib/table/csv.ts` 파서·직렬화 + 픽스처 왕복 테스트, 스토어 codec, 그리드의 `↵` 표시와 Alt+Enter, tsv-view 의 csv 허용.
+- ✅ **완료 메모 (2026-10-21)**
+  - 계획과 달라진 점: 스토어의 `Doc.kind` 를 `table` 로 바꾸지 않았다. 대신 `TsvTable.format?: 'csv'` 를 두고, 읽기·쓰기는 `lib/tsv/table.ts`(`parseTable(text, path)` · `serializeTable` · `tableOpenWarnings` · `sanitizeFor`) 한 곳을 거친다. 형식 표에 `codec`.
+  - `lib/tsv/csv.ts`: 문자 단위 상태 기계(RFC 4180). 레코드마다 원문(raw)과 `quoted[]`(따옴표 칸 = 원래 칸 수). EOL 은 **레코드 끝만** 센다(Excel 은 칸 안 줄바꿈이 LF, 레코드 끝이 CRLF). 안 닫힌 따옴표·닫는 따옴표 뒤 찌꺼기는 너그럽게 읽고 `malformedCells` 로 경고.
+  - `setCells` 가 행의 `quoted` 를 넘겨준다(고친 레코드도 원래 모양 유지). 열 삽입·삭제·이동은 버린다(어차피 전체 행이 다시 쓰인다).
+  - **추가 결정**: 타입 행 없는 CSV 는 첫 줄을 머리글로 본다(`headerRows: 1`, 열 이름) — 그리드 고정 · tsv-view 의 `columns`/`where` 가 열 이름을 쓴다. TSV 는 그대로 0. 빈 CSV 는 "머리글 행 만들기"(머리글 + 빈 행, 3열).
+  - 클립보드: Sheets·Excel 관행대로 **줄바꿈·탭이 든 칸만** 따옴표로 감싸 주고받는다. 그 밖의 `"` 는 지금처럼 글자 그대로. TSV 그리드에 Sheets 의 여러 줄 칸을 붙이면 예전엔 행이 쪼개졌는데 이제 한 칸(공백으로)으로 들어간다.
+  - bake 는 칸 안 줄바꿈을 `<br>`, `tablePrefix` 가 `.csv` 도 뗀다.
+  - 확인: vitest 153개(CSV 21개 · 클립보드 3개 추가), 브라우저에서 Excel 식 CSV 열기(쉼표 칸·`↵`·`CSV · CRLF · BOM`), 칸 고치기 + `Alt+Enter` 저장 → 그 레코드만 바뀜, CP949 CSV → BOM 붙은 UTF-8 변환, tsv-view·bake(`<br>`), 머리글 고정, 여러 줄 칸 붙여넣기·복사(합성 클립보드 이벤트). TESTCASES 13절(TC-1301~1312).
+  - 확인 못 한 것: 실제 Excel 과의 복사·붙여넣기와 Excel 에서 열어 보기(TC-1304·1305·1307).
 - **검증** Excel 에서 "CSV UTF-8" 로 저장한 파일을 열고 바로 저장 → 바이트 동일. 칸 하나 고쳐 저장 → 그 레코드만 바뀌고 Excel 에서 한글이 정상. 따옴표 안 쉼표·줄바꿈 칸이 한 칸으로 보이고 보존. Excel 의 "CSV(쉼표로 분리)"(CP949) 는 읽기 전용 → 변환 저장 뒤 BOM 붙은 UTF-8 로 Excel 에서 정상. Sheets 에서 복사한 범위 붙여넣기.
 
 ### Phase D — 마무리 (0.5일)

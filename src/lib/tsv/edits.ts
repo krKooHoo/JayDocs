@@ -51,7 +51,9 @@ export function setCells(t: TsvTable, edits: readonly CellEdit[]): TsvTable {
   const rows = [...t.rows]
   for (const [r, e] of dirtyRows) {
     while (rows.length < r) rows.push(emptyRow(t.width))
-    rows[r] = { raw: null, cells: e.cells }
+    // CSV 의 따옴표 칸 정보(원래 칸 수 포함)는 셀을 고쳐도 남긴다 — 다시 쓸 때 모양을 지키려고
+    const quoted = t.rows[r]?.quoted
+    rows[r] = quoted ? { raw: null, cells: e.cells, quoted } : { raw: null, cells: e.cells }
   }
   return withRows(t, rows)
 }
@@ -155,6 +157,13 @@ export function seedTypedTable(t: TsvTable): TsvTable {
   const typeRow: TsvRow = { raw: null, cells: ['#string', ...new Array<string>(width - 1).fill('string')] }
   const headRow: TsvRow = { raw: null, cells: ['Key', ...new Array<string>(width - 1).fill('')] }
   return withRows(t, [typeRow, headRow, emptyRow(width)], width)
+}
+
+/** 빈 CSV 시작: 머리글 행 + 빈 행 하나 (CSV 는 첫 줄이 머리글) */
+export function seedHeaderTable(t: TsvTable, width = 3): TsvTable {
+  if (t.rows.length > 0) return t
+  const w = Math.max(t.width, width)
+  return withRows(t, [emptyRow(w), emptyRow(w)], w)
 }
 
 /** 붙여넣기: 블록을 (r, c) 에 놓는다. 열이 넘치면 잘라 내고 잘린 열 수를 알린다 */
