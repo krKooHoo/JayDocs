@@ -75,7 +75,27 @@ npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포�
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** 를 Jay 가 돌려 ❌/⚠ 가 나온 것부터 고친다. 특히 자동으로 시험하지 못한 TC-1203(폴더 고르기 창) · 1214(탐색기에서 보기) · 1304/1305/1307(실제 Excel 과 주고받기). 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** — 2026-10-25 Jay 기억(✅ 37개)과 Claude 자동 실행(내장 브라우저, SagaDocs 임시 복사본)으로 전부 채웠다: ✅ 111 · ◐ 18 · ⚠ 12 · ❌ 11 · ⏭ 4. ◐ 는 실제 한글 IME·Excel·OS 창처럼 자동화가 못 보는 부분이 남은 것 — Jay 가 손으로 볼 것은 TC-201/211/302/605(IME), 1304/1305/1307(Excel), 003/004(앱 창). **아래 ❌ 부터 고친다.** 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+
+TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재현은 TESTCASES 결과 칸):
+- ❌ **열 삭제 크래시 + 미저장 편집 소실**(TC-307·408) — 열 수가 준 첫 렌더에 `widths` 가 옛 길이라 `columnTitle(schema.columns[c])` 가 undefined 로 터진다(`Grid.tsx:273` effect 동기화, `:864`). 오류 경계에서 GridPane 이 언마운트되며 `store.release` 가 문서를 내려 Retry 하면 저장 안 한 편집이 사라진다(`documents.ts:149`). Jay 기억엔 ✅ 였다.
+- ❌ **재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음**(TC-105·412·1211 탭) — start.cmd·jaydocs 는 `--port 0` 이라 실행마다 오리진이 바뀌고 localStorage 는 오리진별이다(`server.mjs:1068`). 루트 경로로 정한 고정 포트, 또는 UI 상태를 사이드카에 저장하는 쪽으로.
+- ❌ **Alt+W·팔레트 "탭 닫기" 가 저장 확인 없이 닫음**(TC-904) — `closeActive` 가 `model.doAction(deleteTab)` 를 직접 불러 Layout `onAction` 의 dirty 확인을 건너뛴다(`Workbench.tsx:218`, 확인은 `:351`).
+- ❌ **TSV 그리드에 Sheets 두 줄 칸을 붙이면 칸에 LF 가 남음**(TC-1310) — `onPaste` 가 `sanitizeFor` 없이 `pasteBlock` 에 넘긴다(`Grid.tsx:715`). 저장하면 TSV 가 깨진다.
+- ❌ **tsv-view `where` 가 한글 열 이름을 못 읽음**(TC-1308, 1309 의 원인) — 토크나이저 id 정규식이 ASCII(`tsvView.ts:131`). bake 는 where 오류 때 걸러지지 않은 표를 그대로 쓴다(`bake.ts:126`).
+- ❌ **tsv-view 셀에서 Ctrl+Enter 가 그리드로 안 감**(TC-606) — `case 'Enter'` 가 Ctrl 을 가리지 않아 `:224` 분기에 못 간다(`PreviewPane.tsx:210`).
+- ❌ **하이브리드에서 블록이 여럿 보이면 ↑ 가 멀리 점프**(TC-210) — `.cm-hybrid-block { margin: 4px 0 }` 를 CM 높이 맵이 세지 않는다(`hybrid.ts:269`). margin 을 없애고 안쪽 여백으로.
+- ❌ **JSON 정렬(버튼·팔레트) 직후 Ctrl+Z 가 숨은 다른 탭을 되돌림**(TC-1108) — `formatActive`·팔레트 `onPick` 이 편집기에 포커스를 돌려주지 않는다(`MarkdownPane.tsx:66`, `App.tsx:335`). 팔레트 명령 전반(TC-801·811 도 포커스가 body).
+- ❌ **찾을 수 없는 가져온 폴더가 두 번째 재시작에 설정에서 사라짐**(TC-1212) — 시작 루프가 성공할 때만 `saveConfig()` 해서 뒤쪽 missing 이 빠진다(`server.mjs:592, 611`). Jay 기억엔 ✅ 였다.
+- ❌(TC 밖) **Ctrl+Alt+N 이 트리에서 고른 폴더를 안 따름** — `lastDir` 가 ＋파일/＋폴더에서만 갱신(`App.tsx:64`).
+- ⚠ git 패널 기록 칸 [전체] 가 영영 "읽는 중…"(`GitPane.tsx:40` `if (!logPath)` 가 '' 를 거름), [현재 문서]·트리 강조가 탭 전환을 늦게 따름(`Workbench.tsx:318`)(TC-706).
+- ⚠ Windows 에서 새로 생긴 파일이 트리에 안 나타남 — 감시 디바운스가 마지막 `change` 만 보내고 트리는 `rename` 에만 다시 읽는다(`server.mjs:504`, `App.tsx:125`)(TC-509, 셸로 만든 파일도).
+- ⚠ 그 밖: 트리 F2·Delete 뒤 커서 사라짐(TC-807), 미리보기의 없는 그림 안내(TC-215), 모두 바꾸기 직후 Ctrl+Z(TC-410), 열 이동 되돌리기 때 너비(TC-411), 하이브리드의 baked 표 중복(TC-613), CP949 그리드 입력이 Enter 때야 거절(TC-1105), 읽기 전용 폴더의 F2·Delete·＋파일이 대화상자 뒤 403(TC-1206), 오른쪽 클릭 메뉴 잘림(TC-1207). 문서: SHORTCUTS 의 Ctrl+Shift+V 설명에 하이브리드 없음.
+
+새 기능(2026-10-25 Jay 요청, 아직 안 함):
+- **마크다운 표 → TSV 붙여넣기 자동 확장** — md 의 파이프 표(`| a | b |` + `|---|` 구분 줄)를 복사해 그리드에 붙이면 칸으로 풀어 넣고, 모자라는 헤더·열·행을 늘린다. 지금은 `parseClipboardTsv`(`lib/tsv/clipboard.ts`)가 탭이 없는 줄을 통째로 한 칸으로 읽고, `pasteBlock`(`lib/tsv/edits.ts`)은 행은 늘리지만 **표 너비를 넘는 열은 잘라 낸다**.
+  - 할 것: ① 클립보드가 파이프 표인지 감지해 칸으로 나누기(구분 줄 빼기, `\|` 풀기, 앞뒤 공백 정리) ② 넘치는 열은 잘라 내지 말고 열 추가 ③ md 머리글 줄은 TSV 헤더 행(타입 행이 있으면 2행, CSV 는 1행)으로 — 새로 늘린 열의 헤더 이름을 거기서 가져오고, 데이터 행에 붙일 때 머리글을 어떻게 할지 정한다.
+  - 같이 볼 것: 미리보기에서 복사한 표(브라우저가 text/plain 을 탭 구분으로 준다)도 같은 결과인지, 열 추가가 타입 행·`_Field` 스키마와 어떻게 맞물리는지, 단축키 표·팔레트 명령이 필요한지.
 
 폴더 가져오기 쪽 후보(PLAN-folder-import §4, 써 보고 필요하면): **전체 검색**(`Ctrl+Alt+F`, 권고했지만 아직 안 함) · 첫 저장 전 백업 · 주 폴더로 복사 · 트리 이름 필터 · `.yaml`/`.mmd` · 세미콜론 CSV · 가져온 폴더 git.
 
