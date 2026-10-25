@@ -11,6 +11,7 @@ import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
 import { ReadOnlyBanner } from '../ReadOnlyBanner'
+import { PaneErrorBoundary } from '../PaneErrorBoundary'
 import { inRootOf } from '../../lib/roots.mjs'
 
 const NO_HITS: FindHit[] = []
@@ -412,27 +413,29 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
               <button onClick={closeFind} title="닫기 (Esc)">닫기</button>
             </div>
           )}
-          <Grid
-            ref={grid}
-            table={table}
-            schema={schema}
-            validation={validation}
-            active={active}
-            onActiveChange={setActive}
-            onEdit={edit}
-            onUndo={undo}
-            onRedo={redo}
-            onNotice={showNotice}
-            onRowOp={rowOp}
-            onColOp={colOp}
-            onMoveColumns={moveCols}
-            onFind={openFind}
-            onFindStep={findStep}
-            matches={hitKeys}
-            calcCells={calcResult?.cells ?? NO_CALC}
-            onCalc={runCalc}
-            widthsKey={`jaydocs.colw:${path}`}
-          />
+          <PaneErrorBoundary>
+            <Grid
+              ref={grid}
+              table={table}
+              schema={schema}
+              validation={validation}
+              active={active}
+              onActiveChange={setActive}
+              onEdit={edit}
+              onUndo={undo}
+              onRedo={redo}
+              onNotice={showNotice}
+              onRowOp={rowOp}
+              onColOp={colOp}
+              onMoveColumns={moveCols}
+              onFind={openFind}
+              onFindStep={findStep}
+              matches={hitKeys}
+              calcCells={calcResult?.cells ?? NO_CALC}
+              onCalc={runCalc}
+              widthsKey={`jaydocs.colw:${path}`}
+            />
+          </PaneErrorBoundary>
           <div className="grid-foot">
             <span>{table.rows.length}행 × {table.width}열</span>
             <span>{active.r + 1}행 {active.c + 1}열{schema.columns[active.c]?.name ? ` · ${schema.columns[active.c].name}` : ''}</span>

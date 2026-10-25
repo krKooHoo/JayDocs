@@ -215,10 +215,21 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     paneAction((tab.getConfig()?.path as string) ?? '', 'focus')
   }, [model, activeTabSet])
 
+  /** 같은 문서를 보는 마지막 탭을 닫을 때만 저장 여부를 묻는다. 닫아도 되면 true */
+  const confirmCloseTab = useCallback((id: string): boolean => {
+    const node = model.getNodeById(id) as TabNode | undefined
+    const comp = node?.getComponent() ?? ''
+    const path = node?.getConfig()?.path as string | undefined
+    if (!path || !DOC_COMPONENTS.has(comp) || !store.isDirty(path)) return true
+    const others = findTabs(model, (cfg, c) => DOC_COMPONENTS.has(c) && cfg.path === path).length
+    return others > 1 || window.confirm(`"${path}" 에 저장하지 않은 변경이 있습니다. 버리고 닫을까요?`)
+  }, [model])
+
   const closeActive = useCallback(() => {
     const tab = activeTab()
-    if (tab) model.doAction(Actions.deleteTab(tab.getId()))
-  }, [model, activeTab])
+    // model.doAction 은 Layout 의 onAction 을 거치지 않으므로 저장 확인을 여기서 한다 (TC-904)
+    if (tab && confirmCloseTab(tab.getId())) model.doAction(Actions.deleteTab(tab.getId()))
+  }, [model, activeTab, confirmCloseTab])
 
   /** 패널을 접거나 편다. show=true 면 펴기만. 이미 열려 있었으면 true */
   const toggleBorder = useCallback((component: string, show = false): boolean => {
@@ -347,17 +358,9 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     }
   }
 
-  // 같은 문서를 보는 마지막 탭을 닫을 때만 저장 여부를 묻는다.
+  // 탭의 × (Layout 이 내는 동작)
   const onAction = (action: Action): Action | undefined => {
-    if (action.type === Actions.DELETE_TAB) {
-      const node = model.getNodeById(action.data.node as string) as TabNode | undefined
-      const comp = node?.getComponent() ?? ''
-      const path = node?.getConfig()?.path as string | undefined
-      if (path && DOC_COMPONENTS.has(comp) && store.isDirty(path)) {
-        const others = findTabs(model, (cfg, c) => DOC_COMPONENTS.has(c) && cfg.path === path).length
-        if (others === 1 && !window.confirm(`"${path}" 에 저장하지 않은 변경이 있습니다. 버리고 닫을까요?`)) return undefined
-      }
-    }
+    if (action.type === Actions.DELETE_TAB && !confirmCloseTab(action.data.node as string)) return undefined
     return action
   }
 

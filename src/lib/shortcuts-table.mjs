@@ -99,7 +99,7 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+Space', label: '열 전체 선택' },
       { keys: '행 번호 / 열 글자 클릭', label: '행 / 열 선택 (Shift 로 넓히기), 왼쪽 위 모서리는 전체' },
       { keys: '열 글자 드래그', label: '열 옮기기 — 놓을 자리에 세로선. 고른 여러 열 안에서 끌면 함께 옮긴다 (확인을 묻는다)' },
-      { keys: 'Ctrl+C / Ctrl+X / Ctrl+V', label: '복사 / 잘라내기 / 붙여넣기 — 범위는 TSV 블록으로, Sheets·Excel 과 호환. 한 셀을 복사해 범위에 붙이면 범위가 그 값으로 채워진다' },
+      { keys: 'Ctrl+C / Ctrl+X / Ctrl+V', label: '복사 / 잘라내기 / 붙여넣기 — 범위는 TSV 블록으로, Sheets·Excel 과 호환. 한 셀을 복사해 범위에 붙이면 범위가 그 값으로 채워진다. 마크다운 표·미리보기 표를 붙이면 머리글은 머리글 행으로, 모자라는 열·행은 늘린다' },
       { keys: 'Delete / Backspace', label: '선택한 셀 비우기' },
       { keys: 'Ctrl+D', label: '아래로 채우기 (범위의 첫 행을 아래로, 한 행이면 위 행에서)' },
       { keys: 'Ctrl+R', label: '오른쪽으로 채우기' },

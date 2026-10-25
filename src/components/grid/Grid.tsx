@@ -3,8 +3,9 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayou
 import { cellAt, type TsvRow, type TsvTable } from '../../lib/tsv/model'
 import { columnLetter, type ColumnSchema, type TableSchema } from '../../lib/tsv/schema'
 import { issueKey, type Validation } from '../../lib/tsv/validate'
-import { fillDown, fillRange, fillRight, fillSeries, fillTarget, moveSpan, pasteBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
+import { fillDown, fillRange, fillRight, fillSeries, fillTarget, moveSpan, pasteBlock, pasteHeadedBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
 import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
+import { parseHtmlTable, parseMarkdownTable } from '../../lib/tsv/mdTable'
 import { sanitizeFor } from '../../lib/tsv/table'
 import type { CalcCell } from '../../lib/calc/calc'
 
@@ -269,11 +270,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   }, [anchor, active, maxR, maxC])
   const multi = range.r1 !== range.r2 || range.c1 !== range.c2
 
-  // ---- 열 너비
-  const [widths, setWidths] = useState<number[]>(() => loadWidths(p.widthsKey, table.width) ?? estimateWidths(table))
+  // ---- 열 너비. 열 수가 바뀐 그 렌더에서 바로 길이를 맞춘다 — effect 로 한 박자 늦추면
+  // 열 삭제 직후 옛 너비 배열이 없는 열(schema.columns[c] = undefined)을 그리려다 터진다 (TC-307)
+  const [savedWidths, setWidths] = useState<number[]>(() => loadWidths(p.widthsKey, table.width) ?? estimateWidths(table))
+  const widths = useMemo(
+    () => (savedWidths.length === table.width ? savedWidths : loadWidths(p.widthsKey, table.width) ?? estimateWidths(table)),
+    [savedWidths, table, p.widthsKey],
+  )
   useEffect(() => {
-    if (widths.length !== table.width) setWidths(loadWidths(p.widthsKey, table.width) ?? estimateWidths(table))
-  }, [table, widths.length, p.widthsKey])
+    if (widths !== savedWidths) setWidths(widths)
+  }, [widths, savedWidths])
   const offsets = useMemo(() => {
     const out: number[] = []
     let x = 0
@@ -710,15 +716,50 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const onPaste = (e: React.ClipboardEvent) => {
     if (editing) return
     const text = e.clipboardData.getData('text/plain')
+    const html = e.clipboardData.getData('text/html')
     e.preventDefault()
+    // 칸 값은 형식 규칙대로 다듬는다 — TSV 칸엔 탭·줄바꿈을 넣을 수 없다 (편집 확정과 같은 규칙, TC-1310)
+    let cleaned = false
+    const clean = (v: string) => {
+      const [s, changed] = sanitizeFor(table.format, v)
+      if (changed) cleaned = true
+      return s
+    }
+    const cleanNote = () => (cleaned ? ['탭·줄바꿈은 공백으로 바꿈'] : [])
+
+    // 마크다운 표·<th> 머리글 HTML 표: 머리글은 머리글 행으로, 모자라는 열·행은 늘린다 (DESIGN §19)
+    const headed = parseMarkdownTable(text) ?? parseHtmlTable(html)
+    if (headed) {
+      const b = { header: headed.header.map(clean), rows: headed.rows.map((l) => l.map(clean)) }
+      const r = range.r1
+      const c = range.c1
+      const opts = { headerRow: schema.headerRows - 1, typeRow: schema.typed ? 0 : -1, expand: true }
+      const w = Math.max(b.header.length, ...b.rows.map((l) => l.length))
+      const more = c + w - table.width
+      // 열 삽입과 같은 확인 — 취소하면 넘치는 열은 예전처럼 잘라 낸다
+      if (more > 0 && table.rows.length > 0) {
+        opts.expand = window.confirm(`붙일 표가 ${more}열 더 넓습니다. 열을 늘리면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 늘릴까요?\n(취소하면 넘치는 열은 잘라 냅니다)`)
+      }
+      const preview = pasteHeadedBlock(table, r, c, b, opts)
+      onEdit((t) => pasteHeadedBlock(t, r, c, b, opts).table)
+      const notes = [`표 붙여넣음: 머리글 + ${b.rows.length}행 × ${w}열`]
+      if (preview.addedCols) notes.push(`열 ${preview.addedCols}개 추가`)
+      if (preview.addedRows) notes.push(`행 ${preview.addedRows}개 추가`)
+      if (preview.clippedCols) notes.push(`열 ${preview.clippedCols}개는 표 너비를 넘어 잘림`)
+      onNotice([...notes, ...cleanNote()].join(' · '))
+      setAnchor({ r: preview.range.r1, c: preview.range.c1 })
+      onActiveChange({ r: preview.range.r2, c: preview.range.c2 })
+      return
+    }
+
     if (text === '') return
-    const block = parseClipboardTsv(text)
+    const block = parseClipboardTsv(text).map((l) => l.map(clean))
     const g = range
     // 한 셀을 복사해 범위에 붙이면 범위를 그 값으로 채운다 (Sheets 와 같다)
     if (block.length === 1 && block[0].length === 1 && multi) {
       const v = block[0][0]
       onEdit((t) => fillRange(t, g, v))
-      onNotice(`${g.r2 - g.r1 + 1}×${g.c2 - g.c1 + 1} 범위를 "${v}" 로 채움`)
+      onNotice([`${g.r2 - g.r1 + 1}×${g.c2 - g.c1 + 1} 범위를 "${v}" 로 채움`, ...cleanNote()].join(' · '))
       return
     }
     const r = g.r1
@@ -729,7 +770,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     const notes = [`${block.length}×${cols} 붙여넣음`]
     if (preview.addedRows) notes.push(`행 ${preview.addedRows}개 추가`)
     if (preview.clippedCols) notes.push(`열 ${preview.clippedCols}개는 표 너비를 넘어 잘림`)
-    onNotice(notes.join(' · '))
+    onNotice([...notes, ...cleanNote()].join(' · '))
     // 붙인 블록을 선택 상태로
     setAnchor({ r, c })
     onActiveChange({ r: Math.min(r + block.length - 1, Math.max(maxR, r + block.length - 1)), c: Math.min(maxC, c + cols - 1) })

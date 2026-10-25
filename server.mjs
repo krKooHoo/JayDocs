@@ -3,9 +3,10 @@
  * JayDocs 사이드카.
  * 정적 파일(dist/) 서빙 + 파일 API + git API(PATH 의 git) + 파일 변경 알림(SSE). 런타임 의존성 없음 (Node 22+).
  *
- *   node server.mjs --root <문서 폴더> [--port 0] [--open] [--dev] [--token <값>] [--keep] [--ignore a,b] [--mount <폴더>]… [--config <파일>]
+ *   node server.mjs --root <문서 폴더> [--port N] [--open] [--dev] [--token <값>] [--keep] [--ignore a,b] [--mount <폴더>]… [--config <파일>]
  *   (아무 폴더에서 한 단어로 쓰려면 bin/jaydocs.mjs — `npm link` 뒤 `jaydocs [폴더]`)
  *
+ * --port   기본은 문서 폴더 경로로 정한 고정 포트(43000~44999, 쓰이고 있으면 아무 포트). 0 이면 아무 포트.
  * --open   기본 브라우저(Edge/Chrome 앱 모드)로 연다. 창이 닫히면 서버도 종료된다.
  * --dev    Vite 개발 서버(localhost:5173)의 프록시 요청을 허용하고 자동 종료를 끈다.
  * --token  고정 토큰(개발용). 기본은 시작할 때마다 난수.
@@ -1065,7 +1066,26 @@ function openBrowser(url) {
   child.unref()
 }
 
-server.listen(Number(args.port ?? 0), '127.0.0.1', () => {
+/**
+ * --port 를 안 주면 문서 폴더 경로로 정한 고정 포트(43000~44999)를 먼저 쓴다. 브라우저 저장소(레이아웃·열 너비·
+ * md 보기 모드·테마)는 오리진(포트 포함)별이라 실행마다 포트가 바뀌면 다시 열 때마다 처음 상태가 된다 (TC-105).
+ * 그 포트를 이미 누가 쓰고 있으면(같은 폴더를 또 열었거나 다른 프로그램) 아무 포트나 쓴다.
+ */
+function stablePort(root) {
+  const h = crypto.createHash('sha1').update(WIN ? root.toLowerCase() : root).digest()
+  return 43000 + (h.readUInt16BE(0) % 2000)
+}
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE' && args.port === undefined && !server.listening) {
+    console.log(`포트 ${stablePort(ROOT_REAL)} 을 쓰고 있어 다른 포트로 엽니다 (이 창의 레이아웃·열 너비는 따로 기억됩니다).`)
+    server.listen(0, '127.0.0.1')
+    return
+  }
+  throw e
+})
+
+server.once('listening', () => {
   PORT = server.address().port
   const url = `http://127.0.0.1:${PORT}/#token=${TOKEN}`
   const mounts = [...MOUNTS.values()].map((m) => `\n  가져온 폴더: @${m.alias} = ${m.abs}${m.readOnly ? ' (읽기 전용)' : ''}`).join('')
@@ -1077,3 +1097,5 @@ server.listen(Number(args.port ?? 0), '127.0.0.1', () => {
     }, 60_000)
   }
 })
+
+server.listen(args.port !== undefined ? Number(args.port) : stablePort(ROOT_REAL), '127.0.0.1')

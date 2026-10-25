@@ -189,6 +189,81 @@ export function pasteBlock(
   return { table: setCells(t, edits), clippedCols, addedRows }
 }
 
+export interface HeadedPaste {
+  table: TsvTable
+  /** 늘린 열 수 (끝에 붙인다) */
+  addedCols: number
+  addedRows: number
+  /** expand=false 라 잘라 낸 열 수 */
+  clippedCols: number
+  /** 값이 들어간 범위 (붙인 뒤 선택용) */
+  range: CellRange
+}
+
+/**
+ * 머리글이 있는 표(마크다운 표·`<th>` HTML 표)를 (r, c) 에 붙인다. 되돌리기 한 번에 들어가도록 표 하나로 돌려준다.
+ * - `headerRow`: 표의 머리글 행 번호 (타입 행 TSV 1, CSV 0). 없으면 -1. `typeRow`: 타입 행 번호 또는 -1
+ * - 활성 행이 머리글 행이거나 그 위면 머리글은 머리글 행에, 데이터는 그 아래부터 (표를 통째로 바꿔 넣기).
+ *   본문이면 데이터는 r 부터, 머리글은 대상 열의 머리글 칸이 비어 있을 때만 채운다 (있는 열 이름은 지킨다).
+ *   머리글 행이 없는 표나 빈 표는 머리글도 한 행으로 r 부터 넣는다.
+ * - 열이 모자라면 `expand` 일 때 끝에 열을 늘린다 (타입 행이 있으면 새 열 타입은 string). 아니면 잘라 낸다.
+ * - 값은 이미 형식에 맞게 다듬어져 있어야 한다 (sanitizeFor)
+ */
+export function pasteHeadedBlock(
+  t: TsvTable,
+  r: number,
+  c: number,
+  b: { header: readonly string[]; rows: readonly (readonly string[])[] },
+  opts: { headerRow: number; typeRow: number; expand: boolean },
+): HeadedPaste {
+  const w = Math.max(b.header.length, ...b.rows.map((row) => row.length))
+  const need = c + w
+  let table = t
+  let addedCols = 0
+  if (need > t.width && opts.expand) {
+    addedCols = need - t.width
+    table = insertColumns(table, t.width, addedCols)
+    const typeRow = opts.typeRow >= 0 ? table.rows[opts.typeRow] : undefined
+    if (typeRow) table = setCells(table, Array.from({ length: addedCols }, (_, i) => ({ r: opts.typeRow, c: t.width + i, v: 'string' })))
+  }
+  const clippedCols = Math.max(0, need - table.width)
+
+  const hasHeader = opts.headerRow >= 0 && t.rows.length > opts.headerRow
+  const edits: CellEdit[] = []
+  const put = (rr: number, line: readonly string[], onlyEmpty = false) => {
+    for (let j = 0; j < line.length; j++) {
+      if (onlyEmpty && cellAt(table, rr, c + j) !== '') continue
+      edits.push({ r: rr, c: c + j, v: line[j] })
+    }
+  }
+  let top: number
+  let bottom: number
+  if (hasHeader && r <= opts.headerRow) {
+    put(opts.headerRow, b.header)
+    b.rows.forEach((line, i) => put(opts.headerRow + 1 + i, line))
+    top = opts.headerRow
+    bottom = opts.headerRow + b.rows.length
+  } else if (hasHeader) {
+    put(opts.headerRow, b.header, true)
+    b.rows.forEach((line, i) => put(r + i, line))
+    top = r
+    bottom = r + Math.max(0, b.rows.length - 1)
+  } else {
+    put(r, b.header)
+    b.rows.forEach((line, i) => put(r + 1 + i, line))
+    top = r
+    bottom = r + b.rows.length
+  }
+  table = setCells(table, edits)
+  return {
+    table,
+    addedCols,
+    addedRows: Math.max(0, table.rows.length - t.rows.length),
+    clippedCols,
+    range: { r1: top, c1: c, r2: bottom, c2: Math.min(table.width, need) - 1 },
+  }
+}
+
 /** 범위의 셀 값들 (클립보드 블록용) */
 export function rangeBlock(t: TsvTable, g: CellRange): string[][] {
   const out: string[][] = []

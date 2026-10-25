@@ -1,4 +1,4 @@
-# JayDocs 인수인계 (2026-10-21, 폴더 가져오기·형식 확장 완료 시점)
+# JayDocs 인수인계 (2026-10-25, TC 전체 실행 · 데이터 손실 버그 수정 · 마크다운 표 붙여넣기 시점)
 
 다른 PC의 **새 세션**에 아래 프롬프트를 그대로 붙여 넣으면 된다. 이 문서 자체가 그 세션이 처음 읽을 문서다.
 
@@ -30,12 +30,13 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
     - UTF-8 이 아닌 파일(CP949)은 읽기 전용 + "UTF-8 로 바꿔 저장"(CSV 는 BOM). 바이너리·5 MB 초과는 열지 않는다.
     - 폴더 가져오기(`Ctrl+Shift+O`) — 다른 폴더를 원래 자리에서 `@별칭/…` 로 연다. 읽기 전용 옵션, 해제·최근 폴더, `~/.jaydocs/workspaces.json` 에 주 폴더별로 남음, `--mount`. git 은 주 폴더만.
     - CSV — 같은 그리드, RFC 4180 왕복 보존(`lib/tsv/csv.ts`, `table.ts`), `Alt+Enter` 칸 안 줄바꿈, 타입 행 없으면 첫 줄 머리글.
+  - **2026-10-25 (DESIGN §19)**: TC 156개를 Jay 기억 + Claude 자동 실행으로 채움(TESTCASES). 데이터를 잃는 ❌ 4건 수정 — 열 삭제 크래시(+ `PaneErrorBoundary`), Alt+W·팔레트 탭 닫기 저장 확인, 붙여넣기 칸 줄바꿈 정리, **폴더별 고정 포트**(재시작해도 레이아웃·열 너비·테마 유지). 새 기능 **마크다운 표 붙여넣기**(`lib/tsv/mdTable.ts` — md 파이프 표·`<th>` HTML 표 → 머리글은 머리글 행, 모자라는 열·행 늘림).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
-- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`) 까지 커밋됨. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
+- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`), TC 결과 기록(`786e4b2`) 까지 커밋됨. 그 뒤의 버그 수정·마크다운 표 붙여넣기는 커밋 전일 수 있다. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
-1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계).
+1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계), **§19 마크다운 표 붙여넣기 · TC 뒤 수정**(결정 T1~T5).
 2. `README.md` — 실행·개발 명령, 소스 구조, 사용법(그리드 · tsv-view · git).
 3. `REPORT-unity-importer-saga.md` — **"먼저 알아야 할 것 (요약)" 네 줄만.** 나머지는 참고용(게임 쪽 임포터 사정). JayDocs 계약과 무관하다.
 4. `SagaDocs/README.md`, `SagaDocs/00-Overview/용어집.md` — 실제 데이터와 규칙.
@@ -46,7 +47,7 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
 git pull
 npm install          # node_modules 와 dist 는 커밋하지 않는다
 npm run build        # dist/ 생성
-npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
+npm test             # 165개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
 ```
 
 - **가져오기 기능을 시험할 때는 `--config <임시 파일>` 을 꼭 준다.** 안 주면 사용자 홈의 `~/.jaydocs/workspaces.json`(Jay 가 실제로 쓰는 목록)을 고친다. 예: `node server.mjs --root <시험 폴더> --port 5198 --token dev --dev --config <scratch>/ws.json`.
@@ -75,13 +76,10 @@ npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포�
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** — 2026-10-25 Jay 기억(✅ 37개)과 Claude 자동 실행(내장 브라우저, SagaDocs 임시 복사본)으로 전부 채웠다: ✅ 111 · ◐ 18 · ⚠ 12 · ❌ 11 · ⏭ 4. ◐ 는 실제 한글 IME·Excel·OS 창처럼 자동화가 못 보는 부분이 남은 것 — Jay 가 손으로 볼 것은 TC-201/211/302/605(IME), 1304/1305/1307(Excel), 003/004(앱 창). **아래 ❌ 부터 고친다.** 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
+Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** — 2026-10-25 Jay 기억(✅ 37개)과 Claude 자동 실행(내장 브라우저, SagaDocs 임시 복사본)으로 전부 채웠다: ✅ 111 · ◐ 18 · ⚠ 12 · ❌ 11 · ⏭ 4. ◐ 는 실제 한글 IME·Excel·OS 창처럼 자동화가 못 보는 부분이 남은 것 — Jay 가 손으로 볼 것은 TC-201/211/302/605(IME), 1304/1305/1307(Excel), 003/004(앱 창). 데이터를 잃는 ❌ 4건은 같은 날 고쳤다(아래 ✅, DESIGN §19.2). **남은 ❌ 부터 고친다.** 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 
 TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재현은 TESTCASES 결과 칸):
-- ❌ **열 삭제 크래시 + 미저장 편집 소실**(TC-307·408) — 열 수가 준 첫 렌더에 `widths` 가 옛 길이라 `columnTitle(schema.columns[c])` 가 undefined 로 터진다(`Grid.tsx:273` effect 동기화, `:864`). 오류 경계에서 GridPane 이 언마운트되며 `store.release` 가 문서를 내려 Retry 하면 저장 안 한 편집이 사라진다(`documents.ts:149`). Jay 기억엔 ✅ 였다.
-- ❌ **재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음**(TC-105·412·1211 탭) — start.cmd·jaydocs 는 `--port 0` 이라 실행마다 오리진이 바뀌고 localStorage 는 오리진별이다(`server.mjs:1068`). 루트 경로로 정한 고정 포트, 또는 UI 상태를 사이드카에 저장하는 쪽으로.
-- ❌ **Alt+W·팔레트 "탭 닫기" 가 저장 확인 없이 닫음**(TC-904) — `closeActive` 가 `model.doAction(deleteTab)` 를 직접 불러 Layout `onAction` 의 dirty 확인을 건너뛴다(`Workbench.tsx:218`, 확인은 `:351`).
-- ❌ **TSV 그리드에 Sheets 두 줄 칸을 붙이면 칸에 LF 가 남음**(TC-1310) — `onPaste` 가 `sanitizeFor` 없이 `pasteBlock` 에 넘긴다(`Grid.tsx:715`). 저장하면 TSV 가 깨진다.
+- ✅ 고침(2026-10-25, 브라우저로 확인): 열 삭제 크래시 + 미저장 편집 소실(TC-307·408 — 너비 배열을 렌더 중에 맞추고 그리드를 `PaneErrorBoundary` 로 감쌈), 재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음(TC-105·412·1211 — 폴더별 고정 포트 43000~44999, `server.mjs` `stablePort`), Alt+W·팔레트 탭 닫기의 저장 확인(TC-904 — `Workbench.tsx` `confirmCloseTab`), 붙여넣기 칸 줄바꿈(TC-1310 — `onPaste` 가 `sanitizeFor`).
 - ❌ **tsv-view `where` 가 한글 열 이름을 못 읽음**(TC-1308, 1309 의 원인) — 토크나이저 id 정규식이 ASCII(`tsvView.ts:131`). bake 는 where 오류 때 걸러지지 않은 표를 그대로 쓴다(`bake.ts:126`).
 - ❌ **tsv-view 셀에서 Ctrl+Enter 가 그리드로 안 감**(TC-606) — `case 'Enter'` 가 Ctrl 을 가리지 않아 `:224` 분기에 못 간다(`PreviewPane.tsx:210`).
 - ❌ **하이브리드에서 블록이 여럿 보이면 ↑ 가 멀리 점프**(TC-210) — `.cm-hybrid-block { margin: 4px 0 }` 를 CM 높이 맵이 세지 않는다(`hybrid.ts:269`). margin 을 없애고 안쪽 여백으로.
@@ -92,10 +90,7 @@ TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재�
 - ⚠ Windows 에서 새로 생긴 파일이 트리에 안 나타남 — 감시 디바운스가 마지막 `change` 만 보내고 트리는 `rename` 에만 다시 읽는다(`server.mjs:504`, `App.tsx:125`)(TC-509, 셸로 만든 파일도).
 - ⚠ 그 밖: 트리 F2·Delete 뒤 커서 사라짐(TC-807), 미리보기의 없는 그림 안내(TC-215), 모두 바꾸기 직후 Ctrl+Z(TC-410), 열 이동 되돌리기 때 너비(TC-411), 하이브리드의 baked 표 중복(TC-613), CP949 그리드 입력이 Enter 때야 거절(TC-1105), 읽기 전용 폴더의 F2·Delete·＋파일이 대화상자 뒤 403(TC-1206), 오른쪽 클릭 메뉴 잘림(TC-1207). 문서: SHORTCUTS 의 Ctrl+Shift+V 설명에 하이브리드 없음.
 
-새 기능(2026-10-25 Jay 요청, 아직 안 함):
-- **마크다운 표 → TSV 붙여넣기 자동 확장** — md 의 파이프 표(`| a | b |` + `|---|` 구분 줄)를 복사해 그리드에 붙이면 칸으로 풀어 넣고, 모자라는 헤더·열·행을 늘린다. 지금은 `parseClipboardTsv`(`lib/tsv/clipboard.ts`)가 탭이 없는 줄을 통째로 한 칸으로 읽고, `pasteBlock`(`lib/tsv/edits.ts`)은 행은 늘리지만 **표 너비를 넘는 열은 잘라 낸다**.
-  - 할 것: ① 클립보드가 파이프 표인지 감지해 칸으로 나누기(구분 줄 빼기, `\|` 풀기, 앞뒤 공백 정리) ② 넘치는 열은 잘라 내지 말고 열 추가 ③ md 머리글 줄은 TSV 헤더 행(타입 행이 있으면 2행, CSV 는 1행)으로 — 새로 늘린 열의 헤더 이름을 거기서 가져오고, 데이터 행에 붙일 때 머리글을 어떻게 할지 정한다.
-  - 같이 볼 것: 미리보기에서 복사한 표(브라우저가 text/plain 을 탭 구분으로 준다)도 같은 결과인지, 열 추가가 타입 행·`_Field` 스키마와 어떻게 맞물리는지, 단축키 표·팔레트 명령이 필요한지.
+새 기능 **마크다운 표 → TSV 붙여넣기 자동 확장**(2026-10-25 Jay 요청) — 넣었다. 규칙은 DESIGN §19.1(T1~T5), TC 는 TESTCASES §14. 실제 Ctrl+C 로 복사한 표(시스템 클립보드)는 Jay 가 손으로 한 번 볼 것 — 자동화는 붙여넣기 이벤트를 흉내 냈다. 새 단축키·팔레트 명령은 없다(Ctrl+V 설명만 늘림).
 
 폴더 가져오기 쪽 후보(PLAN-folder-import §4, 써 보고 필요하면): **전체 검색**(`Ctrl+Alt+F`, 권고했지만 아직 안 함) · 첫 저장 전 백업 · 주 폴더로 복사 · 트리 이름 필터 · `.yaml`/`.mmd` · 세미콜론 CSV · 가져온 폴더 git.
 

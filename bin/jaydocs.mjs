@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 const HELP = `사용법: jaydocs [문서 폴더] [옵션]
   문서 폴더       생략하면 현재 폴더
   --no-open       브라우저를 열지 않고 주소만 찍는다 (서버는 Ctrl+C 로 끝낸다)
-  --port <n>      고정 포트 (기본은 빈 포트 아무거나)
+  --port <n>      포트 (기본은 문서 폴더마다 정해진 포트 — 다시 열어도 레이아웃·열 너비가 남는다. 0 이면 아무 포트)
   --keep          브라우저 창을 닫아도 서버를 유지
   --ignore <a,b>  트리·파일 감시에서 뺄 폴더 이름 (기본: .git, node_modules, 점으로 시작하는 폴더)
   --mount <폴더>  다른 폴더를 이번 실행에만 같이 연다 (여러 번 가능). 앱의 "폴더 가져오기"(Ctrl+Shift+O)로
