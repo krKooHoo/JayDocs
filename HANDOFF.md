@@ -7,7 +7,7 @@
 ## 새 세션용 프롬프트
 
 ```
-JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md 를 읽고, 거기 적힌 순서로 문서를 읽은 뒤
+JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 적힌 순서로 문서를 읽은 뒤
 환경을 준비하고 "다음 작업" 을 시작해 줘. 시작 전에 HANDOFF.md 의 "핵심 사실" 을 memory 에 저장해 둬.
 ```
 
@@ -15,7 +15,7 @@ JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md
 
 ## 1. 지금 상태
 
-- **JayDocs** (`JayTools/JayDocs/`): Markdown(+Mermaid)과 TSV를 나란히 편집하는 경량 로컬 편집기. **Phase 0·1·2·3 완료·검증 끝.**
+- **JayDocs** (이 리포 — 2026-10-25 `JayTools/JayDocs/` 에서 커밋 기록째 분리, JayTools 에는 README 링크만 남음): Markdown(+Mermaid)과 TSV를 나란히 편집하는 경량 로컬 편집기. **Phase 0·1·2·3 완료·검증 끝.**
   사이드카(`server.mjs`, 의존성 0, git CLI 위임) + Vite/React 18 SPA.
   - 탭·분할(flexlayout-react) · 파일 트리(배지, 오른쪽 클릭 이름 바꾸기/삭제) · 저장 · 외부 변경 감지/충돌 배너 · 레이아웃 복원.
   - 마크다운: CodeMirror 6 소스 + react-markdown 미리보기(소스/분할/미리보기), mermaid 동적 로드, `tsv-view` 펜스로 TSV 표 임베드(필터·정렬·열 선택, 행 클릭 → 그리드).
@@ -31,21 +31,19 @@ JayTools 리포의 JayDocs 를 이어서 개발한다. 먼저 JayDocs/HANDOFF.md
     - 폴더 가져오기(`Ctrl+Shift+O`) — 다른 폴더를 원래 자리에서 `@별칭/…` 로 연다. 읽기 전용 옵션, 해제·최근 폴더, `~/.jaydocs/workspaces.json` 에 주 폴더별로 남음, `--mount`. git 은 주 폴더만.
     - CSV — 같은 그리드, RFC 4180 왕복 보존(`lib/tsv/csv.ts`, `table.ts`), `Alt+Enter` 칸 안 줄바꿈, 타입 행 없으면 첫 줄 머리글.
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
-- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`b4c7597` → `e3b9427`), 형식 확장·독립 실행(`7447a6b`), 폴더 가져오기(`8444ca2`), CSV(`a59dbbe`) 까지 커밋됨. push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
+- 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`) 까지 커밋됨. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
-1. `JayDocs/DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계).
-2. `JayDocs/README.md` — 실행·개발 명령, 소스 구조, 사용법(그리드 · tsv-view · git).
-3. `JayDocs/REPORT-unity-importer-saga.md` — **"먼저 알아야 할 것 (요약)" 네 줄만.** 나머지는 참고용(게임 쪽 임포터 사정). JayDocs 계약과 무관하다.
+1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계).
+2. `README.md` — 실행·개발 명령, 소스 구조, 사용법(그리드 · tsv-view · git).
+3. `REPORT-unity-importer-saga.md` — **"먼저 알아야 할 것 (요약)" 네 줄만.** 나머지는 참고용(게임 쪽 임포터 사정). JayDocs 계약과 무관하다.
 4. `SagaDocs/README.md`, `SagaDocs/00-Overview/용어집.md` — 실제 데이터와 규칙.
 
 ## 3. 환경 준비
 
 ```bash
-# JayTools
 git pull
-cd JayDocs
 npm install          # node_modules 와 dist 는 커밋하지 않는다
 npm run build        # dist/ 생성
 npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포를 못 찾으면 그 항목만 건너뜀)
@@ -53,7 +51,7 @@ npm test             # 153개 — SagaDocs 실제 파일 왕복 포함 (리포�
 
 - **가져오기 기능을 시험할 때는 `--config <임시 파일>` 을 꼭 준다.** 안 주면 사용자 홈의 `~/.jaydocs/workspaces.json`(Jay 가 실제로 쓰는 목록)을 고친다. 예: `node server.mjs --root <시험 폴더> --port 5198 --token dev --dev --config <scratch>/ws.json`.
 
-- `JayTools/.claude/launch.json` 과 `JayDocs/.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 **JayTools 루트의** launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
+- `.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 리포 루트의 launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
 - 확인: `npm run serve` 후 `http://127.0.0.1:5190/#token=dev` 를 열어 트리·편집·저장·git 패널이 되는지. 또는 `start.cmd "<SagaDocs 경로>"`.
 - 다른 리포에서 쓰는 길(2026-10-13): `npm link` → 어디서나 `jaydocs [폴더]`(`bin/jaydocs.mjs`). 다른 PC 로는 `npm run pack` → `release/jaydocs-<버전>.zip`(Node 22+ 만 필요). `release/` 는 커밋하지 않는다.
 - **커밋 같은 git 쓰기 기능을 시험할 때는 SagaDocs 가 아니라 임시 리포**(`git archive HEAD | tar -x` 로 복사 → `git init`)에 사이드카를 하나 더 띄운다(`node server.mjs --root <임시> --port 5195 --token dev --dev --keep`). Phase 2 검증을 그렇게 했다.

@@ -1,6 +1,6 @@
 # JayDocs — Markdown + TSV 결합 편집기 설계
 
-작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 `JayTools/JayDocs/`
+작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 독립 리포 `JayDocs` (2026-10-25 `JayTools/JayDocs/` 에서 기록째 분리)
 
 > 이름: **JayDocs** — "Jay의 문서". Notion·Asana·Google Sheets를 오가던 기획 문서와 데이터를 한곳(git)에 모으는 Jay 전용 Docs라는 뜻.
 > 폴더명도 `JayDocs`(리포의 `TeamBuilder`·`MemoryBoard`처럼 PascalCase).
@@ -520,7 +520,7 @@ JayDocs/
 
 ## 14. 문서 리포 구조 제안 (`SagaDocs`)
 
-JayDocs(도구)와 SagaDocs(내용)는 **별개의 리포**다. 도구는 JayTools에, 기획 원본은 자기 리포에 두어야 도구를 바꿔도 기획 히스토리가 깨끗하다.
+JayDocs(도구)와 SagaDocs(내용)는 **별개의 리포**다. 도구는 자기 리포(처음엔 JayTools 안, 2026-10-25 독립)에, 기획 원본은 자기 리포에 두어야 도구를 바꿔도 기획 히스토리가 깨끗하다.
 
 ### 원칙
 

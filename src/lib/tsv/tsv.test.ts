@@ -14,7 +14,7 @@ import { validateTable } from './validate'
 function findSagaDocs(): string | null {
   const candidates = [
     process.env.SAGADOCS,
-    path.resolve(__dirname, '../../../../../SagaDocs'),
+    path.resolve(__dirname, '../../../../SagaDocs'), // 이 리포 옆
     'C:/Users/user/SagaDocs',
     'C:/Users/gaber/Documents/GitHub/SagaDocs',
   ].filter((p): p is string => !!p)
