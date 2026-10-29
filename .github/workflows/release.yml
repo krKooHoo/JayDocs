@@ -1,0 +1,69 @@
+# main 에 push 될 때마다: 테스트 → npm run pack → GitHub Releases 에 zip 올리기.
+# 태그는 v<package.json 버전>-build.<실행 번호> (예: v0.1.0-build.7). 버전을 올리려면 package.json 만 바꾼다.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 연달아 push 해도 순서대로 하나씩 — 릴리즈 노트의 "이전 태그" 가 꼬이지 않게.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # start.cmd · tar.exe zip 등 Windows 기준 묶음이라 Windows 에서 만든다.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 이전 태그 이후 커밋을 노트로 쓰려고
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test # SagaDocs 실제 파일 테스트는 폴더가 없어 자동 skip
+      - run: npm run pack
+
+      - name: 태그 · 노트 만들기
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}-build.${GITHUB_RUN_NUMBER}"
+          PREV=$(git tag --list 'v*' --sort=-creatordate | head -n 1)
+          {
+            echo "커밋 \`${GITHUB_SHA::7}\` 에서 자동 빌드."
+            echo
+            echo "Node 22+ 만 있으면 된다. zip 을 풀고 \`start.cmd\` 에 문서 폴더를 끌어다 놓는다."
+            echo
+            echo "## 바뀐 것"
+            if [ -n "$PREV" ]; then
+              git log --pretty='- %s (%h)' "${PREV}..HEAD"
+            else
+              git log --pretty='- %s (%h)' -n 20
+            fi
+          } > release-notes.md
+          mv "release/jaydocs-${VERSION}.zip" "release/jaydocs-${VERSION}-build.${GITHUB_RUN_NUMBER}.zip"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "zip=release/jaydocs-${VERSION}-build.${GITHUB_RUN_NUMBER}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: 릴리즈 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.meta.outputs.tag }}" "${{ steps.meta.outputs.zip }}" \
+            --target "$GITHUB_SHA" \
+            --title "JayDocs ${{ steps.meta.outputs.tag }}" \
+            --notes-file release-notes.md \
+            --latest

@@ -49,6 +49,8 @@ npm run pack      # build → release/jaydocs/ + release/jaydocs-<버전>.zip
 zip 을 풀면 `server.mjs` + `dist/` + `start.cmd` + `jaydocs.cmd` 뿐이라 **node_modules 없이 Node 22+ 만 있으면** 돈다.
 `start.cmd "<폴더>"` 로 바로 쓰거나, 그 폴더를 PATH 에 넣거나 `npm install -g .` 하면 어디서나 `jaydocs`.
 
+**직접 만들지 않아도 된다** — `main` 에 push 될 때마다 GitHub Actions(`.github/workflows/release.yml`)가 테스트 → `npm run pack` 을 돌려 [Releases](https://github.com/krKooHoo/JayDocs/releases) 에 `jaydocs-<버전>-build.<번호>.zip` 을 올린다(태그 `v<버전>-build.<번호>`). 버전은 `package.json` 의 `version` 을 올리면 된다.
+
 ## 쓰는 법
 
 - 왼쪽 트리에서 `.md` · `.tsv` · `.csv` · `.txt` · `.json` 을 클릭하면 가운데 탭으로 열린다(형식 목록은 `src/lib/filetypes.mjs` 한 곳 — 사이드카와 앱이 같이 읽는다). 탭은 끌어서 옮기거나 다른 탭셋에 붙일 수 있다. 오른쪽 클릭 → **이름 바꾸기 / 옮기기 · 삭제 · 새 파일 · 새 폴더**.
@@ -206,6 +208,7 @@ server.mjs            사이드카 — 정적 파일 + /api/tree,file(인코딩 
 start.cmd             실행기 (폴더를 끌어다 놓거나 인자로)
 bin/jaydocs.mjs       전역 명령 jaydocs — 위치 인자 → --root, 기본 --open, --help
 scripts/pack.mjs      npm run pack — release/jaydocs/ 와 zip 묶기
+.github/workflows/release.yml  main push → 테스트 · pack → GitHub Releases 에 zip
 scripts/gen-shortcuts.mjs  npm run shortcuts — SHORTCUTS.md 생성
 src/
   lib/backend.ts      Backend 인터페이스 + HttpBackend (토큰 헤더, 409 → ConflictError, git 메서드)

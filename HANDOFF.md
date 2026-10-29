@@ -55,6 +55,7 @@ npm test             # 165개 — SagaDocs 실제 파일 왕복 포함 (리포�
 - `.claude/launch.json` 의 `--root` 를 이 PC의 SagaDocs 경로로 바꾼다 (preview 도구는 리포 루트의 launch.json 을 읽는다). 지금은 `C:\Users\user\SagaDocs` 로 되어 있다.
 - 확인: `npm run serve` 후 `http://127.0.0.1:5190/#token=dev` 를 열어 트리·편집·저장·git 패널이 되는지. 또는 `start.cmd "<SagaDocs 경로>"`.
 - 다른 리포에서 쓰는 길(2026-10-13): `npm link` → 어디서나 `jaydocs [폴더]`(`bin/jaydocs.mjs`). 다른 PC 로는 `npm run pack` → `release/jaydocs-<버전>.zip`(Node 22+ 만 필요). `release/` 는 커밋하지 않는다.
+- 자동 릴리즈(2026-10-29): `.github/workflows/release.yml` — `main` push 마다 Windows 러너에서 `npm ci` → `npm test` → `npm run pack` → 태그 `v<버전>-build.<run_number>` 로 Releases 에 zip. 테스트가 실패하면 릴리즈 안 됨. SagaDocs 실제 파일 테스트는 러너에 폴더가 없어 skip.
 - **커밋 같은 git 쓰기 기능을 시험할 때는 SagaDocs 가 아니라 임시 리포**(`git archive HEAD | tar -x` 로 복사 → `git init`)에 사이드카를 하나 더 띄운다(`node server.mjs --root <임시> --port 5195 --token dev --dev --keep`). Phase 2 검증을 그렇게 했다.
 - Node 22+, git 필요. 설치 시점 버전: Vite 8, TypeScript 7, flexlayout-react 0.11, CodeMirror 6.43, @codemirror/merge 6.12, react-markdown 10, remark-gfm 4, mermaid 12. (@tanstack/react-virtual 은 뺐다 — 숨은 탭에서 마운트된 그리드가 보인 뒤에도 행을 안 그리는 일이 있어 고정 높이 윈도잉을 직접 계산한다.)
 
