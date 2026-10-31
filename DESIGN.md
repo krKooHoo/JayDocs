@@ -1,6 +1,6 @@
 # JayDocs — Markdown + TSV 결합 편집기 설계
 
-작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 독립 리포 `JayDocs` (2026-10-25 `JayTools/JayDocs/` 에서 기록째 분리)
+작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 독립 리포 `JayDocs` (2026-10-25 `JayTools/JayDocs/` 에서 기록째 분리) · 2026-10-31 브라우저 앱 전환(§20)
 
 > 이름: **JayDocs** — "Jay의 문서". Notion·Asana·Google Sheets를 오가던 기획 문서와 데이터를 한곳(git)에 모으는 Jay 전용 Docs라는 뜻.
 > 폴더명도 `JayDocs`(리포의 `TeamBuilder`·`MemoryBoard`처럼 PascalCase).
@@ -8,6 +8,8 @@
 ---
 
 ## 0. 결론
+
+> **2026-10-31 전환**: 사이드카와 git 기능을 없애고 브라우저 앱(PWA + File System Access)으로 바꿨다 — §20. 아래 §0 · §3.4 · §4 · §9 · §10 은 전환 전 기록이다.
 
 **구현 가능하다.** "Markdown(+Mermaid)과 TSV를 나란히 놓고 편집, 가볍게, git 기반"을 전부 만족하는 기성품은 없다
 (기능상 유일하게 다 되는 것은 VS Code + 확장 조합인데 무게가 Obsidian급이다). 필요한 부품은 전부 MIT로 있고,
@@ -508,7 +510,7 @@ JayDocs/
 | # | 질문 | 답 | 설계에 반영 |
 |---|---|---|---|
 | 1 | 원본은 어디인가 | **git.** Notion·Asana·Sheets를 오가는 게 불편해서 나만의 원본이 필요. git + GitHub로 관리 | Sheets 재export 병합 기능 **제외**. export 파일은 1회 이주(§14). daff 불필요. 원격은 GitHub — v2에 push/pull 버튼 |
-| 2 | Unity 임포터 | [REPORT-unity-importer-saga.md](REPORT-unity-importer-saga.md) (SAGA 쪽 조사, 같은 날). **게임은 SagaDocs TSV를 직접 읽지 않는다.** SAGA의 `/design` 세션이 SagaDocs를 읽고 게임 형식(`Assets/StreamingAssets/Table/<소문자>.tsv`)으로 옮겨 쓴다. 복사·서브모듈·심볼릭 링크 없음 | **해결.** §2 포맷이 그대로 계약이다(임포터에 맞출 필요 없음). 파일 이름 자유 → `MacroWorld - ` 접두 제거, `Buidling`→`Building` 개명 완료. 지킬 것 두 가지: Key는 파일 안에서 유일, `_Field`는 빈 줄로 블록을 나누고 블록 첫 줄이 블록 이름(SAGA 비교 도구가 이 기준으로 읽는다). SagaDocs 위치는 SAGA 옆 `C:\Users\gaber\Documents\GitHub\SagaDocs` |
+| 2 | Unity 임포터 | SAGA 쪽 조사 보고서 (2026-10-31 리포에서 삭제, 커밋 기록에 남아 있음, 같은 날). **게임은 SagaDocs TSV를 직접 읽지 않는다.** SAGA의 `/design` 세션이 SagaDocs를 읽고 게임 형식(`Assets/StreamingAssets/Table/<소문자>.tsv`)으로 옮겨 쓴다. 복사·서브모듈·심볼릭 링크 없음 | **해결.** §2 포맷이 그대로 계약이다(임포터에 맞출 필요 없음). 파일 이름 자유 → `MacroWorld - ` 접두 제거, `Buidling`→`Building` 개명 완료. 지킬 것 두 가지: Key는 파일 안에서 유일, `_Field`는 빈 줄로 블록을 나누고 블록 첫 줄이 블록 이름(SAGA 비교 도구가 이 기준으로 읽는다). SagaDocs 위치는 SAGA 옆 `C:\Users\gaber\Documents\GitHub\SagaDocs` |
 | 3 | 문서 리포 구조 | md와 TSV를 같은 폴더에. Obsidian처럼 계층 구조. 트리·파일 관리는 위임 | §14 구조 제안 |
 | 4 | v1 마크다운 보기 | 권장안(소스 + 미리보기)으로 진행 | D2 확정 |
 | 5 | 사용자 범위 | 1인 개발, 혼자 사용 | 커밋 author는 git config 그대로. 동시 편집·설치 안내·권한 기능 전부 제외 |
@@ -690,12 +692,45 @@ TC 156개를 Jay 기억 + Claude 자동 실행으로 채운 뒤(결과는 TESTCA
 - **붙여넣기 칸 줄바꿈(TC-1310)** — 붙여넣는 모든 칸이 `sanitizeFor` 를 거친다(위 T5).
 - **재시작하면 레이아웃 등이 사라짐(TC-105·412·1211)** — 폴더별 고정 포트(D1).
 
+## 20. 브라우저 앱 전환 (2026-10-31)
+
+Jay 혼자 쓰고 git 은 앱 밖에서 충분하다는 판단으로, 사이드카와 git 기능을 없애고 **Pages 에 배포한 PWA 가 File System Access API 로 로컬 폴더를 직접 읽고 쓰는** 구조로 바꿨다. 이 절이 §0 · §3.4 · §4 · §9 · §10 · §18 의 서버·git 관련 내용보다 우선한다. 요구사항 R7(git)은 앱 범위에서 뺐다.
+
+계기: 실행 파일처럼 보이지 않아 찾기 어렵고, 콘솔 창이 함께 뜨고, 릴리즈마다 손으로 패치해야 했다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| B1 | 호스팅: **Node 사이드카 → 정적 PWA** | §3.4 · §5 에서 뺀 이유(isomorphic-git 의 CRLF, `file://` 권한)가 git 제거와 https 배포로 사라졌다. 콘솔·프로세스 관리가 통째로 없어지고, 설치하면 시작 메뉴·전용 창·아이콘이 생긴다 |
+| B2 | 기준 브라우저: **Edge PWA** (Chrome 도 동작) | 실측(아래). Edge 는 `move()` 가 되고, Chrome 은 NotAllowedError |
+| B3 | 작업 공간 = 주 폴더 + 가져온 폴더, 핸들을 IndexedDB 에 주 폴더별로 저장. 경로 규칙 `@별칭/…` 은 그대로 | 트리·탭·bake 코드를 안 바꾼다. 폴더마다 포트로 나누던 레이아웃은 작업 공간 id 로 나눈다 |
+| B4 | 권한이 없으면 시작할 때 허용 화면. 클릭 한 번에 남은 폴더를 차례로 묻고, 브라우저가 막으면 다시 누른다 | 재부팅 뒤 권한이 풀려도 불편에 그치고 데이터 위험은 없다 |
+| B5 | 이름 변경: **이름 목록으로 대상 검사**(대소문자 무시) → `move()` → 막히면 복사·바이트 확인·삭제. 대소문자만 바꿀 때는 임시 이름을 거친다 | 실측: Edge `move()` 는 있는 파일을 경고 없이 덮어쓴다. 복사 대상이 곧 원본이 되는 경우 내용을 잃지 않게 |
+| B6 | 폴더 이름 변경은 **뺀다**(탐색기에서). 트리는 변경 감지로 따라온다 | 폴더 이동 API 가 없다. 복사 후 삭제는 중간 실패 위험이 크다 |
+| B7 | 변경 감지: `FileSystemObserver`, 경로별 150ms 뭉치기, `.crswap` 제외. **창에 돌아올 때 항상 다시 확인**하고, API 가 없으면 5초 주기 | 저장 한 번에 이벤트 4건이 온다. 내 저장은 기존처럼 수정 시각이 같아 걸러진다. 절전 등으로 놓친 변경을 잡는다 |
+| B8 | 자동 업데이트: 빌드 때 `sw.js` 생성, 전체 사전 캐시. 새 버전은 대기하다 모든 창이 닫히면 적용, **새 버전 적용** 은 저장 안 한 문서가 있으면 막는다. 직전 버전 캐시는 남긴다 | 편집 중 새로고침 금지. 열려 있는 옛 창이 나중에 불러올 조각을 잃지 않게 |
+| B9 | 배포: 이 공개 리포에서 GitHub Actions 로 Pages 에 바로 배포. 주소 `krkoohoo.github.io/JayDocs/` | Jay 결정: 별도 조직·토큰 관리 없이 한 리포로 간다. 대가로 위키·`portfolio-test` 와 오리진을 공유하므로, 그 사이트의 스크립트가 허용한 폴더에 접근할 수 있다. 2026-10-31 첫 화면 기준 외부 스크립트 없음(포트폴리오는 외부 CSS 뿐). 두 사이트에 외부 코드를 넣지 않는 것을 규칙으로 둔다 |
+| B10 | 없앤 것: git 패널·배지·diff·기록(표 셀 diff 포함), 탐색기에서 보기, 경로 자동 완성, 절대 경로 표시, 명령줄 옵션, zip 릴리즈 | 브라우저에서 불가능하거나 git 과 함께 빠진다 |
+
+### 20.1 실측 (2026-10-31, Edge 156 · Chrome 156, 임시 시험 페이지)
+
+- 통과: `Documents\GitHub\…` 아래 폴더 선택 · 쓰기, CRLF/BOM/끝 개행/4 MB 바이트 왕복(디스크 해시 일치), 문서 형식 5종 생성, 수정 시각으로 외부 수정 감지, 저장 취소 시 원본 유지, 잠긴 파일(Excel 상황) 저장은 InvalidStateError 로 막히고 원본 유지·재시도 성공.
+- 변경 감지: 수정 · 생성 · 이름 변경 · 바꿔치기 저장 1~3 ms, 삭제 약 500 ms, 200개 일괄 변경 200/200. 창이 숨겨져도 1 ms.
+- 권한: Edge 탭은 다시 열면 prompt. Edge 앱은 앱에서 허용한 폴더가 재실행 뒤 granted. Chrome 은 앱 설치 후 탭·앱 모두 granted.
+- 트리: SAGA `Docs`(문서 120개) 약 0.1초. `Project-SAGA` 전체는 2만 항목 제한까지 6~8초(Node 0.17초).
+- `move()`: Edge 성공(사용자 동작 없이도). Chrome 은 사용자 동작이 있어도 NotAllowedError, 복사 후 삭제는 성공.
+- 저장 중 `<이름>.crswap` 임시 파일이 생기고 끝나면 사라진다. 저장한 파일에 `Zone.Identifier`(ZoneId=3)가 붙는다.
+
+### 20.2 아직 확인하지 못한 것 (TESTCASES §15)
+
+재부팅 뒤 권한 · Edge 앱에서 폴더 여러 개 유지 · 실제 Pages 주소에서의 권한 동작 · Excel 의 제한된 보기와 신뢰할 수 있는 위치. 앱 쪽 흐름은 `?opfs`(브라우저 안 저장소)로 자동 확인했고, 실제 폴더 선택 창을 거친 앱 전체는 Jay 의 인수 시험에서 본다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
 - 마크다운: CodeMirror changelog https://codemirror.net/docs/changelog/ · composition 이슈 https://github.com/codemirror/dev/issues?q=is%3Aissue+composition · @atomic-editor/editor https://github.com/kenforthewin/atomic-editor · codemirror-markdown-hybrid https://github.com/tiagosimoes/codemirror-markdown-hybrid · ProseMirror changelog https://prosemirror.net/docs/changelog/ · TipTap markdown https://tiptap.dev/blog/release-notes/introducing-bidirectional-markdown-support-in-tiptap · Milkdown https://github.com/Milkdown/milkdown · MDXEditor code blocks https://mdxeditor.dev/editor/docs/code-blocks · mdast-util-to-markdown https://github.com/syntax-tree/mdast-util-to-markdown
 - Mermaid: usage https://mermaid.js.org/config/usage.html · 크기 https://bundlephobia.com/api/size?package=mermaid
 - 그리드: Glide https://github.com/glideapps/glide-data-grid (IME #1175) · RevoGrid https://github.com/revolist/revogrid · react-datasheet-grid https://github.com/nick-keller/react-datasheet-grid (#340, #387) · react-data-grid #1702 · Handsontable 라이선스 https://handsontable.com/licensing · AG Grid clipboard https://www.ag-grid.com/react-data-grid/clipboard/ · MUI X clipboard https://mui.com/x/react-data-grid/clipboard/ · jspreadsheet CE #1724 · PapaParse https://www.papaparse.com/docs · csv-parse raw https://csv.js.org/parse/options/raw/
+- 전환(§20): 파일 이동 https://groups.google.com/a/chromium.org/g/blink-dev/c/ogS8CeyZ3n8/m/UyYqFPZVAAAJ · Pages 요금제 https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits · 파일 연결 https://learn.microsoft.com/microsoft-edge/progressive-web-apps-chromium/how-to/handle-files
 - 셸: FSA https://web.dev/articles/files/open-a-directory · 영구 권한 https://developer.chrome.com/blog/persistent-permissions-for-the-file-system-access-api · FileSystemObserver https://developer.mozilla.org/en-US/docs/Web/API/FileSystemObserver · isomorphic-git https://github.com/isomorphic-git/isomorphic-git · Tauri 요구사항 https://v2.tauri.app/start/prerequisites/ · 서명 https://v2.tauri.app/distribute/sign/windows/ · 단일 exe 크기 https://notes.billmill.org/dev_blog/2026/02/updated_SEA_benchmarks.html
 - git UI: @codemirror/merge https://github.com/codemirror/merge · diff2html https://github.com/rtfpessoa/diff2html · daff https://github.com/paulfitz/daff
 - 레이아웃: FlexLayout https://github.com/caplin/FlexLayout · dockview https://dockview.dev/ · react-resizable-panels https://github.com/bvaughn/react-resizable-panels

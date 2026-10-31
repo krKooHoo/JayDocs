@@ -22,7 +22,7 @@ export function ReadOnlyBanner({ path }: { path: string }) {
     return (
       <div className="banner">
         🔒 읽기 전용으로 가져온 폴더입니다 (@{alias}).
-        <button onClick={() => void unlock()} disabled={busy} title="이 폴더 전체의 읽기 전용을 끈다 (가져온 폴더엔 git 이 없어 저장을 되돌릴 수 없다)">읽기 전용 끄기</button>
+        <button onClick={() => void unlock()} disabled={busy} title="이 폴더 전체의 읽기 전용을 끈다. 저장은 바로 디스크에 쓰인다">읽기 전용 끄기</button>
       </div>
     )
   }

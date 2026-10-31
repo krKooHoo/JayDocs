@@ -79,20 +79,23 @@ class BlockWidget extends WidgetType {
 
 /** 이미지 — 원문 줄은 그대로 두고 그 아래에 그림을 넣는다 (block widget, side 1) */
 class ImageWidget extends WidgetType {
-  constructor(readonly src: string, readonly alt: string) {
+  constructor(readonly src: string, readonly mdPath: string, readonly alt: string) {
     super()
   }
   eq(other: ImageWidget) {
-    return other.src === this.src && other.alt === this.alt
+    return other.src === this.src && other.mdPath === this.mdPath && other.alt === this.alt
   }
   toDOM() {
     const wrap = document.createElement('div')
     wrap.className = 'cm-hybrid-image'
     const img = document.createElement('img')
-    img.src = this.src
     img.alt = this.alt
     img.loading = 'lazy'
-    img.onerror = () => { wrap.classList.add('is-error'); wrap.textContent = `이미지를 불러오지 못했습니다: ${this.alt || this.src}` }
+    const fail = () => { wrap.classList.add('is-error'); wrap.textContent = `이미지를 불러오지 못했습니다: ${this.alt || this.src}` }
+    img.onerror = fail
+    // blob 주소는 그려진 뒤 필요 없다
+    img.onload = () => { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src) }
+    imageSrc(this.src, this.mdPath).then((url) => { img.src = url }).catch(fail)
     wrap.appendChild(img)
     return wrap
   }
@@ -199,7 +202,7 @@ function build(state: EditorState, mdPath: string): DecorationSet {
           const src = state.sliceDoc(urlNode.from, urlNode.to)
           const alt = state.sliceDoc(node.from + 2, Math.max(node.from + 2, (n.getChildren('LinkMark')[1]?.from ?? node.from + 2)))
           const line = doc.lineAt(node.to)
-          items.push({ from: line.to, to: line.to, deco: Decoration.widget({ widget: new ImageWidget(imageSrc(src, mdPath), alt), block: true, side: 1 }) })
+          items.push({ from: line.to, to: line.to, deco: Decoration.widget({ widget: new ImageWidget(src, mdPath, alt), block: true, side: 1 }) })
         }
         return false
       }

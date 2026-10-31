@@ -1,0 +1,49 @@
+# main 에 push 될 때마다: 테스트 → 빌드 → 이 리포의 GitHub Pages 에 dist 를 배포한다.
+# 테스트가 실패하면 배포하지 않는다. Pages 설정의 Source 는 GitHub Actions 여야 한다.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 연달아 push 해도 순서대로 하나씩
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test # SagaDocs 실제 파일 테스트는 폴더가 없어 자동 skip
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+          include-hidden-files: true # .nojekyll
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

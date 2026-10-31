@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { GitCode, MountInfo, TreeEntry } from '../lib/backend'
+import type { MountInfo, TreeEntry } from '../lib/backend'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
 
-/** 가져온 폴더·탐색기 관련 동작 (트리 오른쪽 클릭) */
-export type RootAction = 'unmount' | 'toggleReadOnly' | 'reveal' | 'refresh'
+/** 가져온 폴더 관련 동작 (트리 오른쪽 클릭) */
+export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh'
 
 interface Props {
   entries: TreeEntry[]
   activePath: string | null
   dirtyPaths: Set<string>
-  gitStatus: Map<string, GitCode>
   onOpen: (path: string) => void
   onNewFile: (dir: string) => void
   onNewFolder: (dir: string) => void
@@ -40,12 +39,6 @@ function allDirs(entries: TreeEntry[], out: string[] = []) {
 
 function fileIcon(name: string) {
   return fileTypeOf(name)?.icon ?? '·'
-}
-
-function dirHasChange(dir: string, status: Map<string, GitCode>) {
-  const prefix = dir + '/'
-  for (const p of status.keys()) if (p.startsWith(prefix)) return true
-  return false
 }
 
 function parentOf(path: string) {
@@ -193,7 +186,7 @@ export function FileTree(p: Props) {
           data-path={e.path}
           className={'tree-row is-dir' + (m ? ' is-mount' : '') + (selectedDir === e.path ? ' is-selected' : '') + (isCursor ? ' is-cursor' : '')}
           style={indent}
-          title={m ? `가져온 폴더${m.readOnly ? ' (읽기 전용)' : ''}${m.persist ? '' : ' — 이번 실행에만 (--mount)'}\n${m.path}` : undefined}
+          title={m ? `가져온 폴더${m.readOnly ? ' (읽기 전용)' : ''}\n${m.folder}` : undefined}
           onClick={() => activate(row)}
           onContextMenu={(ev) => { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, e.path, true) }}
         >
@@ -201,12 +194,10 @@ export function FileTree(p: Props) {
           {m && <span className="tree-mount-icon">{m.readOnly ? '🔒' : '🔗'}</span>}
           <span className="tree-name">{e.name}</span>
           {m?.truncated && <span className="tree-warn" title="항목이 너무 많아 일부만 보입니다 — 하위 폴더를 가져오세요">⚠</span>}
-          {!open && dirHasChange(e.path, p.gitStatus) && <span className="git-dot" title="아래에 바뀐 파일이 있음">●</span>}
         </div>
       )
     }
     const dirty = p.dirtyPaths.has(e.path)
-    const code = p.gitStatus.get(e.path)
     return (
       <div
         key={e.path}
@@ -220,7 +211,6 @@ export function FileTree(p: Props) {
         <span className="tree-icon">{fileIcon(e.name)}</span>
         <span className="tree-name">{e.name}</span>
         {dirty && <span className="dirty-dot">●</span>}
-        {code && <span className={'git-badge is-' + code} title={gitTitle(code)}>{code}</span>}
       </div>
     )
   }
@@ -252,12 +242,11 @@ export function FileTree(p: Props) {
         const act = (a: RootAction) => { setMenu(null); p.onRootAction(a, menu.path) }
         return (
           <div className="ctx-menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
-            <div className="ctx-title">{isRoot ? mount!.path : menu.path}</div>
+            <div className="ctx-title">{isRoot ? mount!.folder : menu.path}</div>
             {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
             {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
-            {!isRoot && writable && <button onClick={() => { setMenu(null); p.onRename(menu.path, menu.isDir) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
+            {!isRoot && writable && !menu.isDir && <button onClick={() => { setMenu(null); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
             {!isRoot && writable && <button className="is-danger" onClick={() => { setMenu(null); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}
-            <button onClick={() => act('reveal')}>탐색기에서 보기</button>
             {isRoot && <button onClick={() => act('toggleReadOnly')}>{mount!.readOnly ? '읽기 전용 끄기' : '읽기 전용 켜기'}</button>}
             {isRoot && <button onClick={() => act('refresh')}>새로 고침</button>}
             {isRoot && <button onClick={() => act('unmount')}>가져오기 해제 (파일은 그대로)</button>}
@@ -266,15 +255,4 @@ export function FileTree(p: Props) {
       })()}
     </div>
   )
-}
-
-function gitTitle(code: GitCode) {
-  switch (code) {
-    case 'M': return 'git: 수정됨'
-    case 'A': return 'git: 추가됨 (스테이지)'
-    case 'D': return 'git: 삭제됨'
-    case 'R': return 'git: 이름 바뀜'
-    case 'U': return 'git: 충돌'
-    default: return 'git: 추적되지 않음 (새 파일)'
-  }
 }

@@ -1,22 +1,17 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
-import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonBorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
+import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
 import { registerCommands } from '../lib/commands'
 import { paneAction, setOpener } from '../lib/nav'
 import { isTsvPath, store, useStoreVersion } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
-import { git, useGitVersion } from '../store/git'
 import { FileTree, type RootAction } from './FileTree'
-import { isMountPath } from '../lib/roots.mjs'
 import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
-import { GitPane } from './GitPane'
-import { DiffPane, RevPane } from './DiffPane'
 
 export interface WorkbenchHandle {
   openFile(path: string): void
-  openDiff(path: string): void
   splitActive(): void
   saveActive(): void
   activePath(): string | null
@@ -29,7 +24,8 @@ export interface WorkbenchHandle {
 }
 
 interface Props {
-  root: string
+  /** 레이아웃을 기억하는 열쇠 (작업 공간 id) */
+  layoutId: string
   tree: TreeEntry[]
   onRefresh: () => void
   onNewFile: (dir: string) => void
@@ -40,16 +36,6 @@ interface Props {
 }
 
 const LAYOUT_VERSION = 1
-
-function gitBorder(): IJsonBorderNode {
-  return {
-    type: 'border',
-    location: 'bottom' as const,
-    size: 240,
-    selected: -1,
-    children: [{ type: 'tab', name: '변경 (git)', component: 'git', enableClose: false, enableDrag: false }],
-  }
-}
 
 function defaultLayout(): IJsonModel {
   return {
@@ -68,26 +54,19 @@ function defaultLayout(): IJsonModel {
         selected: 0,
         children: [{ type: 'tab', name: '파일', component: 'tree', enableClose: false, enableDrag: false }],
       },
-      gitBorder(),
     ],
     layout: { type: 'row', children: [{ type: 'tabset', id: 'main', weight: 100, enableDeleteWhenEmpty: false, children: [] }] },
   }
 }
 
-function layoutKey(root: string) {
-  return `jaydocs.layout.v${LAYOUT_VERSION}:${root}`
+function layoutKey(layoutId: string) {
+  return `jaydocs.layout.v${LAYOUT_VERSION}:${layoutId}`
 }
 
-function loadModel(root: string): Model {
+function loadModel(layoutId: string): Model {
   try {
-    const raw = localStorage.getItem(layoutKey(root))
-    if (raw) {
-      const json = JSON.parse(raw) as IJsonModel
-      // Phase 1 까지 저장된 레이아웃에는 git 패널이 없다 — 있는 레이아웃을 버리지 않고 덧붙인다
-      json.borders = json.borders ?? []
-      if (!json.borders.some((b) => b.location === 'bottom')) json.borders.push(gitBorder())
-      return Model.fromJson(json)
-    }
+    const raw = localStorage.getItem(layoutKey(layoutId))
+    if (raw) return Model.fromJson(JSON.parse(raw) as IJsonModel)
   } catch { /* 깨진 저장분은 버린다 */ }
   return Model.fromJson(defaultLayout())
 }
@@ -137,8 +116,7 @@ const DOC_COMPONENTS = new Set(['md', 'tsv'])
 
 export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p, ref) {
   useStoreVersion()
-  useGitVersion()
-  const [model] = useState(() => loadModel(p.root))
+  const [model] = useState(() => loadModel(p.layoutId))
 
   const activeTabSet = useCallback(() => model.getActiveTabset() ?? firstTabSet(model), [model])
   const activeTab = useCallback(() => activeTabSet()?.getSelectedNode() as TabNode | undefined, [activeTabSet])
@@ -164,18 +142,6 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     const existing = findTabs(model, (cfg, comp) => DOC_COMPONENTS.has(comp) && cfg.path === path)
     if (existing.length) { selectTab(existing[0]); return }
     addTab(tabJson(path))
-  }, [model, selectTab, addTab])
-
-  const openDiff = useCallback((path: string) => {
-    const existing = findTabs(model, (cfg, comp) => comp === 'diff' && cfg.path === path)
-    if (existing.length) { selectTab(existing[0]); return }
-    addTab({ type: 'tab', name: `diff: ${baseName(path)}`, component: 'diff', config: { path } })
-  }, [model, selectTab, addTab])
-
-  const openRev = useCallback((path: string, hash: string, shortHash: string) => {
-    const existing = findTabs(model, (cfg, comp) => comp === 'rev' && cfg.path === path && cfg.rev === hash)
-    if (existing.length) { selectTab(existing[0]); return }
-    addTab({ type: 'tab', name: `${baseName(path)} @ ${shortHash}`, component: 'rev', config: { path, rev: hash, label: shortHash } })
   }, [model, selectTab, addTab])
 
   useEffect(() => {
@@ -247,7 +213,6 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     else focusLater(selector)
   }, [toggleBorder])
   const focusTree = useCallback(() => focusPanel('tree', '[data-focus-target="tree"]'), [focusPanel])
-  const focusGit = useCallback(() => focusPanel('git', '[data-focus-target="git"]'), [focusPanel])
   const focusEditor = useCallback(() => { const path = activePath(); if (path) paneAction(path, 'focus') }, [activePath])
 
   useEffect(() => registerCommands([
@@ -257,17 +222,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     ...Array.from({ length: 9 }, (_, i) => ({ id: `tab${i + 1}`, label: `${i + 1}번째 탭`, hidden: true, run: () => selectTabIndex(i) })),
     { id: 'closeTab', label: '탭 닫기', run: closeActive },
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => toggleBorder('tree') },
-    { id: 'toggleGit', label: 'git 패널 접기 / 펴기', run: () => toggleBorder('git') },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
-    { id: 'focusGit', label: 'git 패널(커밋 메시지)로 포커스', run: focusGit },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
-    // git 은 주 폴더 문서만 (가져온 폴더는 git 없이 파일 편집만)
-    { id: 'diffActive', label: '현재 문서를 HEAD 와 비교', run: () => { const path = activePath(); if (path && !isMountPath(path)) openDiff(path) }, enabled: () => { const path = activePath(); return !!path && !isMountPath(path) && git.repo } },
-    { id: 'historyActive', label: '현재 문서의 커밋 기록', run: () => { const path = activePath(); if (path && !isMountPath(path)) { toggleBorder('git', true); git.requestLog(path) } }, enabled: () => { const path = activePath(); return !!path && !isMountPath(path) && git.repo } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusGit, focusEditor, openDiff])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'
@@ -279,9 +239,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       if (path === from) next = to
       else if (isDir && path.startsWith(prefix)) next = to + '/' + path.slice(prefix.length)
       if (next === null) continue
-      const comp = tab.getComponent() ?? ''
-      const name = comp === 'diff' ? `diff: ${baseName(next)}` : comp === 'rev' ? `${baseName(next)} @ ${cfg.label as string}` : baseName(next)
-      model.doAction(Actions.updateNodeAttributes(tab.getId(), { name, config: { ...cfg, path: next } }))
+      model.doAction(Actions.updateNodeAttributes(tab.getId(), { name: baseName(next), config: { ...cfg, path: next } }))
     }
   }, [model])
 
@@ -298,7 +256,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     return [...out]
   }, [model])
 
-  useImperativeHandle(ref, () => ({ openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, openDiff, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths])
+  useImperativeHandle(ref, () => ({ openFile, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths])
 
   const factory = (node: TabNode) => {
     const cfg = (node.getConfig() ?? {}) as Record<string, unknown>
@@ -309,7 +267,6 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
             entries={p.tree}
             activePath={activePath()}
             dirtyPaths={store.dirtyPaths()}
-            gitStatus={git.status}
             onOpen={openFile}
             onRefresh={p.onRefresh}
             onNewFile={p.onNewFile}
@@ -325,12 +282,6 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
         const path = cfg.path as string
         return isTsvPath(path) ? <GridPane path={path} onSplit={splitActive} /> : <MarkdownPane path={path} onSplit={splitActive} />
       }
-      case 'git':
-        return <GitPane activePath={activePath()} onOpenDiff={openDiff} onOpenRev={openRev} />
-      case 'diff':
-        return <DiffPane path={cfg.path as string} />
-      case 'rev':
-        return <RevPane path={cfg.path as string} rev={cfg.rev as string} label={(cfg.label as string) ?? (cfg.rev as string).slice(0, 7)} />
       default:
         return <div className="pane-empty">알 수 없는 창: {node.getComponent()}</div>
     }
@@ -339,23 +290,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   const onRenderTab = (node: TabNode, values: ITabRenderValues) => {
     const comp = node.getComponent() ?? ''
     const path = node.getConfig()?.path as string | undefined
-    if (comp === 'git') {
-      const n = git.status.size
-      if (n) values.content = <span>{node.getName()} <span className="tab-count">{n}</span></span>
-      return
-    }
     if (!path || !DOC_COMPONENTS.has(comp)) return
-    const dirty = store.isDirty(path)
-    const code = git.codeOf(path)
-    if (dirty || code) {
-      values.content = (
-        <span>
-          {node.getName()}
-          {dirty && <span className="dirty-dot"> ●</span>}
-          {code && <span className={'git-badge is-' + code}>{code}</span>}
-        </span>
-      )
-    }
+    if (store.isDirty(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
   }
 
   // 탭의 × (Layout 이 내는 동작)
@@ -365,7 +301,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   }
 
   const onModelChange = (m: Model) => {
-    try { localStorage.setItem(layoutKey(p.root), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
+    try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
   }
 
   return (

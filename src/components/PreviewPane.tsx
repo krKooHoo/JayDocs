@@ -1,4 +1,4 @@
-import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { store, useStoreVersion } from '../store/documents'
@@ -328,10 +328,31 @@ function isExternal(src: string) {
   return /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')
 }
 
-/** 리포 안 이미지(`_assets/x.png`)는 사이드카의 /api/raw 로, 바깥 주소는 그대로 */
-export function imageSrc(src: string, mdPath: string): string {
-  if (isExternal(src) || src.startsWith('data:')) return src
+/** 문서 폴더 안 이미지(`_assets/x.png`)는 파일을 읽어 blob 주소로, 바깥 주소는 그대로 */
+export function imageSrc(src: string, mdPath: string): Promise<string> {
+  if (isExternal(src) || src.startsWith('data:')) return Promise.resolve(src)
   return backend().rawUrl(resolveLink(src.split('#')[0], mdPath))
+}
+
+function LocalImage({ src, mdPath, alt, ...rest }: ComponentProps<'img'> & { src: string; mdPath: string }) {
+  const [url, setUrl] = useState<string | undefined>()
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    let made: string | undefined
+    setFailed(false)
+    imageSrc(src, mdPath).then((u) => {
+      if (u.startsWith('blob:')) made = u
+      if (alive) setUrl(u)
+      else if (made) URL.revokeObjectURL(made)
+    }).catch(() => { if (alive) setFailed(true) })
+    return () => {
+      alive = false
+      if (made) URL.revokeObjectURL(made)
+    }
+  }, [src, mdPath])
+  if (failed) return <span className="banner-item">이미지를 불러오지 못했습니다: {alt || src}</span>
+  return <img src={url} alt={alt} loading="lazy" {...rest} />
 }
 
 function childClassName(children: ReactNode): string {
@@ -369,7 +390,7 @@ export function PreviewPane({ path }: { path: string }) {
       }
       return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>
     },
-    img: ({ node, src, alt, ...rest }) => <img src={typeof src === 'string' ? imageSrc(src, path) : undefined} alt={alt} loading="lazy" {...rest} />,
+    img: ({ node, src, alt, ...rest }) => (typeof src === 'string' ? <LocalImage src={src} mdPath={path} alt={alt} {...rest} /> : null),
   }), [path])
 
   return (

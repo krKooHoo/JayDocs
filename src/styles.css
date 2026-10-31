@@ -154,7 +154,6 @@ kbd {
 .is-ok { color: var(--ok); }
 .is-err { color: var(--danger); }
 .spacer { flex: 1; }
-.branch { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .seg { display: inline-flex; }
 .seg button { border-radius: 0; margin-left: -1px; }
 .seg button:first-child { border-radius: 5px 0 0 5px; margin-left: 0; }
@@ -169,7 +168,8 @@ kbd {
   background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; letter-spacing: 0.2px; }
-.root { color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.root { color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border-color: transparent; }
+.root:hover { color: var(--fg); border-color: var(--border); }
 .topbar-error { color: var(--danger); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast {
   position: fixed; right: 16px; bottom: 16px; z-index: 300; max-width: min(520px, 90vw);
@@ -179,7 +179,17 @@ kbd {
 .conn { color: var(--border); font-size: 10px; }
 .conn.is-on { color: var(--ok); }
 .workbench { flex: 1; position: relative; min-height: 0; }
-.app-message { max-width: 560px; margin: 80px auto; line-height: 1.7; }
+.app-message { max-width: 560px; margin: 80px auto; padding: 0 16px; line-height: 1.7; }
+.start-list { margin: 16px 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.start-list-title { padding: 6px 10px; color: var(--muted); font-size: 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.start-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
+.start-row + .start-row { border-top: 1px solid var(--border); }
+.start-open { flex: 1; min-width: 0; padding: 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.start-open { background: none; border-color: transparent; }
+button.start-open:hover { background: var(--hover); }
+.start-sub { color: var(--muted); font-size: 12px; }
+.start-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.start-hint { margin-top: 20px; font-size: 13px; color: var(--muted); }
 
 /* ---- 문서 창 ---- */
 .pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -228,24 +238,6 @@ kbd {
 .tree-mount-icon { font-size: 11px; }
 .tree-warn { color: var(--dirty); font-size: 11px; margin-left: 4px; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
-
-/* ---- git 배지 ---- */
-.git-badge {
-  display: inline-block; min-width: 14px; padding: 0 3px; margin-left: 5px;
-  border-radius: 3px; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center;
-  font-family: var(--mono); color: var(--badge-fg); background: var(--dirty); vertical-align: middle;
-}
-.git-badge.is-M { background: var(--dirty); }
-.git-badge.is-A { background: var(--ok); }
-.git-badge.is-\? { background: var(--ok); opacity: 0.75; }
-.git-badge.is-D { background: var(--danger); }
-.git-badge.is-R { background: var(--accent); }
-.git-badge.is-U { background: #8250df; }
-.git-dot { color: var(--dirty); font-size: 8px; margin-left: 4px; }
-.tab-count {
-  display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px;
-  background: var(--dirty); color: var(--badge-fg); font-size: 10px; line-height: 15px; text-align: center;
-}
 
 /* ---- 트리 컨텍스트 메뉴 ---- */
 .ctx-menu {
@@ -405,61 +397,6 @@ kbd {
 .grid-foot .is-err { color: var(--danger); font-weight: 600; }
 .grid-foot-btn { padding: 0 6px; font-size: 11px; line-height: 16px; }
 
-/* ---- git 패널 ---- */
-.gitpane { display: flex; height: 100%; min-height: 0; font-size: 12.5px; }
-.gitpane-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border); }
-.gitpane-files { flex: 1 1 40%; }
-.gitpane-commit { flex: 0 0 300px; padding: 8px; gap: 6px; }
-.gitpane-log { flex: 1 1 40%; border-right: 0; }
-.gitpane-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--panel); white-space: nowrap; overflow: hidden; }
-.gitpane-head button { padding: 1px 6px; }
-.gitpane-logpath { overflow: hidden; text-overflow: ellipsis; }
-.gitpane-list { flex: 1; overflow: auto; }
-.gitpane-empty { padding: 10px; color: var(--muted); }
-.gitpane-row { display: flex; align-items: center; gap: 6px; padding: 2px 8px; white-space: nowrap; }
-.gitpane-row:hover { background: var(--hover); }
-.gitpane-row.is-active { background: var(--accent-soft); }
-.gitpane-row button { padding: 0 6px; font-size: 11px; line-height: 17px; opacity: 0.75; }
-.gitpane-row:hover button, .gitpane-row button:focus-visible { opacity: 1; }
-.gitpane-row input[type="checkbox"] { margin: 0; }
-.gitpane-path { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.gitpane-path:hover { color: var(--accent); text-decoration: underline; }
-.gitpane-subject { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.gitpane-commit textarea { flex: 1; resize: none; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; min-height: 60px; }
-.gitpane-actions { display: flex; align-items: center; gap: 8px; min-height: 22px; }
-.gitpane-actions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ---- diff ---- */
-.diff-legend { display: flex; padding: 3px 12px; font-size: 11px; color: var(--muted); background: var(--panel); border-bottom: 1px solid var(--border); }
-.diff-legend span { flex: 1; }
-.diff-host { flex: 1; min-height: 0; overflow: hidden; }
-.diff-host .cm-mergeView { height: 100%; }
-.diff-host .cm-mergeViewEditors { height: 100%; }
-.diff-host .cm-mergeViewEditor { height: 100%; overflow: auto; }
-.diff-host .cm-editor { height: 100%; }
-:root[data-theme='dark'] .cm-merge-a .cm-changedLine, :root[data-theme='dark'] .cm-deletedChunk { background: var(--diff-del) !important; }
-:root[data-theme='dark'] .cm-merge-b .cm-changedLine { background: var(--diff-add) !important; }
-:root[data-theme='dark'] .cm-changedText { background: rgba(227, 179, 65, 0.35) !important; }
-:root[data-theme='dark'] .cm-deletedText { background: rgba(255, 123, 114, 0.4) !important; }
-:root[data-theme='dark'] .cm-collapsedLines { background: var(--panel) !important; color: var(--muted) !important; }
-:root[data-theme='dark'] .cm-merge-revert, :root[data-theme='dark'] .cm-changeGutter { background: var(--panel); }
-.tsvdiff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.tsvdiff-summary { display: flex; gap: 14px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 12.5px; flex-wrap: wrap; }
-.tsvdiff-summary .is-add { color: var(--ok); font-weight: 600; }
-.tsvdiff-summary .is-del { color: var(--danger); font-weight: 600; }
-.tsvdiff-summary .is-chg { color: var(--dirty); font-weight: 600; }
-.tsvdiff-list { flex: 1; overflow: auto; font-size: 13px; }
-.tsvdiff-row { display: flex; gap: 10px; padding: 4px 12px; border-bottom: 1px solid var(--border); cursor: pointer; align-items: baseline; }
-.tsvdiff-row:hover { background: var(--hover); }
-.tsvdiff-row.is-added { background: var(--diff-add); }
-.tsvdiff-row.is-removed { background: var(--diff-del); cursor: default; }
-.tsvdiff-row.is-changed { background: var(--diff-chg); }
-.tsvdiff-kind { width: 12px; font-family: var(--mono); font-weight: 700; }
-.tsvdiff-key { flex: 0 0 180px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tsvdiff-cells { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.tsvdiff-cell b { color: var(--muted); font-weight: 600; margin-right: 3px; }
-.tsvdiff-cell s { color: var(--danger); }
-
 /* ---- 팔레트 · 도움말 ---- */
 .overlay {
   position: fixed; inset: 0; z-index: 200;
@@ -486,9 +423,7 @@ kbd {
 .palette.import { max-height: 80vh; }
 .import-row { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
 .import-row + .import-row { margin-top: 4px; }
-.import-path { flex: 1; margin-left: 0; margin-right: 0; font-family: var(--mono); font-size: 13px; }
-.import-dirs { max-height: 180px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 0 10px 6px; padding: 0; }
-.import-dirs .palette-item { padding: 3px 8px; font-family: var(--mono); font-size: 12.5px; }
+.import-picked { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .import-field { display: flex; align-items: center; gap: 4px; }
 .import-field input { width: 180px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); }
 .import-at { color: var(--muted); }

@@ -421,42 +421,6 @@ class DocumentStore {
     } else this.emit()
   }
 
-  /** 디스크에서 다시 읽어 지금 내용을 버린다 (git 되돌리기 뒤). 열려 있지 않으면 아무 일도 없다 */
-  async reload(path: string) {
-    const d = this.docs.get(path)
-    if (!d || d.status !== 'ready') return
-    try {
-      const f = await backend().read(path)
-      this.replaceAll(d, f.text, f.mtime, f.encoding)
-    } catch (e) {
-      d.error = (e as Error).message
-      this.emit()
-    }
-  }
-
-  /** 내용을 통째로 바꾼다 (이전 버전 복원 등). 저장은 따로 한다. TSV 는 되돌리기 가능 */
-  setText(path: string, text: string) {
-    const d = this.docs.get(path)
-    if (!d || d.status !== 'ready' || this.isReadOnly(path)) return
-    if (d.kind === 'tsv') {
-      this.editTable(path, () => parseTable(text, path))
-    } else {
-      const p = parseText(text)
-      this.applyChanges(path, ChangeSet.of({ from: 0, to: d.text.length, insert: p.text }, d.text.length), null)
-    }
-  }
-
-  /** 문서가 읽힐 때까지 기다린다 (최대 waitMs). 열려 있지 않은 문서는 기다리지 않는다 */
-  async whenReady(path: string, waitMs = 4000): Promise<Doc | null> {
-    const until = Date.now() + waitMs
-    while (Date.now() < until) {
-      const d = this.docs.get(path)
-      if (d && d.status !== 'loading') return d
-      await new Promise((r) => setTimeout(r, 50))
-    }
-    return this.docs.get(path) ?? null
-  }
-
   /** 충돌: 내 내용으로 덮어쓴다 */
   overwrite(path: string) {
     const d = this.docs.get(path)
@@ -468,7 +432,7 @@ class DocumentStore {
     if (d?.conflict) this.replaceAll(d, d.conflict.text, d.conflict.mtime, d.conflict.encoding)
   }
 
-  /** 사이드카의 파일 변경 알림. 내가 방금 저장한 것이면 mtime 이 같아 무시된다. */
+  /** 파일 변경 알림. 내가 방금 저장한 것이면 mtime 이 같아 무시된다. */
   async handleExternal(e: ChangeEvent) {
     const d = this.docs.get(e.path)
     if (!d) {
@@ -483,6 +447,11 @@ class DocumentStore {
     const encoding = f.encoding ?? 'utf-8'
     if (!this.isDirty(e.path)) this.replaceAll(d, f.text, f.mtime, encoding)
     else { d.conflict = { text: f.text, mtime: f.mtime, encoding }; this.emit() }
+  }
+
+  /** 무엇이 바뀌었는지 모를 때 (창에 돌아옴, 감시 끊김) 열린 문서를 디스크와 맞춰 본다 */
+  async recheckOpen() {
+    await Promise.all(this.all().map((d) => this.handleExternal({ type: 'change', event: 'change', path: d.path })))
   }
 }
 

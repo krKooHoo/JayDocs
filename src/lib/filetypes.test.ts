@@ -15,7 +15,7 @@ describe('형식 표', () => {
     expect(isDocName('.hidden/x')).toBe(false)
     expect(isDocName('a.md.bak')).toBe(false)
   })
-  it('사이드카가 쓰는 확장자 목록', () => {
+  it('트리가 쓰는 확장자 목록', () => {
     expect(DOC_EXTS).toEqual(['.md', '.tsv', '.csv', '.txt', '.json'])
     expect(fileTypeOf('a/점수.CSV')?.codec).toBe('csv')
   })

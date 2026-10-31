@@ -1,38 +1,84 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { HttpBackend, backend, setBackend, type MountInfo, type TreeEntry } from './lib/backend'
+import { backend, setBackend, type MountInfo, type TreeEntry } from './lib/backend'
+import { FsaBackend } from './lib/fsa/fsaBackend'
+import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurrentWorkspace, type Workspace as WorkspaceData } from './lib/fsa/workspace'
 import { splitRootPath } from './lib/roots.mjs'
 import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
-import { getToken } from './lib/token'
+import { GrantScreen, StartScreen } from './components/StartScreen'
 import { DOC_EXTS_LABEL, isDocName } from './lib/filetypes.mjs'
 import { allCommands, commandByCombo, registerCommands, runCommand, useCommandsVersion } from './lib/commands'
 import { comboFromEvent } from './lib/keys'
+import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
 import { store, useStoreVersion } from './store/documents'
-import { git, useGitVersion } from './store/git'
 import { Workbench, type WorkbenchHandle } from './components/Workbench'
 import { Palette, type PaletteItem } from './components/Palette'
 import { HelpDialog } from './components/HelpDialog'
 
+type Phase =
+  | { kind: 'loading' }
+  | { kind: 'unsupported' }
+  | { kind: 'start' }
+  | { kind: 'grant'; ws: WorkspaceData }
+  | { kind: 'ready'; layoutId: string }
+
 export default function App() {
-  const token = useMemo(getToken, [])
-  // 토큰 없이 열린 뒤 주소에 #token=… 이 붙으면(해시만 바뀌면 새로고침이 없다) 다시 시작한다.
-  useEffect(() => {
-    const onHash = () => { if (location.hash.includes('token=')) location.reload() }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
+  const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
+
+  const enter = useCallback((ws: WorkspaceData) => {
+    setBackend(new FsaBackend(ws, { save: saveWorkspace }))
+    void setCurrentWorkspace(ws.id)
+    setPhase({ kind: 'ready', layoutId: ws.id })
   }, [])
-  if (!token) {
-    return (
-      <div className="app-message">
-        <h1>JayDocs</h1>
-        <p>접속 토큰이 없습니다. <code>start.cmd</code> 로 실행하면 토큰이 붙은 주소로 열립니다.</p>
-        <p>터미널에 찍힌 주소(<code>http://127.0.0.1:…/#token=…</code>)를 그대로 여세요.</p>
-      </div>
-    )
+
+  /** 권한이 모두 있으면 바로, 아니면 허용 화면으로 */
+  const open = useCallback(async (ws: WorkspaceData) => {
+    const roots = [{ handle: ws.primary, readOnly: false }, ...ws.mounts]
+    const states = await Promise.all(roots.map((r) => queryRoot(r.handle, r.readOnly)))
+    if (states.every((s) => s === 'granted')) enter(ws)
+    else setPhase({ kind: 'grant', ws })
+  }, [enter])
+
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    void (async () => {
+      if (!('showDirectoryPicker' in window)) { setPhase({ kind: 'unsupported' }); return }
+      if (import.meta.env.DEV && new URLSearchParams(location.search).has('opfs')) {
+        const { devWorkspace } = await import('./lib/fsa/devSeed')
+        setBackend(new FsaBackend(await devWorkspace(), { save: async () => {} }))
+        setPhase({ kind: 'ready', layoutId: 'dev' })
+        return
+      }
+      const id = await currentWorkspaceId()
+      const ws = id ? (await listWorkspaces()).find((w) => w.id === id) : undefined
+      if (ws) await open(ws)
+      else setPhase({ kind: 'start' })
+    })().catch((e) => {
+      console.warn('작업 공간을 읽지 못했습니다:', e)
+      setPhase({ kind: 'start' })
+    })
+  }, [open])
+
+  switch (phase.kind) {
+    case 'loading':
+      return null
+    case 'unsupported':
+      return (
+        <div className="app-message">
+          <h1>JayDocs</h1>
+          <p>이 브라우저는 로컬 폴더를 열 수 없습니다. Edge 또는 Chrome 에서 여세요.</p>
+        </div>
+      )
+    case 'start':
+      return <StartScreen onOpen={(ws) => void open(ws)} />
+    case 'grant':
+      return <GrantScreen workspace={phase.ws} onReady={() => enter(phase.ws)} onSwitch={() => setPhase({ kind: 'start' })} />
+    case 'ready':
+      return <Workspace layoutId={phase.layoutId} />
   }
-  setBackend(new HttpBackend(token))
-  return <Workspace />
 }
 
 function allFiles(entries: TreeEntry[], out: string[] = []): string[] {
@@ -45,11 +91,11 @@ function allFiles(entries: TreeEntry[], out: string[] = []): string[] {
 
 type Overlay = { kind: 'palette' } | { kind: 'files' } | { kind: 'help' } | { kind: 'import' } | null
 
-function Workspace() {
+function Workspace({ layoutId }: { layoutId: string }) {
   useStoreVersion()
-  useGitVersion()
   useCommandsVersion()
   const theme = useTheme()
+  const app = usePwa()
   const [root, setRoot] = useState<string | null>(null)
   const [tree, setTree] = useState<TreeEntry[]>([])
   /** 가져온 폴더들 (트리를 읽을 때마다 갱신). null = 아직 모름 */
@@ -57,7 +103,6 @@ function Workspace() {
   const [error, setError] = useState<string | null>(null)
   /** 잠깐 보이는 알림 (가져온 폴더가 사라져 탭을 닫았을 때 등) */
   const [notice, setNotice] = useState<string | null>(null)
-  const [connected, setConnected] = useState(false)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const bench = useRef<WorkbenchHandle>(null)
   /** 트리에서 마지막으로 고른 폴더 (새 파일의 기본 위치) — 트리가 알려 준다 */
@@ -71,15 +116,16 @@ function Workspace() {
         ...t.entries,
         ...t.mounts.map((m): TreeEntry => ({
           type: 'dir', name: `@${m.alias}`, path: `@${m.alias}`, children: m.entries,
-          mount: { alias: m.alias, path: m.path, readOnly: m.readOnly, persist: m.persist, truncated: m.truncated },
+          mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated },
         })),
       ]
       setTree(all)
       store.setTree(all)
       store.setMounts(t.mounts)
       setMounts(t.mounts)
-      const broken = t.mounts.filter((m) => m.error)
-      setError(broken.length ? broken.map((m) => `@${m.alias}: ${m.error}`).join(' · ') : null)
+      const problems = t.mounts.filter((m) => m.error).map((m) => `@${m.alias}: ${m.error}`)
+      if (t.truncated) problems.unshift('항목이 너무 많아 트리에 일부만 보입니다')
+      setError(problems.length ? problems.join(' · ') : null)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -90,7 +136,7 @@ function Workspace() {
     window.setTimeout(() => setNotice((n) => (n === msg ? null : n)), 6000)
   }, [])
 
-  // 레이아웃 복원 뒤 처음 한 번: 이제 없는 가져온 폴더의 탭은 닫는다 (다른 PC, 해제됨, 드라이브 빠짐)
+  // 레이아웃 복원 뒤 처음 한 번: 이제 없는 가져온 폴더의 탭은 닫는다 (해제됨, 드라이브 빠짐)
   const staleChecked = useRef(false)
   useEffect(() => {
     if (staleChecked.current || mounts === null || !root || !bench.current) return
@@ -108,24 +154,27 @@ function Workspace() {
   useEffect(() => {
     backend().info().then((i) => {
       setRoot(i.root)
-      // 창 제목에 폴더 이름 — 리포를 여러 개 열어 두어도 구분된다
-      document.title = `${i.root.split(/[\\/]/).filter(Boolean).pop() ?? i.root} — JayDocs`
+      // 창 제목에 폴더 이름 — 작업 표시줄에서 구분된다
+      document.title = `${i.root} — JayDocs`
     }).catch((e) => setError((e as Error).message))
     void refreshTree()
-    void git.refresh()
   }, [refreshTree])
 
-  // 파일 변경 알림: 열린 문서는 스토어가, 트리는 이름 변경(생성·삭제·이동)일 때 다시 읽는다. git 상태는 뭉쳐서 다시 읽는다.
+  // 파일 변경 알림: 열린 문서는 스토어가, 트리는 이름 변경(생성·삭제·이동)일 때 다시 읽는다.
   useEffect(() => {
     let timer: number | undefined
+    const scheduleTree = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => void refreshTree(), 300)
+    }
     const unsubscribe = backend().subscribe((e) => {
-      setConnected(true)
-      void store.handleExternal(e)
-      git.scheduleRefresh()
-      if (e.event === 'rename') {
-        window.clearTimeout(timer)
-        timer = window.setTimeout(() => void refreshTree(), 300)
+      if (e.event === 'rescan') {
+        void store.recheckOpen()
+        scheduleTree()
+        return
       }
+      void store.handleExternal(e)
+      if (e.event === 'rename') scheduleTree()
     })
     return () => { unsubscribe(); window.clearTimeout(timer) }
   }, [refreshTree])
@@ -160,17 +209,17 @@ function Workspace() {
     [...store.dirtyPaths()].filter((p) => p === path || (isDir && p.startsWith(path + '/')))
 
   const rename = useCallback(async (path: string, isDir: boolean) => {
-    const dirty = dirtyUnder(path, isDir)
+    if (isDir) { window.alert('폴더 이름은 탐색기에서 바꾸세요. 트리는 자동으로 따라옵니다.'); return }
+    const dirty = dirtyUnder(path, false)
     if (dirty.length) { window.alert(`먼저 저장하세요:\n${dirty.join('\n')}`); return }
-    const to = window.prompt(isDir ? '폴더의 새 경로' : '파일의 새 경로 (폴더를 바꾸면 옮겨진다)', path)
+    const to = window.prompt('파일의 새 경로 (폴더를 바꾸면 옮겨진다)', path)
     if (!to || to === path) return
     const next = to.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
-    if (!isDir && !isDocName(next)) { window.alert(`${DOC_EXTS_LABEL} 중 하나로 끝나야 합니다`); return }
+    if (!isDocName(next)) { window.alert(`${DOC_EXTS_LABEL} 중 하나로 끝나야 합니다`); return }
     try {
       await backend().rename(path, next)
-      bench.current?.renamePaths(path, next, isDir)
+      bench.current?.renamePaths(path, next, false)
       await refreshTree()
-      git.scheduleRefresh(100)
     } catch (e) {
       window.alert(`바꾸지 못했습니다: ${(e as Error).message}`)
     }
@@ -179,12 +228,11 @@ function Workspace() {
   const remove = useCallback(async (path: string, isDir: boolean) => {
     const dirty = dirtyUnder(path, isDir)
     if (dirty.length) { window.alert(`저장하지 않은 문서가 있습니다. 먼저 저장하거나 닫으세요:\n${dirty.join('\n')}`); return }
-    if (!window.confirm(isDir ? `폴더 "${path}" 와 그 안의 모든 파일을 지웁니다. 계속할까요?` : `"${path}" 를 지웁니다. 계속할까요?`)) return
+    if (!window.confirm(isDir ? `폴더 "${path}" 와 그 안의 모든 파일을 지웁니다. 휴지통으로 가지 않습니다. 계속할까요?` : `"${path}" 를 지웁니다. 휴지통으로 가지 않습니다. 계속할까요?`)) return
     try {
       await backend().remove(path, isDir)
       bench.current?.closePaths(path, isDir)
       await refreshTree()
-      git.scheduleRefresh(100)
     } catch (e) {
       window.alert(`지우지 못했습니다: ${(e as Error).message}`)
     }
@@ -219,24 +267,30 @@ function Workspace() {
     }
   }, [mounts, refreshTree])
 
-  const reveal = useCallback((path: string) => {
-    backend().reveal(path).catch((e) => window.alert(`탐색기를 열지 못했습니다: ${(e as Error).message}`))
-  }, [])
-
   const rootAction = useCallback((action: RootAction, path: string) => {
     const alias = splitRootPath(path).alias
-    if (action === 'reveal') reveal(path)
-    else if (action === 'refresh') void refreshTree()
+    if (action === 'refresh') void refreshTree()
     else if (alias !== null && action === 'unmount') void unmount(alias)
     else if (alias !== null && action === 'toggleReadOnly') void toggleReadOnly(alias)
-  }, [reveal, refreshTree, unmount, toggleReadOnly])
+  }, [refreshTree, unmount, toggleReadOnly])
 
   const onImported = useCallback(async (m: MountInfo) => {
     setOverlay(null)
     await refreshTree()
-    showNotice(`가져왔습니다: @${m.alias}${m.readOnly ? ' (읽기 전용)' : ''} — ${m.path}`)
+    showNotice(`가져왔습니다: @${m.alias}${m.readOnly ? ' (읽기 전용)' : ''} — ${m.folder}`)
     runCommand('focusTree')
   }, [refreshTree, showNotice])
+
+  const switchFolder = useCallback(async () => {
+    if (store.anyDirty()) { window.alert('저장하지 않은 문서가 있습니다. 먼저 저장하세요.'); return }
+    await setCurrentWorkspace(null)
+    location.reload()
+  }, [])
+
+  const applyUpdate = useCallback(() => {
+    if (store.anyDirty()) { window.alert('저장하지 않은 문서가 있습니다. 저장한 뒤 적용하세요.'); return }
+    app.applyUpdate()
+  }, [app])
 
   // 가져온 폴더마다 팔레트 명령 (해제 · 읽기 전용 전환)
   useEffect(() => registerCommands((mounts ?? []).flatMap((m) => [
@@ -247,7 +301,9 @@ function Workspace() {
   // ---- 전역 명령
   useEffect(() => registerCommands([
     { id: 'importFolder', label: '폴더 가져오기…', run: () => setOverlay({ kind: 'import' }) },
-    { id: 'revealActive', label: '탐색기에서 보기 (현재 문서)', run: () => { const p = bench.current?.activePath(); if (p) reveal(p) }, enabled: () => !!bench.current?.activePath() },
+    { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
+    { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
+    { id: 'applyUpdate', label: '새 버전 지금 적용', run: applyUpdate, enabled: () => app.updateReady },
     { id: 'save', label: '저장', run: () => bench.current?.saveActive() },
     { id: 'saveAll', label: '모두 저장', run: () => void store.saveAll(), enabled: () => store.anyDirty() },
     { id: 'palette', label: '명령 팔레트', run: () => setOverlay({ kind: 'palette' }) },
@@ -257,10 +313,7 @@ function Workspace() {
     { id: 'newFile', label: '새 파일', run: () => void newFile(lastDir.current) },
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
-    { id: 'gitRefresh', label: 'git 상태 다시 읽기', run: () => void git.refresh(), enabled: () => git.repo },
-    { id: 'gitPush', label: 'git push', run: () => void backend().gitPush().then(() => git.headChanged()).catch((e) => window.alert(`push 실패: ${(e as Error).message}`)), enabled: () => git.repo && !!git.upstream },
-    { id: 'gitPull', label: 'git pull (--ff-only)', run: () => void backend().gitPull().then(() => git.headChanged()).catch((e) => window.alert(`pull 실패: ${(e as Error).message}`)), enabled: () => git.repo && !!git.upstream },
-  ]), [newFile, newFolder, refreshTree, reveal])
+  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app])
 
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다
   useEffect(() => {
@@ -284,6 +337,7 @@ function Workspace() {
   }, [])
 
   const dirtyCount = store.dirtyPaths().size
+  const watching = backend().watching()
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
     if (overlay?.kind === 'palette') {
@@ -301,12 +355,13 @@ function Workspace() {
     <div className="app">
       <header className="topbar">
         <span className="brand">JayDocs</span>
-        <span className="root" title={root ?? ''}>{root ?? '…'}</span>
-        {git.repo && git.branch && <span className="branch" title="git 브랜치">⎇ {git.branch}</span>}
+        <button className="root" title="문서 폴더 바꾸기" onClick={() => void switchFolder()}>{root ?? '…'}</button>
         <span className="spacer" />
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
+        {app.updateReady && <button onClick={applyUpdate} title="모든 창을 닫았다 열어도 적용됩니다">새 버전 적용</button>}
+        {app.canInstall && <button onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
         <button onClick={() => setOverlay({ kind: 'import' })} title="폴더 가져오기 — 다른 폴더를 원래 자리에서 열기 (Ctrl+Shift+O)">📂 가져오기</button>
-        <span className={'conn' + (connected ? ' is-on' : '')} title={connected ? '파일 변경 감시 중' : '감시 연결 대기'}>●</span>
+        <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>
         <button onClick={() => setOverlay({ kind: 'palette' })} title="명령 팔레트 (Ctrl+Shift+P)">명령 ⌘</button>
         <button onClick={() => bench.current?.saveActive()} title="Ctrl+S">저장</button>
         <button onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title="Ctrl+Shift+S">
@@ -320,7 +375,7 @@ function Workspace() {
         {root && (
           <Workbench
             ref={bench}
-            root={root}
+            layoutId={layoutId}
             tree={tree}
             onRefresh={() => void refreshTree()}
             onNewFile={(d) => { lastDir.current = d; void newFile(d) }}

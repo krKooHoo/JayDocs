@@ -1,63 +1,40 @@
 # JayDocs
 
-Markdown(+Mermaid) 과 TSV 를 **나란히 놓고 편집**하는 경량 로컬 문서 편집기.
-Node 사이드카 하나 + 브라우저 창 하나. 문서는 git 리포에 평범한 파일로 둔다. 설계는 [DESIGN.md](DESIGN.md).
+Markdown(+Mermaid) 과 TSV 를 **나란히 놓고 편집**하는 브라우저 문서 편집기. 설치형 웹앱(PWA)으로 쓰고, 이 PC 의 폴더를 직접 읽고 쓴다. 서버가 없어 문서는 어디에도 올라가지 않는다. 설계는 [DESIGN.md](DESIGN.md).
 
-> 상태: **Phase 3 완료** — 폴더 열기 · 탭/분할 · 마크다운 소스/하이브리드/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME · 범위 선택 · 찾기/바꾸기 · 채우기 핸들)
-> · md 안에 TSV 표 임베드(`tsv-view` — 그 자리 편집 · bake · Mermaid 템플릿) · git(배지 · HEAD diff · 커밋 · 기록 · 되돌리기) · 다크 모드 · 명령 팔레트 · 전부 키보드로 ([SHORTCUTS.md](SHORTCUTS.md)).
-> 수식은 `X_Calc.tsv` 로 — 파일에는 값만 남는다(아래 "계산식").
+> 폴더 열기 · 탭/분할 · 마크다운 소스/하이브리드/미리보기(Mermaid) · TSV 그리드(바이트 왕복 보존 · 스키마 검증 · 한글 IME · 범위 선택 · 찾기/바꾸기 · 채우기 핸들)
+> · md 안에 TSV 표 임베드(`tsv-view` — 그 자리 편집 · bake · Mermaid 템플릿) · 다크 모드 · 명령 팔레트 · 전부 키보드로 ([SHORTCUTS.md](SHORTCUTS.md)).
+> 수식은 `X_Calc.tsv` 로 — 파일에는 값만 남는다(아래 "계산식"). git 은 앱 밖(터미널 · GitHub Desktop)에서 쓴다. 바꾼 행만 바뀌게 저장하므로 diff 는 깨끗하다.
 
 ## 실행
 
-```bash
-npm install
-npm run build
-```
+배포 주소를 **Edge** 에서 열고 상단의 **앱으로 설치** 를 누른다(주소창의 설치 아이콘도 같다). 그 뒤로는 시작 메뉴·작업 표시줄에서 연다.
 
-그 뒤에는 `start.cmd` 에 문서 폴더를 **끌어다 놓거나** 인자로 넘긴다.
+1. **문서 폴더 열기** 로 폴더를 고르고 허용한다.
+2. 다른 폴더가 더 필요하면 `Ctrl+Shift+O` 로 가져온다.
+3. 다음부터는 바로 열린다. 권한이 풀려 있으면 시작할 때 **허용** 을 한 번 누른다.
 
-```bat
-start.cmd "C:\Users\user\SagaDocs"
-```
+- Chrome 도 된다. 다만 Chrome 은 파일 이동 API 가 막혀 있어 이름 변경을 복사 후 삭제로 처리한다. Firefox · Safari 는 폴더를 열 수 없다.
+- **탭으로 쓰면 권한이 닫을 때마다 풀릴 수 있다.** 앱으로 설치해 쓴다.
+- 오프라인에서도 돈다(처음 한 번은 인터넷 필요).
 
-Edge(없으면 Chrome) 앱 모드 창이 열린다. 창을 닫으면 서버도 15초 뒤 꺼진다.
-주소에 붙은 `#token=…` 이 접속 키다. 터미널에 찍힌 주소를 그대로 쓰면 된다. `git` 이 PATH 에 있어야 git 기능이 켜진다.
+### 자동 업데이트
 
-### 아무 리포에서나 한 단어로 — `jaydocs`
+`main` 에 push 하면 GitHub Actions(`.github/workflows/deploy.yml`)가 테스트 → 빌드 → 배포한다. 앱은 새 버전을 받아 두었다가 **모든 창을 닫고 다음에 열 때** 적용한다. 상단의 **새 버전 적용** 으로 바로 적용할 수도 있다(저장 안 한 문서가 있으면 막는다). 저절로 새로고침되는 일은 없다.
 
-SagaDocs 전용이 아니다. 어떤 폴더든 `.md`/`.tsv` 가 있으면 열린다(git 리포가 아니어도 편집·저장은 된다).
+### 배포
 
-```bash
-npm link          # JayDocs/ 에서 한 번 — 전역 명령 jaydocs 가 생긴다 (지우기: npm unlink -g jaydocs)
-```
-
-```bash
-jaydocs                     # 현재 폴더를 연다
-jaydocs D:\Docs             # 그 폴더를 연다
-jaydocs --no-open           # 브라우저를 열지 않고 주소만 찍는다
-jaydocs --ignore Library,Temp   # 큰 폴더(유니티 프로젝트 등)는 트리·감시에서 뺀다
-```
-
-폴더를 여러 개 동시에 열어도 된다(각자 다른 포트, 창 제목이 `<폴더 이름> — JayDocs`). 포트는 폴더마다 정해져 있어서 다시 열어도 레이아웃·열 너비·보기 모드·테마가 남는다(그 포트를 누가 쓰고 있으면 아무 포트). 옵션은 `jaydocs --help`.
-
-### 다른 PC 로 가져가기 — `npm run pack`
-
-```bash
-npm run pack      # build → release/jaydocs/ + release/jaydocs-<버전>.zip
-```
-
-zip 을 풀면 `server.mjs` + `dist/` + `start.cmd` + `jaydocs.cmd` 뿐이라 **node_modules 없이 Node 22+ 만 있으면** 돈다.
-`start.cmd "<폴더>"` 로 바로 쓰거나, 그 폴더를 PATH 에 넣거나 `npm install -g .` 하면 어디서나 `jaydocs`.
-
-**직접 만들지 않아도 된다** — `main` 에 push 될 때마다 GitHub Actions(`.github/workflows/release.yml`)가 테스트 → `npm run pack` 을 돌려 [Releases](https://github.com/krKooHoo/JayDocs/releases) 에 `jaydocs-<버전>-build.<번호>.zip` 을 올린다(태그 `v<버전>-build.<번호>`). 버전은 `package.json` 의 `version` 을 올리면 된다.
+공개 리포 하나로 코드와 앱을 함께 관리한다. 앱 주소는 https://krkoohoo.github.io/JayDocs/ 이고, Settings → Pages 의 Source 는 GitHub Actions 다. 따로 넣을 토큰이나 설정은 없다.
 
 ## 쓰는 법
 
-- 왼쪽 트리에서 `.md` · `.tsv` · `.csv` · `.txt` · `.json` 을 클릭하면 가운데 탭으로 열린다(형식 목록은 `src/lib/filetypes.mjs` 한 곳 — 사이드카와 앱이 같이 읽는다). 탭은 끌어서 옮기거나 다른 탭셋에 붙일 수 있다. 오른쪽 클릭 → **이름 바꾸기 / 옮기기 · 삭제 · 새 파일 · 새 폴더**.
+- 왼쪽 트리에서 `.md` · `.tsv` · `.csv` · `.txt` · `.json` 을 클릭하면 가운데 탭으로 열린다(형식 목록은 `src/lib/filetypes.mjs` 한 곳). 탭은 끌어서 옮기거나 다른 탭셋에 붙일 수 있다. 오른쪽 클릭 → **이름 바꾸기 / 옮기기 · 삭제 · 새 파일 · 새 폴더**. 폴더 이름은 탐색기에서 바꾼다(브라우저에 폴더 이동 API 가 없다). 트리는 자동으로 따라온다.
 - **오른쪽에 분할** (`Ctrl+\`) — 같은 문서를 오른쪽 창에도 연다. 한쪽에서 고치면 다른 쪽도 즉시 바뀐다.
-- `Ctrl+S` 저장, `Ctrl+Shift+S` 모두 저장. 탭 이름 옆 `●` 가 미저장, `M/A/?/D` 배지가 git 상태.
-- 다른 프로그램이 파일을 바꾸면: 내가 손대지 않은 문서는 조용히 다시 읽고, 수정 중이던 문서는 위에 배너가 떠서 **디스크 내용 받기 / 내 내용으로 덮어쓰기** 를 고른다.
+- `Ctrl+S` 저장, `Ctrl+Shift+S` 모두 저장. 탭 이름 옆 `●` 가 미저장. 다른 프로그램(Excel 등)이 파일을 잠그고 있으면 저장이 오류로 막히고 원본은 그대로다.
+- 다른 프로그램이 파일을 바꾸면: 내가 손대지 않은 문서는 조용히 다시 읽고, 수정 중이던 문서는 위에 배너가 떠서 **디스크 내용 받기 / 내 내용으로 덮어쓰기** 를 고른다. 터미널에서 `git pull` 해도 같다.
 - 레이아웃(탭·분할), 열 너비, 마크다운 보기 모드는 브라우저에 남아 다음에 열 때 복원된다.
+- 상단의 폴더 이름을 누르면 다른 문서 폴더로 바꾼다. 전에 연 폴더는 가져온 폴더·레이아웃과 함께 돌아온다.
+- 저장한 파일에는 브라우저가 인터넷 표시(`Zone.Identifier`)를 붙인다. 내용과 git 에는 영향이 없다. Excel 이 제한된 보기로 열면 문서 폴더를 Excel 의 신뢰할 수 있는 위치에 넣는다.
 
 ### 키보드 · 테마
 
@@ -72,7 +49,7 @@ zip 을 풀면 `server.mjs` + `dist/` + `start.cmd` + `jaydocs.cmd` 뿐이라 **
 - 창 위의 **소스 / 하이브리드 / 분할 / 미리보기** 로 보기 모드를 고른다 (`Ctrl+Shift+V` 로 순환). 미리보기는 GFM(표·체크박스·취소선) + ```` ```mermaid ```` 다이어그램.
 - **하이브리드**는 Obsidian 식 — 커서가 있는 줄만 원문이고 나머지 줄은 `#` `**` `` ` `` 같은 표식이 숨고 목록·인용이 꾸며진다. ```` ```mermaid ````·```` ```tsv-view ```` 블록과 GFM 표는 커서가 밖에 있으면 그 자리에서 렌더되고(tsv-view 표는 편집도 된다), 블록 위의 **원문** 을 누르면 소스로 돌아온다. `![그림](…)` 은 줄 아래에 그림이 붙고, `- [ ]` 할 일은 체크박스를 눌러 `[x]` 로 바꿀 수 있다. 글자는 체크박스 말고는 하나도 바뀌지 않는다 — 파일은 늘 소스 그대로다.
 - 미리보기의 `.md`/`.tsv` 링크를 누르면 그 문서가 탭으로 열린다(링크는 그 md 파일 위치 기준, `/` 로 시작하면 리포 루트 기준).
-- 이미지는 `![alt](_assets/x.png)` 처럼 리포 안 경로(그 md 위치 기준, `/` 면 리포 루트)를 쓰면 사이드카가 내보낸다(png·jpg·gif·webp·svg·bmp·avif). 바깥 주소도 된다.
+- 이미지는 `![alt](_assets/x.png)` 처럼 문서 폴더 안 경로(그 md 위치 기준, `/` 면 그 폴더 루트)를 쓰면 보인다(png·jpg·gif·webp·svg·bmp·avif). 바깥 주소도 된다.
 - 저장은 소스 그대로다 — 미리보기는 파일을 바꾸지 않는다.
 
 ### 텍스트 · JSON
@@ -84,7 +61,7 @@ zip 을 풀면 `server.mjs` + `dist/` + `start.cmd` + `jaydocs.cmd` 뿐이라 **
 ### UTF-8 이 아닌 파일 · 열 수 없는 파일
 
 - 메모장 "ANSI"·한글 Excel 처럼 **CP949(EUC-KR)** 로 저장된 파일은 한글이 제대로 보이지만 🔒 **읽기 전용**으로 열린다(저장하면 깨지던 것을 막는다). 고치려면 배너의 **UTF-8 로 바꿔 저장** — 지금 보이는 내용 그대로 UTF-8 로 다시 쓰고, 그 뒤엔 보통 문서처럼 편집한다. 원래 인코딩으로 되쓰지는 않는다.
-- NUL 바이트가 든 파일(이름만 txt 인 바이너리), UTF-16 파일, 5 MB 넘는 파일은 열지 않고 이유를 보여 준다. 사이드카도 UTF-8 이 아닌 파일의 덮어쓰기를 거부한다.
+- NUL 바이트가 든 파일(이름만 txt 인 바이너리), UTF-16 파일, 5 MB 넘는 파일은 열지 않고 이유를 보여 준다. UTF-8 이 아닌 파일은 "UTF-8 로 바꿔 저장" 이 아니면 덮어쓰지 않는다.
 
 ### md 안에 TSV 표 넣기 (`tsv-view`)
 
@@ -169,55 +146,47 @@ FoodCost[Ocean-Ocean]	=255	이 행만
 ### 폴더 가져오기 (다른 폴더를 같이 열기)
 
 - `Ctrl+Shift+O` 또는 상단 **📂 가져오기** — 수업 자료 · Unity 프로젝트 문서 · 수강생 제출물처럼 다른 곳의 폴더를 **복사하지 않고 원래 자리에서** 연다. 트리 맨 아래에 `🔗 @별칭` 으로 붙고, 그 안 파일 경로는 `@별칭/…` 이다.
-- 경로는 붙여 넣는다(탐색기 "경로로 복사" 의 따옴표는 알아서 뗀다). 치는 동안 하위 폴더가 후보로 뜨고 `↓`/`↑` 로 골라 `Tab` 으로 채운다, `Enter` 가져오기. Windows 면 **찾아보기…** 가 폴더 고르기 창을 띄운다. 별칭은 비우면 폴더 이름.
-- **읽기 전용**으로 가져오면(`🔒`) 저장·새 파일·이름 바꾸기·삭제가 막힌다. 가져온 폴더엔 **git 이 없어 저장을 되돌릴 수 없으니** 제출물처럼 보기만 할 폴더는 읽기 전용으로. 트리의 `@별칭` 오른쪽 클릭(또는 팔레트, 창 위 배너)으로 켜고 끈다.
-- 트리 오른쪽 클릭: **탐색기에서 보기**(모든 파일·폴더) · 읽기 전용 켜기/끄기 · 새로 고침 · **가져오기 해제**(파일은 그대로). 해제한 폴더는 가져오기 창의 "최근 폴더" 에서 한 번에 다시 가져온다.
-- 목록은 `~/.jaydocs/workspaces.json` 에 **주 폴더별로** 남아 다음에 열 때 돌아온다(리포에는 아무것도 안 남는다). 이번 실행에만 열려면 `jaydocs <주 폴더> --mount <폴더>`. 폴더를 못 찾으면(드라이브 빠짐) 그 탭은 닫고 알린다.
-- Unity 프로젝트를 통째로 가져와도 `Library` `Temp` `Logs` `obj` `Build(s)` `UserSettings` `MemoryCaptures` 는 빠지고, 문서가 없는 폴더는 트리에 안 보인다. 항목이 2만 개를 넘으면 `⚠` — 하위 폴더를 가져온다.
-- 안 되는 것: 주 폴더나 다른 가져온 폴더와 **겹치는** 폴더(안에 있거나 감싸는), 드라이브 전체, 사용자 폴더 전체. 주 폴더 ↔ 가져온 폴더 사이 이동. 가져온 파일의 git(배지·diff·기록·커밋) — git 은 주 폴더만.
+- **폴더 고르기…** 로 폴더를 고르고 **가져오기**. 별칭은 비우면 폴더 이름.
+- **읽기 전용**으로 가져오면(`🔒`) 저장·새 파일·이름 바꾸기·삭제가 막힌다. 제출물처럼 보기만 할 폴더는 먼저 읽기 전용을 켜고 고른다(쓰기 권한을 묻지 않는다). 트리의 `@별칭` 오른쪽 클릭(또는 팔레트, 창 위 배너)으로 켜고 끈다.
+- 트리 오른쪽 클릭: 읽기 전용 켜기/끄기 · 새로 고침 · **가져오기 해제**(파일은 그대로). 해제한 폴더는 가져오기 창의 "최근 폴더" 에서 한 번에 다시 가져온다.
+- 목록은 브라우저 저장소(IndexedDB)에 **주 폴더별로** 남아 다음에 열 때 돌아온다(리포에는 아무것도 안 남는다). 폴더를 못 읽으면(드라이브 빠짐) 상단에 오류를 보이고 나머지는 그대로 쓴다.
+- Unity 프로젝트를 통째로 가져와도 `Library` `Temp` `Logs` `obj` `Build(s)` `UserSettings` `MemoryCaptures` 는 빠지고, 문서가 없는 폴더는 트리에 안 보인다. 항목이 2만 개를 넘으면 `⚠` — 하위 폴더를 가져온다. 브라우저는 폴더를 읽는 속도가 느려(2만 항목에 6~8초) 큰 프로젝트는 문서 폴더만 고르는 편이 낫다.
+- 안 되는 것: 주 폴더나 다른 가져온 폴더와 **겹치는** 폴더(안에 있거나 감싸는), 브라우저가 막는 시스템 폴더. 주 폴더 ↔ 가져온 폴더 사이 이동.
 - `tsv-view` 의 `file:`, `/` 로 시작하는 링크, 계산식 `lookup`, `_Field` 찾기는 **그 문서가 속한 폴더 안에서** 풀린다(가져온 폴더의 md 는 가져온 폴더 기준).
-
-### git (아래 **변경 (git)** 패널)
-
-- 바뀐 `.md`/`.tsv` 목록 + 배지. 체크를 풀면 커밋에서 뺀다. 메시지를 쓰고 **커밋** (`Ctrl+Enter`). 저장하지 않은 문서가 섞여 있으면 먼저 저장할지 묻는다.
-- 파일 이름(또는 **diff**) → HEAD 와 비교 탭. md 는 왼쪽 HEAD / 오른쪽 현재(편집 가능, 가운데 화살표로 청크 되돌리기). tsv 는 Key 로 행을 맞춘 셀 변경 목록, 항목을 누르면 그리드의 그 셀로.
-- **되돌리기** → `git restore` (HEAD 내용으로, 저장 전 수정도 버린다). 새 파일(`?`)은 대상이 아니다.
-- **기록** (또는 **현재 문서** / **전체**) → 커밋 목록. **보기** 는 그 시점 내용을 읽기 전용 탭으로, **이 버전으로** 는 그 내용을 현재 문서에 넣는다 (git 은 안 건드린다 — 저장·커밋은 따로).
-- 원격 추적 브랜치가 있으면 패널 머리에 **pull ↓n / push ↑n** 버튼(팔레트의 `git push` / `git pull` 도 같다). pull 은 `--ff-only` 라 갈라졌으면 거부하고 터미널로 안내한다. 자격 증명은 git credential helper 에 맡기므로 처음 한 번은 터미널에서 `git push` 해 둔다. 브랜치 전환은 없다.
 
 ## 개발
 
 ```bash
-npm run serve   # 사이드카: 127.0.0.1:5190, 토큰 dev, 자동 종료 없음
-npm run dev     # Vite 5173 — /api 는 5190 으로 프록시. http://localhost:5173 을 연다
-npm run build   # dist/ 생성 (사이드카가 서빙)
-npm run pack    # build + release/jaydocs/ 와 zip (독립 실행 묶음)
-npm test        # vitest — TSV 왕복(SagaDocs 실제 파일 포함)·편집·스키마·검증·tsv-view·diff·계산식
+npm run dev     # Vite 5173. http://127.0.0.1:5173 을 Edge/Chrome 에서 연다
+npm run build   # 타입 검사 + dist/ + sw.js
+npm test        # vitest — 파일 처리(메모리 파일 시스템)·TSV 왕복·편집·스키마·검증·tsv-view·계산식
 ```
 
-빌드한 `dist/` 를 사이드카로 바로 보려면 `http://127.0.0.1:5190/#token=dev`.
-`.claude/launch.json` 의 `--root` 경로는 PC마다 다르므로 clone 한 뒤 맞춘다.
-테스트의 SagaDocs 왕복 항목은 `../SagaDocs`(이 리포 옆), `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾고, 없으면 건너뛴다.
+- 폴더 선택 창은 자동화가 못 누른다. 화면 시험은 `http://127.0.0.1:5173/?opfs` (개발 전용) — 브라우저 안 저장소를 문서 폴더로 쓴다. 변경 감지도 실제로 돈다.
+- 빌드본(서비스 워커 포함)은 `npx vite preview`. `.claude/launch.json` 에 둘 다 있다.
+- 테스트의 SagaDocs 왕복 항목은 `../SagaDocs`(이 리포 옆), `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾고, 없으면 건너뛴다.
 
-다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](TESTCASES.md)(117개 TC).
+다른 PC에서 이어서 작업할 때는 [HANDOFF.md](HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](TESTCASES.md).
 
 ## 구조
 
 ```
-server.mjs            사이드카 — 정적 파일 + /api/tree,file(인코딩 감지 · 바이너리/크기 거부),mkdir,rename,delete,raw(이미지) + /api/roots(가져온 폴더 목록·추가·읽기 전용·해제, ~/.jaydocs/workspaces.json),fs/dirs(경로 자동 완성),fs/pick(Windows 폴더 창),reveal(탐색기) + /api/git/*(status·show·log·commit·restore·push·pull, CLI 위임, 주 폴더만) + /api/events(SSE, 루트마다 감시). 런타임 의존성 0
-start.cmd             실행기 (폴더를 끌어다 놓거나 인자로)
-bin/jaydocs.mjs       전역 명령 jaydocs — 위치 인자 → --root, 기본 --open, --help
-scripts/pack.mjs      npm run pack — release/jaydocs/ 와 zip 묶기
-.github/workflows/release.yml  main push → 테스트 · pack → GitHub Releases 에 zip
+public/               manifest · 앱 아이콘
+scripts/gen-sw.mjs    npm run build 끝에 dist/sw.js 생성 (오프라인 · 자동 업데이트)
 scripts/gen-shortcuts.mjs  npm run shortcuts — SHORTCUTS.md 생성
+.github/workflows/deploy.yml  main push → 테스트 · 빌드 → GitHub Pages 배포
 src/
-  lib/backend.ts      Backend 인터페이스 + HttpBackend (토큰 헤더, 409 → ConflictError, git 메서드)
-  lib/token.ts        #token=… → sessionStorage
+  lib/backend.ts      Backend 인터페이스, ConflictError
+  lib/fsa/fsaBackend.ts  File System Access 구현 — 트리 · 읽기(인코딩 감지 · 바이너리/크기 거부) · 저장(낙관적 잠금) · 이름 변경(덮어쓰기 검사, move 실패 시 복사) · 변경 감지(FileSystemObserver, 뭉치기) · 가져온 폴더
+  lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더) · IndexedDB 저장 · 권한 묻기
+  lib/fsa/fake.ts     시험용 메모리 파일 시스템
+  lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험
+  lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
-  lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘) — 사이드카도 import
-  lib/roots.mjs       가져온 폴더 경로 규칙 (`@별칭/…` 나누기·합치기, 같은 루트 안 경로, 별칭 규칙, 기본 무시 폴더) — 사이드카도 import
+  lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘)
+  lib/roots.mjs       가져온 폴더 경로 규칙 (`@별칭/…` 나누기·합치기, 같은 루트 안 경로, 별칭 규칙, 기본 무시 폴더)
   lib/jsonText.ts     JSON 문법 확인 · 정렬 (내용이 바뀌는 정렬은 거부)
-  lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · 평문/JSON 창 · diff 창 · 이전 버전 보기)
+  lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · 평문/JSON 창)
   lib/md/tsvView.ts   tsv-view 펜스 파서(YAML 부분집합) · where 식 · 필터/정렬 적용
   lib/md/template.ts  Mermaid 생성용 Mustache 부분집합 (each · if · .list · .id)
   lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산
@@ -226,7 +195,7 @@ src/
     parse.ts          텍스트 → 표 (탭 split 만, 따옴표 해석 없음) · 열 때 경고
     serialize.ts      표 → 텍스트 (수정한 행만 재조립) · 셀 글자 정리
     csv.ts            CSV (RFC 4180) ↔ 같은 표 모델 — 레코드 원문·따옴표 칸 보존, 고친 레코드만 재조립
-    table.ts          경로의 형식(tsv/csv)에 따라 읽기·쓰기·열 때 경고·셀 정리 — 스토어·diff·bake 가 부른다
+    table.ts          경로의 형식(tsv/csv)에 따라 읽기·쓰기·열 때 경고·셀 정리 — 스토어·bake 가 부른다
     edits.ts          setCell · 행/열 삽입·삭제·복제 · 붙여넣기 (순수 함수)
     clipboard.ts      Sheets 클립보드 TSV 파싱·만들기 (줄바꿈 든 칸만 따옴표)
     mdTable.ts        머리글 있는 표 읽기 — 마크다운 파이프 표 · <th> HTML 표 (DESIGN §19)
@@ -236,25 +205,26 @@ src/
   lib/calc/
     expr.ts           계산식 토크나이저 · 파서 · 평가기 (함수 · lookup)
     calc.ts           X_Calc.tsv 규칙 읽기 · 계산 · 적용 (stale 판정)
-    diff.ts           두 표의 차이 (Key 로 행 맞춤)
     *.test.ts         vitest
   store/documents.ts  DocumentStore — 경로당 문서 하나 (TextDoc | TsvDoc), 창 간 동기화, undo 스택, Field 캐시, dirty·충돌·저장
-  store/git.ts        git 상태 (경로 → 배지), 뭉친 새로고침, HEAD 변경 카운터
   components/
-    Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인. md/tsv/diff/rev 탭, 아래 git 패널
-    FileTree.tsx      파일 트리 (git 배지, 오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
-    ImportDialog.tsx  폴더 가져오기 창 (경로 자동 완성 · 찾아보기 · 별칭 · 읽기 전용 · 최근 폴더)
+    Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
+    FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
+    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 읽기 전용 · 최근 폴더)
+    StartScreen.tsx   시작 화면 (문서 폴더 열기 · 전에 연 폴더) · 권한 다시 허용 화면
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
     ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯)
-    GitPane.tsx       변경 목록 · 커밋 · 기록 · 되돌리기
-    DiffPane.tsx      HEAD 비교 (md: @codemirror/merge, tsv: 셀 diff) · 이전 버전 보기(RevPane)
     grid/Grid.tsx     자체 DOM 그리드 — 행 윈도잉(고정 높이, 직접 계산) · 고정 헤더 · 입력 textarea 하나 · 드롭다운 · 범위 선택 · 채우기 핸들 · 열 드래그
     grid/GridPane.tsx 툴바(되돌리기·행/열) · 배너 · 상태줄, 스토어 ↔ Grid 연결
     PaneErrorBoundary.tsx 창 안쪽 렌더 오류를 잡아 저장 안 한 편집을 지킨다 (그리드)
 ```
 
-## 보안 (로컬 도구 기준)
+## 보안
 
-127.0.0.1 에만 바인딩 · 모든 `/api` 요청에 토큰 · `Host`/`Origin` 검사 · 경로는 문서 폴더(주 폴더 또는 가져온 폴더) 아래로만(`..`, 절대 경로, 루트 밖 링크, `.git` 안 거부) · git 은 인자 배열로만 호출(셸 없음, 경로 앞 `--`). 폴더 가져오기도 같은 토큰이 있어야 하고, 드라이브 전체·사용자 폴더 전체·겹치는 폴더는 거부한다.
+- **문서는 올라가지 않는다.** 서버가 없고, 코드는 브라우저 안에서 돌며 파일을 직접 읽고 쓴다. 공개되는 것은 앱 코드뿐이다.
+- 배포된 코드는 허용한 폴더를 고칠 수 있다. **GitHub 2단계 인증 필수.** 라이브러리는 번들에 넣고 lockfile 로 고정하며, 실행 중에 CDN 에서 코드를 받지 않는다.
+- 같은 주소(`krkoohoo.github.io`)의 다른 페이지는 저장소와 폴더 핸들을 함께 볼 수 있다. 위키와 `portfolio-test` 가 여기에 있으니 **두 사이트에 외부 스크립트나 다른 사람의 코드를 넣지 않는다.** 넣어야 한다면 JayDocs 를 먼저 다른 주소로 옮긴다.
+- 경로는 허용한 폴더 아래로만(`..`, 절대 경로, `.git` 안 거부). 쓰기는 읽기 전용 폴더에서 막힌다.
+- 삭제는 휴지통으로 가지 않는다. 앱이 그렇게 묻는다.

@@ -37,14 +37,9 @@ export const SHORTCUTS = [
       { keys: 'Alt+1 … Alt+9', label: 'n번째 탭', command: 'tabN' },
       { keys: 'Alt+W', label: '탭 닫기', command: 'closeTab' },
       { keys: 'Ctrl+B', label: '파일 트리 접기 / 펴기', command: 'toggleTree' },
-      { keys: 'Ctrl+J', label: 'git 패널 접기 / 펴기', command: 'toggleGit' },
       { keys: 'Ctrl+Shift+E', label: '파일 트리로 포커스', command: 'focusTree' },
-      { keys: 'Ctrl+Shift+G', label: 'git 패널(커밋 메시지)로 포커스', command: 'focusGit' },
       { keys: 'Ctrl+Shift+M', label: '문서 창(편집기 · 그리드)으로 포커스', command: 'focusEditor' },
       { keys: 'Ctrl+Shift+V', label: '마크다운 보기 모드 순환: 소스 → 분할 → 미리보기', command: 'cycleMdMode' },
-      { keys: 'Ctrl+Shift+F', label: '현재 문서를 HEAD 와 비교 (diff 탭)', command: 'diffActive' },
-      { keys: 'Ctrl+Shift+H', label: '현재 문서의 커밋 기록 (git 패널)', command: 'historyActive' },
-      { keys: 'Ctrl+Alt+Shift+D', label: 'git 패널의 변경 목록 열기', command: 'toggleGit', note: 'Ctrl+J 와 같다' },
     ],
   },
   {
@@ -56,7 +51,7 @@ export const SHORTCUTS = [
       { keys: '←', label: '폴더 접기 (접혀 있으면 상위 폴더로)' },
       { keys: 'Enter', label: '열기 / 폴더 펼치기·접기' },
       { keys: 'Home / End', label: '처음 / 끝' },
-      { keys: 'F2', label: '이름 바꾸기 / 옮기기' },
+      { keys: 'F2', label: '파일 이름 바꾸기 / 옮기기' },
       { keys: 'Delete', label: '삭제' },
       { keys: 'Shift+F10', label: '오른쪽 클릭 메뉴' },
     ],
@@ -117,13 +112,6 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+Shift+D', label: '행 복제' },
       { keys: '↓ / ↑ (enum 드롭다운)', label: '후보 고르기, Enter 로 확정' },
       { keys: 'F9', label: '계산식 적용 — 같은 폴더 `X_Calc.tsv` 의 식을 평가해 값 열에 써 넣는다 (바뀔 셀은 미리 노란 밑줄)', command: 'calc' },
-    ],
-  },
-  {
-    scope: 'git 패널',
-    items: [
-      { keys: 'Ctrl+Enter', label: '커밋 (메시지 입력란에서)' },
-      { keys: 'Tab', label: '파일 행의 diff · 기록 · 되돌리기 버튼으로 이동' },
     ],
   },
   {
