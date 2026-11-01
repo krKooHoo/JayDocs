@@ -10,9 +10,9 @@ Markdown(+Mermaid) 과 TSV 를 **나란히 놓고 편집**하는 브라우저 �
 
 배포 주소를 **Edge** 에서 열고 상단의 **앱으로 설치** 를 누른다(주소창의 설치 아이콘도 같다). 그 뒤로는 시작 메뉴·작업 표시줄에서 연다.
 
-1. **문서 폴더 열기** 로 폴더를 고르고 허용한다.
+1. **문서 폴더 열기** 로 폴더를 고르고 허용한 뒤, 문서 별칭과 상세 경로를 넣는다(건너뛰어도 된다).
 2. 다른 폴더가 더 필요하면 `Ctrl+Shift+O` 로 가져온다.
-3. 다음부터는 바로 열린다. 권한이 풀려 있으면 시작할 때 **허용** 을 한 번 누른다.
+3. 다음부터는 바로 열린다. 권한이 풀려 있으면 시작할 때 **허용** 을 한 번 누른다. 최근에 연 폴더는 그 화면에서 바로 고를 수 있다.
 
 - Chrome 도 된다. 다만 Chrome 은 파일 이동 API 가 막혀 있어 이름 변경을 복사 후 삭제로 처리한다. Firefox · Safari 는 폴더를 열 수 없다.
 - **탭으로 쓰면 권한이 닫을 때마다 풀릴 수 있다.** 앱으로 설치해 쓴다.
@@ -34,12 +34,15 @@ Markdown(+Mermaid) 과 TSV 를 **나란히 놓고 편집**하는 브라우저 �
 - 다른 프로그램이 파일을 바꾸면: 내가 손대지 않은 문서는 조용히 다시 읽고, 수정 중이던 문서는 위에 배너가 떠서 **디스크 내용 받기 / 내 내용으로 덮어쓰기** 를 고른다. 터미널에서 `git pull` 해도 같다.
 - 레이아웃(탭·분할), 열 너비, 마크다운 보기 모드는 브라우저에 남아 다음에 열 때 복원된다.
 - 상단의 폴더 이름을 누르면 다른 문서 폴더로 바꾼다. 전에 연 폴더는 가져온 폴더·레이아웃과 함께 돌아온다.
+- **최근 폴더**: 시작 화면과 허용 화면에 최근 순으로 10개까지 `문서 별칭 | 상세 경로` 로 보인다. ✎ 로 고치고 × 로 목록에서 지운다(폴더와 파일은 그대로). 11번째를 열면 가장 오래된 항목이 빠진다.
+- **상세 경로는 직접 넣는다.** 브라우저가 전체 경로를 알려 주지 않기 때문이다. 탐색기 주소 표시줄의 경로를 붙여 넣으면 되고, 경로 끝이 고른 폴더 이름과 다르면 저장되지 않는다. 두 번째 폴더부터는 최근 폴더와 같은 곳으로 미리 채워진다.
+- **파일 탐색기에서 열기**: 트리 오른쪽 클릭(또는 팔레트). 폴더는 열고, 파일은 선택해 보여 준다. 웹 앱이 탐색기를 직접 열 수 없어 PC 마다 **연결 도우미를 한 번 설치**한다. 처음 누르면 안내가 뜬다. 설치 없이 쓰려면 **전체 경로 복사**. 제거는 도우미 파일을 `/uninstall` 과 함께 실행한다. Windows 에서만 된다.
 - 저장한 파일에는 브라우저가 인터넷 표시(`Zone.Identifier`)를 붙인다. 내용과 git 에는 영향이 없다. Excel 이 제한된 보기로 열면 문서 폴더를 Excel 의 신뢰할 수 있는 위치에 넣는다.
 
 ### 키보드 · 테마
 
 - **모든 명령은 키보드로** 된다. 단축키 전체는 [SHORTCUTS.md](SHORTCUTS.md)(앱에서는 `F1`). 키가 없는 명령도 **명령 팔레트** `Ctrl+Shift+P` 에서 글자로 찾아 실행한다. `Ctrl+P` 는 파일 빠른 열기.
-- 탭: `Alt+]` / `Alt+[` 다음·이전, `Alt+1~9` n번째, `Alt+W` 닫기. 패널: `Ctrl+B` 트리, `Ctrl+J` git, `Ctrl+Shift+E` / `Ctrl+Shift+G` / `Ctrl+Shift+M` 으로 트리 · git · 문서 창에 포커스.
+- 탭: `Alt+]` / `Alt+[` 다음·이전, `Alt+1~9` n번째, `Alt+W` 닫기. 패널: `Ctrl+B` 트리, `Ctrl+Shift+E` / `Ctrl+Shift+M` 으로 트리 · 문서 창에 포커스.
 - 트리에 포커스가 있으면 방향키로 다니고 `Enter` 열기, `F2` 이름 바꾸기, `Delete` 삭제, `Shift+F10` 메뉴.
 - 단축키는 `src/lib/shortcuts-table.mjs` 한 곳에 적는다. `npm run shortcuts` 가 SHORTCUTS.md 를 다시 만들고, 테스트가 둘이 같은지 본다. 브라우저가 먼저 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)은 쓰지 않는다.
 - **다크 모드** `Ctrl+Alt+D` 또는 오른쪽 위 ☾/☀. 처음엔 OS 설정을 따르고 고르면 브라우저에 남는다.
@@ -171,14 +174,16 @@ npm test        # vitest — 파일 처리(메모리 파일 시스템)·TSV 왕�
 ## 구조
 
 ```
-public/               manifest · 앱 아이콘
+public/               manifest · 앱 아이콘 · 파일 탐색기 연결 도우미(helper/)
 scripts/gen-sw.mjs    npm run build 끝에 dist/sw.js 생성 (오프라인 · 자동 업데이트)
 scripts/gen-shortcuts.mjs  npm run shortcuts — SHORTCUTS.md 생성
 .github/workflows/deploy.yml  main push → 테스트 · 빌드 → GitHub Pages 배포
 src/
   lib/backend.ts      Backend 인터페이스, ConflictError
   lib/fsa/fsaBackend.ts  File System Access 구현 — 트리 · 읽기(인코딩 감지 · 바이너리/크기 거부) · 저장(낙관적 잠금) · 이름 변경(덮어쓰기 검사, move 실패 시 복사) · 변경 감지(FileSystemObserver, 뭉치기) · 가져온 폴더
-  lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더) · IndexedDB 저장 · 권한 묻기
+  lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더 · 별칭 · 상세 경로) · IndexedDB 저장 · 최근 10개 · 권한 묻기
+  lib/localPath.ts    상세 경로 다듬기 · 검사 · 앱 경로와 합치기 · 미리 채울 값
+  lib/explorer.ts     파일 탐색기 열기 (jaydocs-open: → 연결 도우미)
   lib/fsa/fake.ts     시험용 메모리 파일 시스템
   lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
@@ -210,8 +215,10 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
     FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
-    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 읽기 전용 · 최근 폴더)
-    StartScreen.tsx   시작 화면 (문서 폴더 열기 · 전에 연 폴더) · 권한 다시 허용 화면
+    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
+    StartScreen.tsx   시작 화면 (문서 폴더 열기 · 최근 폴더) · 권한 다시 허용 화면
+    FolderInfoDialog.tsx  문서 별칭 · 상세 경로 입력 창
+    ExplorerHelperDialog.tsx  파일 탐색기 연결 도우미 안내
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
     ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
@@ -226,5 +233,6 @@ src/
 - **문서는 올라가지 않는다.** 서버가 없고, 코드는 브라우저 안에서 돌며 파일을 직접 읽고 쓴다. 공개되는 것은 앱 코드뿐이다.
 - 배포된 코드는 허용한 폴더를 고칠 수 있다. **GitHub 2단계 인증 필수.** 라이브러리는 번들에 넣고 lockfile 로 고정하며, 실행 중에 CDN 에서 코드를 받지 않는다.
 - 같은 주소(`krkoohoo.github.io`)의 다른 페이지는 저장소와 폴더 핸들을 함께 볼 수 있다. 위키와 `portfolio-test` 가 여기에 있으니 **두 사이트에 외부 스크립트나 다른 사람의 코드를 넣지 않는다.** 넣어야 한다면 JayDocs 를 먼저 다른 주소로 옮긴다.
+- 연결 도우미를 설치하면 어느 웹페이지든 `jaydocs-open:` 주소를 부를 수 있다. 그래서 도우미는 로컬 드라이브 경로의 폴더를 보여 주거나 파일을 선택해 보여 주기만 하고, 파일을 실행하지 않으며, 네트워크 경로(`\\서버`)는 거부한다. 브라우저도 처음에 앱을 열지 묻는다.
 - 경로는 허용한 폴더 아래로만(`..`, 절대 경로, `.git` 안 거부). 쓰기는 읽기 전용 폴더에서 막힌다.
 - 삭제는 휴지통으로 가지 않는다. 앱이 그렇게 묻는다.

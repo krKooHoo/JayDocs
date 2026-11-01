@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { backend, setBackend, type MountInfo, type TreeEntry } from './lib/backend'
+import { backend, setBackend, type MountInfo, type RootDetail, type TreeEntry } from './lib/backend'
 import { FsaBackend } from './lib/fsa/fsaBackend'
-import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurrentWorkspace, type Workspace as WorkspaceData } from './lib/fsa/workspace'
+import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurrentWorkspace, touchWorkspace, type Workspace as WorkspaceData } from './lib/fsa/workspace'
+import { explorerSupported, helperReady, openInExplorer } from './lib/explorer'
+import { guessPath } from './lib/localPath'
 import { splitRootPath } from './lib/roots.mjs'
+import { ExplorerHelperDialog } from './components/ExplorerHelperDialog'
+import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
 import { GrantScreen, StartScreen } from './components/StartScreen'
@@ -29,6 +33,7 @@ export default function App() {
   const enter = useCallback((ws: WorkspaceData) => {
     setBackend(new FsaBackend(ws, { save: saveWorkspace }))
     void setCurrentWorkspace(ws.id)
+    void touchWorkspace(ws)
     setPhase({ kind: 'ready', layoutId: ws.id })
   }, [])
 
@@ -75,10 +80,15 @@ export default function App() {
     case 'start':
       return <StartScreen onOpen={(ws) => void open(ws)} />
     case 'grant':
-      return <GrantScreen workspace={phase.ws} onReady={() => enter(phase.ws)} onSwitch={() => setPhase({ kind: 'start' })} />
+      return <GrantScreen key={phase.ws.id} workspace={phase.ws} onReady={() => enter(phase.ws)} onSwitch={() => setPhase({ kind: 'start' })} onOpen={(ws) => void open(ws)} />
     case 'ready':
       return <Workspace layoutId={phase.layoutId} />
   }
+}
+
+/** 창 제목에 문서 별칭 — 작업 표시줄에서 구분된다 */
+function showRootName() {
+  document.title = `${backend().rootDetail(null).label} — JayDocs`
 }
 
 function allFiles(entries: TreeEntry[], out: string[] = []): string[] {
@@ -89,7 +99,15 @@ function allFiles(entries: TreeEntry[], out: string[] = []): string[] {
   return out
 }
 
-type Overlay = { kind: 'palette' } | { kind: 'files' } | { kind: 'help' } | { kind: 'import' } | null
+type Overlay =
+  | { kind: 'palette' }
+  | { kind: 'files' }
+  | { kind: 'help' }
+  | { kind: 'import' }
+  /** after: 저장하고 이어서 할 일 (상세 경로가 없어 탐색기 열기·경로 복사가 여기로 왔을 때) */
+  | { kind: 'rootInfo'; root: RootDetail; guess: string; after?: { action: 'reveal' | 'copyPath'; path: string } }
+  | { kind: 'explorer'; path: string | null }
+  | null
 
 function Workspace({ layoutId }: { layoutId: string }) {
   useStoreVersion()
@@ -116,7 +134,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         ...t.entries,
         ...t.mounts.map((m): TreeEntry => ({
           type: 'dir', name: `@${m.alias}`, path: `@${m.alias}`, children: m.entries,
-          mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated },
+          mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated, path: m.path },
         })),
       ]
       setTree(all)
@@ -154,8 +172,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
   useEffect(() => {
     backend().info().then((i) => {
       setRoot(i.root)
-      // 창 제목에 폴더 이름 — 작업 표시줄에서 구분된다
-      document.title = `${i.root} — JayDocs`
+      showRootName()
     }).catch((e) => setError((e as Error).message))
     void refreshTree()
   }, [refreshTree])
@@ -267,12 +284,40 @@ function Workspace({ layoutId }: { layoutId: string }) {
     }
   }, [mounts, refreshTree])
 
+  // ---- 폴더 정보 · 파일 탐색기
+  /** 폴더 정보 창. 넣은 적 없는 경로는 아는 경로 옆에 있다고 보고 미리 채운다 */
+  const editRoot = useCallback(async (alias: string | null, after?: { action: 'reveal' | 'copyPath'; path: string }) => {
+    const root = backend().rootDetail(alias)
+    const known = backend().rootDetail(null).path ?? (await listWorkspaces()).find((w) => w.path)?.path
+    setOverlay({ kind: 'rootInfo', root, guess: !root.path && known ? guessPath(known, root.folder) : '', after })
+  }, [])
+
+  const openExplorer = useCallback((full: string) => {
+    setOverlay(null)
+    openInExplorer(full, () => showNotice('탐색기 창이 뜨지 않았다면 명령 팔레트의 "파일 탐색기 연결 도우미" 를 확인하세요'))
+  }, [showNotice])
+
+  const copyLocalPath = useCallback((full: string) => {
+    setOverlay(null)
+    navigator.clipboard.writeText(full).then(() => showNotice(`경로를 복사했습니다: ${full}`), (e) => showNotice(`복사하지 못했습니다: ${(e as Error).message}`))
+  }, [showNotice])
+
+  const localAction = useCallback((action: 'reveal' | 'copyPath', path: string) => {
+    const { root, full } = backend().localPath(path)
+    if (!full) void editRoot(root.alias, { action, path })
+    else if (action === 'copyPath') copyLocalPath(full)
+    else if (helperReady()) openExplorer(full)
+    else setOverlay({ kind: 'explorer', path: full })
+  }, [editRoot, copyLocalPath, openExplorer])
+
   const rootAction = useCallback((action: RootAction, path: string) => {
     const alias = splitRootPath(path).alias
     if (action === 'refresh') void refreshTree()
+    else if (action === 'reveal' || action === 'copyPath') localAction(action, path)
+    else if (action === 'editRoot') void editRoot(backend().localPath(path).root.alias)
     else if (alias !== null && action === 'unmount') void unmount(alias)
     else if (alias !== null && action === 'toggleReadOnly') void toggleReadOnly(alias)
-  }, [refreshTree, unmount, toggleReadOnly])
+  }, [refreshTree, unmount, toggleReadOnly, localAction, editRoot])
 
   const onImported = useCallback(async (m: MountInfo) => {
     setOverlay(null)
@@ -302,6 +347,9 @@ function Workspace({ layoutId }: { layoutId: string }) {
   useEffect(() => registerCommands([
     { id: 'importFolder', label: '폴더 가져오기…', run: () => setOverlay({ kind: 'import' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
+    { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
+    { id: 'revealRoot', label: '파일 탐색기에서 문서 폴더 열기', run: () => localAction('reveal', ''), enabled: explorerSupported },
+    { id: 'explorerHelper', label: '파일 탐색기 연결 도우미…', run: () => setOverlay({ kind: 'explorer', path: null }), enabled: explorerSupported },
     { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
     { id: 'applyUpdate', label: '새 버전 지금 적용', run: applyUpdate, enabled: () => app.updateReady },
     { id: 'save', label: '저장', run: () => bench.current?.saveActive() },
@@ -313,7 +361,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'newFile', label: '새 파일', run: () => void newFile(lastDir.current) },
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
-  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app])
+  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
 
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다
   useEffect(() => {
@@ -338,6 +386,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
 
   const dirtyCount = store.dirtyPaths().size
   const watching = backend().watching()
+  const primary = backend().rootDetail(null)
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
     if (overlay?.kind === 'palette') {
@@ -355,7 +404,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     <div className="app">
       <header className="topbar">
         <span className="brand">JayDocs</span>
-        <button className="root" title="문서 폴더 바꾸기" onClick={() => void switchFolder()}>{root ?? '…'}</button>
+        <button className="root" title={`문서 폴더 바꾸기${primary.path ? `\n${primary.path}` : ''}`} onClick={() => void switchFolder()}>{root ? primary.label : '…'}</button>
         <span className="spacer" />
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
         {app.updateReady && <button onClick={applyUpdate} title="모든 창을 닫았다 열어도 적용됩니다">새 버전 적용</button>}
@@ -394,6 +443,25 @@ function Workspace({ layoutId }: { layoutId: string }) {
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
       {overlay?.kind === 'import' && <ImportDialog onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
+      {overlay?.kind === 'rootInfo' && (
+        <FolderInfoDialog
+          title={overlay.root.alias === null ? '문서 폴더 정보' : `가져온 폴더 정보 — ${overlay.root.label}`}
+          folder={overlay.root.folder}
+          label={overlay.root.alias === null ? (overlay.root.label === overlay.root.folder ? '' : overlay.root.label) : undefined}
+          path={overlay.root.path ?? ''}
+          guess={overlay.guess}
+          onClose={closeOverlay}
+          onSave={async (label, path) => {
+            await backend().updateRoot(overlay.root.alias, { label, path })
+            showRootName()
+            setOverlay(null)
+            // 클릭 직후여야 브라우저가 앱 열기를 허용한다 — 트리를 다시 읽기 전에
+            if (overlay.after && path) localAction(overlay.after.action, overlay.after.path)
+            void refreshTree()
+          }}
+        />
+      )}
+      {overlay?.kind === 'explorer' && <ExplorerHelperDialog path={overlay.path} onOpen={openExplorer} onCopy={copyLocalPath} onClose={closeOverlay} />}
       {notice && <div className="toast" role="status" onClick={() => setNotice(null)}>{notice}</div>}
     </div>
   )

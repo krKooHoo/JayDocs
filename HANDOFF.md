@@ -30,12 +30,13 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
     - CSV — 같은 그리드, RFC 4180 왕복 보존(`lib/tsv/csv.ts`, `table.ts`), `Alt+Enter` 칸 안 줄바꿈, 타입 행 없으면 첫 줄 머리글.
   - **2026-10-25 (DESIGN §19)**: TC 156개를 Jay 기억 + Claude 자동 실행으로 채움(TESTCASES). 데이터를 잃는 ❌ 4건 수정 — 열 삭제 크래시(+ `PaneErrorBoundary`), Alt+W·팔레트 탭 닫기 저장 확인, 붙여넣기 칸 줄바꿈 정리, **폴더별 고정 포트**(재시작해도 레이아웃·열 너비·테마 유지). 새 기능 **마크다운 표 붙여넣기**(`lib/tsv/mdTable.ts` — md 파이프 표·`<th>` HTML 표 → 머리글은 머리글 행, 모자라는 열·행 늘림).
   - **2026-10-31 브라우저 앱 전환(DESIGN §20)**: `server.mjs`·git 패널·zip 릴리즈를 없앴다. Edge 에 설치한 PWA 가 File System Access 로 폴더를 직접 읽고 쓴다(`lib/fsa/`). 시작 화면·권한 허용 화면(`StartScreen.tsx`), 자동 업데이트(`lib/pwa.ts`, `scripts/gen-sw.mjs`), Pages 배포(`deploy.yml`).
+  - **2026-11-01 폴더 별칭 · 상세 경로 · 최근 10개 · 파일 탐색기 열기(DESIGN §21)**: 경로는 사용자가 넣는다(`lib/localPath.ts`, `FolderInfoDialog.tsx`). 탐색기는 PC 에 한 번 설치하는 연결 도우미로 연다(`lib/explorer.ts`, `public/helper/`).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
 - 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`), TC 결과 기록(`786e4b2`) 까지 커밋됨. 그 뒤의 버그 수정·마크다운 표 붙여넣기는 커밋 전일 수 있다. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
 ## 2. 읽을 순서 (10분)
 
-1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계), **§19 마크다운 표 붙여넣기 · TC 뒤 수정**(결정 T1~T5), **§20 브라우저 앱 전환**(결정 B1~B10, 실측).
+1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계), **§19 마크다운 표 붙여넣기 · TC 뒤 수정**(결정 T1~T5), **§20 브라우저 앱 전환**(결정 B1~B10, 실측), **§21 폴더 별칭 · 파일 탐색기**(결정 P1~P9).
 2. `README.md` — 실행·배포·개발 명령, 소스 구조, 사용법(그리드 · tsv-view).
 3. `SagaDocs/README.md`, `SagaDocs/00-Overview/용어집.md` — 실제 데이터와 규칙.
 
@@ -72,7 +73,7 @@ npm test             # SagaDocs 실제 파일 왕복 포함 (리포를 못 찾�
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
-**먼저 브라우저 앱 전환의 남은 일(DESIGN §20)**: 인수 시험(TESTCASES §15). 재부팅 뒤 권한, Edge 앱의 폴더 여러 개, 실제 Pages 주소는 아직 확인하지 못했다.
+**먼저 브라우저 앱 전환의 남은 일(DESIGN §20)**: 인수 시험(TESTCASES §15 · §16 앞 4건). 재부팅 뒤 권한, Edge 앱의 폴더 여러 개, 실제 Pages 주소, Edge 가 연결 도우미를 부르는 마지막 단계는 아직 확인하지 못했다.
 
 Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** — 2026-10-25 Jay 기억(✅ 37개)과 Claude 자동 실행(내장 브라우저, SagaDocs 임시 복사본)으로 전부 채웠다: ✅ 111 · ◐ 18 · ⚠ 12 · ❌ 11 · ⏭ 4. ◐ 는 실제 한글 IME·Excel·OS 창처럼 자동화가 못 보는 부분이 남은 것 — Jay 가 손으로 볼 것은 TC-201/211/302/605(IME), 1304/1305/1307(Excel), 003/004(앱 창). 데이터를 잃는 ❌ 4건은 같은 날 고쳤다(아래 ✅, DESIGN §19.2). **남은 ❌ 부터 고친다.** 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 

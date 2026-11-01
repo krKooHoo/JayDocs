@@ -1,5 +1,6 @@
-import { ConflictError, type Backend, type ChangeEvent, type FileData, type MountInfo, type MountTree, type RootsInfo, type TreeEntry } from '../backend'
+import { ConflictError, type Backend, type ChangeEvent, type FileData, type MountInfo, type MountTree, type RootDetail, type RootsInfo, type TreeEntry } from '../backend'
 import { DOC_EXTS, MAX_TEXT_BYTES } from '../filetypes.mjs'
+import { checkPath, cleanPath, joinLocal } from '../localPath'
 import { MOUNT_IGNORE_DIRS, MOUNT_SCAN_LIMIT, isValidAlias, joinRootPath, makeAlias, splitRootPath } from '../roots.mjs'
 import { requestRoot, type StoredRoot, type Workspace } from './workspace'
 
@@ -122,7 +123,14 @@ export class FsaBackend implements Backend {
   }
 
   private mountInfo(m: StoredRoot, truncated = false): MountInfo {
-    return { alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, truncated }
+    return { alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, truncated, path: m.path ?? null }
+  }
+
+  private checkedPath(raw: string, folder: string) {
+    const path = cleanPath(raw)
+    const problem = path ? checkPath(path, folder) : null
+    if (problem) throw new Error(problem)
+    return path || undefined
   }
 
   // ---------------------------------------------------------------- 경로
@@ -207,8 +215,39 @@ export class FsaBackend implements Backend {
   async roots(): Promise<RootsInfo> {
     return {
       mounts: this.ws.mounts.map((m) => this.mountInfo(m)),
-      recent: this.ws.recent.map((m) => ({ alias: m.alias, folder: m.handle.name, readOnly: m.readOnly })),
+      recent: this.ws.recent.map((m) => ({ alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, path: m.path ?? null })),
     }
+  }
+
+  rootDetail(alias: string | null): RootDetail {
+    if (alias === null) {
+      const folder = this.ws.primary.name
+      return { alias: null, folder, label: this.ws.label || folder, path: this.ws.path ?? null }
+    }
+    const m = this.ws.mounts.find((x) => x.alias === alias)
+    if (!m) throw new Error(`가져온 폴더가 없습니다 (@${alias})`)
+    return { alias, folder: m.handle.name, label: `@${alias}`, path: m.path ?? null }
+  }
+
+  async updateRoot(alias: string | null, info: { label?: string; path: string }) {
+    const before = this.rootDetail(alias)
+    const path = this.checkedPath(info.path, before.folder)
+    const m = this.ws.mounts.find((x) => x.alias === alias)
+    if (m) m.path = path
+    else {
+      this.ws.label = info.label || undefined
+      this.ws.path = path
+    }
+    await this.save(this.ws)
+    return this.rootDetail(alias)
+  }
+
+  localPath(path: string) {
+    const { alias, rel } = splitRootPath(path)
+    // 주 폴더의 진짜 `@이름` 폴더는 가져온 폴더가 아니다
+    const mounted = alias !== null && this.ws.mounts.some((m) => m.alias === alias)
+    const root = this.rootDetail(mounted ? alias : null)
+    return { root, full: root.path ? joinLocal(root.path, mounted ? rel : path) : null }
   }
 
   /**
@@ -261,8 +300,9 @@ export class FsaBackend implements Backend {
 
   // ---------------------------------------------------------------- 가져온 폴더
   /** 겹침(주 폴더·다른 가져온 폴더 안이거나 그것들을 품음)과 별칭을 검사한다 */
-  async addRoot(handle: Dir, opts: { alias?: string; readOnly?: boolean } = {}): Promise<MountInfo> {
+  async addRoot(handle: Dir, opts: { alias?: string; readOnly?: boolean; path?: string } = {}): Promise<MountInfo> {
     const readOnly = opts.readOnly === true
+    const path = this.checkedPath(opts.path ?? '', handle.name)
     const others: Root[] = [this.primary(), ...this.ws.mounts]
     for (const r of others) {
       const name = r.alias === null ? '주 문서 폴더' : `@${r.alias}`
@@ -276,7 +316,7 @@ export class FsaBackend implements Backend {
     if (taken.some((t) => t.toLowerCase() === alias.toLowerCase())) throw new Error(`이미 쓰는 별칭입니다: @${alias}`)
     if (await this.primaryHasDir(`@${alias}`)) throw new Error(`주 폴더에 "@${alias}" 폴더가 있어 그 별칭은 쓸 수 없습니다`)
     if ((await requestRoot(handle, readOnly)) !== 'granted') throw new Error('폴더 접근을 허용하지 않았습니다')
-    const m: StoredRoot = { alias, handle, readOnly }
+    const m: StoredRoot = { alias, handle, readOnly, path }
     this.ws.mounts.push(m)
     const recent: StoredRoot[] = []
     for (const r of this.ws.recent) if (!(await r.handle.isSameEntry(handle))) recent.push(r)
@@ -290,7 +330,7 @@ export class FsaBackend implements Backend {
   async restoreRoot(alias: string) {
     const r = this.ws.recent.find((x) => x.alias === alias)
     if (!r) throw new Error(`최근 목록에 없습니다: @${alias}`)
-    return this.addRoot(r.handle, { alias: r.alias, readOnly: r.readOnly })
+    return this.addRoot(r.handle, { alias: r.alias, readOnly: r.readOnly, path: r.path })
   }
 
   async setRootReadOnly(alias: string, readOnly: boolean) {

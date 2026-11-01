@@ -6,6 +6,8 @@ export interface StoredRoot {
   alias: string
   handle: FileSystemDirectoryHandle
   readOnly: boolean
+  /** 사용자가 넣은 전체 경로. 브라우저는 알려 주지 않는다 (DESIGN §21) */
+  path?: string
 }
 
 export interface Workspace {
@@ -13,11 +15,24 @@ export interface Workspace {
   primary: FileSystemDirectoryHandle
   mounts: StoredRoot[]
   recent: StoredRoot[]
+  /** 문서 별칭. 없으면 폴더 이름 */
+  label?: string
+  /** 주 폴더의 전체 경로 */
+  path?: string
+  /** 마지막으로 연 때 (최근 목록의 순서) */
+  openedAt?: number
 }
 
 const DB = 'jaydocs'
 const STORE = 'workspaces'
 const CURRENT = 'current'
+/** 최근 폴더 목록에 남기는 수 */
+export const RECENT_WORKSPACES = 10
+
+export const workspaceLabel = (w: Workspace) => w.label || w.primary.name
+
+export const newestFirst = <T extends { openedAt?: number }>(list: T[]) =>
+  [...list].sort((a, b) => (b.openedAt ?? 0) - (a.openedAt ?? 0))
 
 function withStore<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -39,7 +54,20 @@ export function saveWorkspace(w: Workspace) {
 
 export async function listWorkspaces(): Promise<Workspace[]> {
   const all = await withStore<unknown[]>('readonly', (s) => s.getAll())
-  return all.filter((x): x is Workspace => typeof x === 'object' && x !== null && 'primary' in x)
+  return newestFirst(all.filter((x): x is Workspace => typeof x === 'object' && x !== null && 'primary' in x))
+}
+
+/** 열었다고 기록하고, 최근 목록을 넘친 오래된 폴더는 지운다 (폴더와 파일은 그대로) */
+export async function touchWorkspace(w: Workspace) {
+  w.openedAt = Date.now()
+  await saveWorkspace(w)
+  for (const old of (await listWorkspaces()).slice(RECENT_WORKSPACES)) await forgetWorkspace(old.id)
+}
+
+export function setWorkspaceInfo(w: Workspace, label: string, path: string) {
+  w.label = label || undefined
+  w.path = path || undefined
+  return saveWorkspace(w)
 }
 
 export function currentWorkspaceId() {

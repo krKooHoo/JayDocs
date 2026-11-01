@@ -15,6 +15,8 @@ export interface MountInfo {
   readOnly: boolean
   /** 항목이 너무 많아 트리를 다 훑지 못했다 */
   truncated: boolean
+  /** 사용자가 넣은 전체 경로 */
+  path: string | null
 }
 export interface MountTree extends MountInfo {
   entries: TreeEntry[]
@@ -25,6 +27,15 @@ export interface RecentMount {
   alias: string
   folder: string
   readOnly: boolean
+  path: string | null
+}
+/** 주 폴더(alias null) 또는 가져온 폴더의 이름과 경로 */
+export interface RootDetail {
+  alias: string | null
+  folder: string
+  /** 화면에 보이는 이름: 주 폴더는 문서 별칭, 가져온 폴더는 `@별칭` */
+  label: string
+  path: string | null
 }
 export interface RootsInfo {
   mounts: MountInfo[]
@@ -60,13 +71,18 @@ export interface Backend {
   /** 가져온 폴더 목록 · 최근 해제한 폴더 */
   roots(): Promise<RootsInfo>
   /** 사용자가 고른 폴더를 가져온다. 클릭 처리 안에서 불러야 권한을 물을 수 있다 */
-  addRoot(handle: FileSystemDirectoryHandle, opts?: { alias?: string; readOnly?: boolean }): Promise<MountInfo>
+  addRoot(handle: FileSystemDirectoryHandle, opts?: { alias?: string; readOnly?: boolean; path?: string }): Promise<MountInfo>
   /** 최근 목록의 폴더를 다시 가져온다 */
   restoreRoot(alias: string): Promise<MountInfo>
   setRootReadOnly(alias: string, readOnly: boolean): Promise<MountInfo>
   removeRoot(alias: string): Promise<void>
   /** 최근 목록에서 지우기 */
   forgetRoot(alias: string): Promise<void>
+  rootDetail(alias: string | null): RootDetail
+  /** 별칭(주 폴더만)과 상세 경로를 고친다. 경로가 고른 폴더와 맞지 않으면 거부 */
+  updateRoot(alias: string | null, info: { label?: string; path: string }): Promise<RootDetail>
+  /** 앱 경로('' 은 주 폴더)의 전체 경로. 그 폴더의 상세 경로를 넣지 않았으면 full 이 null */
+  localPath(path: string): { root: RootDetail; full: string | null }
   read(path: string): Promise<FileData>
   /** convert: UTF-8 이 아닌 파일을 UTF-8 로 바꿔 쓸 때만 true (그 외엔 덮어쓰기를 막는다) */
   write(path: string, text: string, baseMtime: number | null, opts?: { convert?: boolean }): Promise<{ mtime: number }>
