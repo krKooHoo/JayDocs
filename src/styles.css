@@ -194,6 +194,7 @@ button.start-open:hover { background: var(--hover); }
 .recent-mark { flex-shrink: 0; }
 .start-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .start-hint { margin-top: 20px; font-size: 13px; color: var(--muted); }
+.start-update { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* ---- 문서 창 ---- */
 .pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }

@@ -5,6 +5,7 @@ import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurren
 import { explorerSupported, helperReady, openInExplorer } from './lib/explorer'
 import { guessPath } from './lib/localPath'
 import { splitRootPath } from './lib/roots.mjs'
+import { checkForUpdate, UpdateButton } from './components/UpdateButton'
 import { ExplorerHelperDialog } from './components/ExplorerHelperDialog'
 import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
@@ -153,6 +154,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
     setNotice(msg)
     window.setTimeout(() => setNotice((n) => (n === msg ? null : n)), 6000)
   }, [])
+
+  const updateNotice = useCallback((msg: string | null) => {
+    if (msg) showNotice(msg)
+    else setNotice(null)
+  }, [showNotice])
 
   // 레이아웃 복원 뒤 처음 한 번: 이제 없는 가져온 폴더의 탭은 닫는다 (해제됨, 드라이브 빠짐)
   const staleChecked = useRef(false)
@@ -351,6 +357,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'revealRoot', label: '파일 탐색기에서 문서 폴더 열기', run: () => localAction('reveal', ''), enabled: explorerSupported },
     { id: 'explorerHelper', label: '파일 탐색기 연결 도우미…', run: () => setOverlay({ kind: 'explorer', path: null }), enabled: explorerSupported },
     { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
+    { id: 'checkUpdate', label: '업데이트 확인', run: () => void checkForUpdate(updateNotice), enabled: () => app.canCheck },
     { id: 'applyUpdate', label: '새 버전 지금 적용', run: applyUpdate, enabled: () => app.updateReady },
     { id: 'save', label: '저장', run: () => bench.current?.saveActive() },
     { id: 'saveAll', label: '모두 저장', run: () => void store.saveAll(), enabled: () => store.anyDirty() },
@@ -361,7 +368,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'newFile', label: '새 파일', run: () => void newFile(lastDir.current) },
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
-  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
+  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction, updateNotice])
 
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다
   useEffect(() => {
@@ -407,7 +414,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <button className="root" title={`문서 폴더 바꾸기${primary.path ? `\n${primary.path}` : ''}`} onClick={() => void switchFolder()}>{root ? primary.label : '…'}</button>
         <span className="spacer" />
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
-        {app.updateReady && <button onClick={applyUpdate} title="모든 창을 닫았다 열어도 적용됩니다">새 버전 적용</button>}
+        <UpdateButton notify={updateNotice} onApply={applyUpdate} />
         {app.canInstall && <button onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
         <button onClick={() => setOverlay({ kind: 'import' })} title="폴더 가져오기 — 다른 폴더를 원래 자리에서 열기 (Ctrl+Shift+O)">📂 가져오기</button>
         <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>

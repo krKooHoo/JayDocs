@@ -1,17 +1,30 @@
 import { useCallback, useEffect, useState } from 'react'
-import { usePwa } from '../lib/pwa'
+import { APP_VERSION, usePwa } from '../lib/pwa'
 import { guessPath } from '../lib/localPath'
 import { forgetWorkspace, listWorkspaces, queryRoot, requestRoot, setWorkspaceInfo, workspaceFor, workspaceLabel, type StoredRoot, type Workspace } from '../lib/fsa/workspace'
 import { FolderInfoDialog } from './FolderInfoDialog'
+import { UpdateButton } from './UpdateButton'
 
-function InstallHint() {
+/** 앱 설치 안내 · 버전과 업데이트 */
+function AppFooter() {
   const app = usePwa()
-  if (!app.canInstall) return null
+  const [message, setMessage] = useState<string | null>(null)
   return (
-    <p className="start-hint">
-      앱으로 설치하면 시작 메뉴에서 바로 열 수 있고 폴더 권한도 유지됩니다.{' '}
-      <button onClick={() => void app.install()}>앱으로 설치</button>
-    </p>
+    <>
+      {app.canInstall && (
+        <p className="start-hint">
+          앱으로 설치하면 시작 메뉴에서 바로 열 수 있고 폴더 권한도 유지됩니다.{' '}
+          <button onClick={() => void app.install()}>앱으로 설치</button>
+        </p>
+      )}
+      {app.canCheck && (
+        <p className="start-hint start-update">
+          <span>버전 {APP_VERSION}</span>
+          <UpdateButton notify={setMessage} />
+          {message && <span>{message}</span>}
+        </p>
+      )}
+    </>
   )
 }
 
@@ -100,7 +113,7 @@ export function StartScreen({ onOpen }: { onOpen: (w: Workspace) => void }) {
       <p><button className="is-primary" onClick={() => void pick()}>문서 폴더 열기</button></p>
       {error && <div className="banner is-error">{error}</div>}
       <RecentFolders title="최근 폴더" onOpen={onOpen} onError={setError} />
-      <InstallHint />
+      <AppFooter />
       {fresh && (
         <FolderInfoDialog
           title="새 문서 폴더"
@@ -182,7 +195,7 @@ export function GrantScreen({ workspace, onReady, onSwitch, onOpen }: { workspac
       </p>
       {error && <div className="banner is-error">{error}</div>}
       <RecentFolders title="다른 최근 폴더" exclude={workspace.id} onOpen={onOpen} onError={setError} />
-      <InstallHint />
+      <AppFooter />
       {editing && (
         <FolderInfoDialog
           title="폴더 정보"
