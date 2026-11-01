@@ -34,8 +34,9 @@ const BUILD = ${JSON.stringify(build)}
 const CACHE = 'jaydocs-' + BUILD
 const FILES = ${JSON.stringify(['./', ...files.map((f) => './' + f)], null, 2)}
 
+// HTTP 캐시를 거치면 Pages 의 max-age=600 때문에 옛 index.html 이 새 버전에 담길 수 있다
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)))
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))))
 })
 
 // 지금 버전과 바로 전 버전만 남긴다. 아직 열려 있는 옛 창이 나중에 불러올 조각을 잃지 않게.
