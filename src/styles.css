@@ -218,6 +218,15 @@ button.start-open:hover { background: var(--hover); }
 
 /* ---- 파일 트리 ---- */
 .tree { display: flex; flex-direction: column; height: 100%; }
+/* 검색 칸처럼 보이는 버튼 — 누르면 파일 검색(Ctrl+P) 팔레트 */
+button.tree-search {
+  display: flex; align-items: center; gap: 6px;
+  margin: 6px 6px 2px; padding: 3px 6px; text-align: left;
+  background: var(--bg); color: var(--muted); cursor: text;
+}
+.tree-search-icon { font-size: 12px; }
+.tree-search-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-search kbd { font-size: 10px; color: var(--muted); }
 .tree-bar {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 6px; border-bottom: 1px solid var(--border);

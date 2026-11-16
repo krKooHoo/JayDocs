@@ -17,7 +17,7 @@ export const SHORTCUTS = [
     intro: '어느 창에 포커스가 있든 동작한다. 브라우저가 가로채는 조합(Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab, Ctrl+숫자)은 피했다.',
     items: [
       { keys: 'Ctrl+Shift+P', label: '명령 팔레트 — 모든 명령을 글자로 찾아 실행', command: 'palette' },
-      { keys: 'Ctrl+P', label: '빠른 열기 — 파일 이름으로 문서 열기', command: 'quickOpen' },
+      { keys: 'Ctrl+P', label: '파일 검색 — 파일 이름으로 찾아 열기 (파일 트리 위 🔍 버튼)', command: 'fileSearch' },
       { keys: 'F1', label: '단축키 도움말', command: 'help' },
       { keys: 'Ctrl+S', label: '저장', command: 'save' },
       { keys: 'Ctrl+Shift+S', label: '모두 저장', command: 'saveAll' },
@@ -115,7 +115,7 @@ export const SHORTCUTS = [
     ],
   },
   {
-    scope: '팔레트 · 빠른 열기',
+    scope: '팔레트 · 파일 검색',
     items: [
       { keys: '글자 입력', label: '필터 (띄어쓰기 없이 글자 순서만 맞아도 찾는다)' },
       { keys: '↑ / ↓', label: '항목 이동' },

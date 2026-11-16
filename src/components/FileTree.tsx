@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MountInfo, TreeEntry } from '../lib/backend'
+import { runCommand } from '../lib/commands'
 import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
@@ -227,6 +228,11 @@ export function FileTree(p: Props) {
 
   return (
     <div className="tree">
+      <button className="tree-search" onClick={() => runCommand('fileSearch')} title="파일 이름으로 찾아 열기 (Ctrl+P)">
+        <span className="tree-search-icon">🔍</span>
+        <span className="tree-search-label">파일 검색</span>
+        <kbd>Ctrl+P</kbd>
+      </button>
       <div className="tree-bar">
         <span className="tree-dir" title={selectedDir || '(루트)'}>{selectedDir || '(루트)'}</span>
         <button onClick={() => p.onNewFile(selectedDir)} title="선택한 폴더에 새 파일 (Ctrl+Alt+N)">＋파일</button>

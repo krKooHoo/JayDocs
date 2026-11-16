@@ -362,7 +362,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'save', label: '저장', run: () => bench.current?.saveActive() },
     { id: 'saveAll', label: '모두 저장', run: () => void store.saveAll(), enabled: () => store.anyDirty() },
     { id: 'palette', label: '명령 팔레트', run: () => setOverlay({ kind: 'palette' }) },
-    { id: 'quickOpen', label: '빠른 열기 (파일)', run: () => setOverlay({ kind: 'files' }) },
+    { id: 'fileSearch', label: '파일 검색', run: () => setOverlay({ kind: 'files' }) },
     { id: 'help', label: '단축키 도움말', run: () => setOverlay({ kind: 'help' }) },
     { id: 'toggleTheme', label: '다크 / 라이트 전환', run: toggleTheme },
     { id: 'newFile', label: '새 파일', run: () => void newFile(lastDir.current) },
@@ -446,7 +446,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); runCommand(id) }} />
       )}
       {overlay?.kind === 'files' && (
-        <Palette title="빠른 열기" placeholder="파일 이름…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id); window.setTimeout(() => runCommand('focusEditor'), 80) }} />
+        <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id); window.setTimeout(() => runCommand('focusEditor'), 80) }} />
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
       {overlay?.kind === 'import' && <ImportDialog onClose={closeOverlay} onImported={(m) => void onImported(m)} />}

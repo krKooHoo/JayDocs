@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 /**
- * 명령 팔레트 · 빠른 열기. 글자로 거르고 ↑↓ Enter 로 고른다 — 마우스 없이 모든 명령에 닿는 길.
+ * 명령 팔레트 · 파일 검색. 글자로 거르고 ↑↓ Enter 로 고른다 — 마우스 없이 모든 명령에 닿는 길.
  */
 export interface PaletteItem {
   id: string
