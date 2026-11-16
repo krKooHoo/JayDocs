@@ -3,9 +3,13 @@ import { createRoot, type Root } from 'react-dom/client'
 import { StateField, type EditorState, type Extension, type Transaction } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
+import { redo, undo } from '@codemirror/commands'
+import type { SyntaxNode } from '@lezer/common'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Mermaid, TsvView, imageSrc } from './PreviewPane'
+import { HybridTable } from './HybridTable'
+import { appendRowChange, cellChange, parseTable, type TextChange } from '../lib/md/tableEdit'
 
 /**
  * 하이브리드 Live Preview (DESIGN D2 v2, §11 Phase 3). Obsidian 식 — 커서가 있는 줄은 원문, 나머지는 렌더.
@@ -13,6 +17,10 @@ import { Mermaid, TsvView, imageSrc } from './PreviewPane'
  * - 문법 표식(`#`, `**`, `` ` ``, `~~`, 링크의 `[]()`, `>`)은 커서 밖 줄에서 숨긴다. 글자 자체는 그대로다 (텍스트 = 모델).
  * - ```mermaid · ```tsv-view 펜스, GFM 표는 커서가 밖에 있으면 블록 위젯(미리보기와 같은 React 컴포넌트)으로 바꾼다.
  *   위젯의 "원문" 버튼이 커서를 그 블록으로 옮겨 다시 원문이 보이게 한다.
+ * - 표 위젯은 칸을 눌러 바로 고친다 (DESIGN §23, `HybridTable`). 문서가 바뀌어도 위젯 DOM 을 다시 만들지 않고
+ *   (updateDOM) 같은 React 트리에 새 원문을 넘긴다 — 입력 칸의 포커스·조합이 끊기지 않게.
+ * - 그 밖의 ``` 코드 블록은 위젯으로 바꾸지 않는다. 글자는 그대로 두고 줄마다 코드 상자 모양을 입히며,
+ *   커서가 밖에 있으면 펜스(```)를 숨기고 언어 이름만 보인다 — 원문을 그 자리에서 바로 고친다.
  * - 이미지 `![alt](src)` 는 그 줄 아래에 그림을 보여 주고, 할 일 `- [ ]` 는 클릭할 수 있는 체크박스가 된다 (글자 `[ ]`↔`[x]` 를 고친다).
  * - 한글 조합 중(input.type.compose)에는 장식을 다시 계산하지 않고 위치만 옮긴다 — 조합이 깨지지 않게.
  * - 블록 위젯은 StateField 로 제공해야 한다 (ViewPlugin 장식은 세로 레이아웃을 못 바꾼다).
@@ -28,9 +36,56 @@ function renderBlock(kind: BlockKind, code: string, mdPath: string): ReactNode {
   return createElement('div', { className: 'preview-body is-inline' }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, code))
 }
 
-/** 위젯 안 React 트리. 같은 코드면 DOM 을 재사용한다 (eq) */
+/** 위젯 DOM 하나에 붙은 React 트리와 지금 원문. 표는 문서가 바뀌어도 이 DOM 을 계속 쓴다 (updateDOM) */
+interface Holder {
+  root: Root
+  kind: BlockKind
+  mdPath: string
+  code: string
+  render: () => void
+}
+const holders = new WeakMap<HTMLElement, Holder>()
+
+/** 표 위젯이 가리키는 원문 위치. 위젯이 들고 있는 원문과 문서가 어긋났으면 null (그 사이 다른 변경) */
+function tableAt(view: EditorView, wrap: HTMLElement, h: Holder) {
+  const from = view.posAtDOM(wrap)
+  if (view.state.sliceDoc(from, from + h.code.length) !== h.code) return null
+  const table = parseTable(h.code)
+  return table ? { from, table } : null
+}
+
+function applyAt(view: EditorView, from: number, c: TextChange | null) {
+  if (!c) return
+  view.dispatch({ changes: { from: from + c.from, to: from + c.to, insert: c.insert }, userEvent: 'input.type' })
+}
+
+/** 표 칸에서 되돌리기 — 커서(표 밖)로 화면이 튀지 않게 스크롤을 그대로 둔다 */
+function undoInPlace(view: EditorView, isRedo: boolean) {
+  const snap = view.scrollSnapshot()
+  if ((isRedo ? redo : undo)(view)) view.dispatch({ effects: snap })
+}
+
+function addRow(view: EditorView, wrap: HTMLElement, h: Holder) {
+  const at = tableAt(view, wrap, h)
+  if (at) applyAt(view, at.from, appendRowChange(at.table))
+}
+
+function tableElement(view: EditorView, wrap: HTMLElement, h: Holder) {
+  return createElement(HybridTable, {
+    source: h.code,
+    readOnly: view.state.readOnly,
+    onEdit: (row: number, col: number, text: string) => {
+      const at = tableAt(view, wrap, h)
+      if (at) applyAt(view, at.from, cellChange(at.table, row, col, text))
+    },
+    onAddRow: () => addRow(view, wrap, h),
+    onUndo: (isRedo: boolean) => undoInPlace(view, isRedo),
+    onLeave: () => view.focus(),
+  })
+}
+
+/** 위젯 안 React 트리. 같은 코드면 DOM 을 재사용한다 (eq). 표는 원문이 바뀌어도 DOM 을 이어 쓴다 (updateDOM) */
 class BlockWidget extends WidgetType {
-  private root: Root | null = null
   constructor(readonly kind: BlockKind, readonly code: string, readonly mdPath: string) {
     super()
   }
@@ -53,24 +108,44 @@ class BlockWidget extends WidgetType {
       view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
       view.focus()
     })
-    bar.append(label, btn)
+    bar.append(label)
     const host = document.createElement('div')
     host.className = 'cm-hybrid-host'
     wrap.append(bar, host)
-    this.root = createRoot(host)
-    this.root.render(renderBlock(this.kind, this.code, this.mdPath))
+    const h: Holder = {
+      root: createRoot(host),
+      kind: this.kind,
+      mdPath: this.mdPath,
+      code: this.code,
+      render: () => h.root.render(h.kind === 'table' ? tableElement(view, wrap, h) : renderBlock(h.kind, h.code, h.mdPath)),
+    }
+    holders.set(wrap, h)
+    if (this.kind === 'table' && !view.state.readOnly) {
+      const add = document.createElement('button')
+      add.textContent = '＋ 행'
+      add.title = '표 끝에 빈 행 추가 (마지막 칸에서 Tab 도 같다)'
+      add.addEventListener('mousedown', (e) => { e.preventDefault(); addRow(view, wrap, h) })
+      bar.append(add)
+    }
+    bar.append(btn)
+    h.render()
     return wrap
   }
-  updateDOM() {
-    return false
+  /** 표만: 같은 DOM 에 새 원문을 넘긴다 (입력 중인 칸이 그대로 남는다) */
+  updateDOM(dom: HTMLElement) {
+    const h = holders.get(dom)
+    if (!h || this.kind !== 'table' || h.kind !== 'table' || h.mdPath !== this.mdPath) return false
+    h.code = this.code
+    h.render()
+    return true
   }
   ignoreEvent() {
     return true
   }
-  destroy() {
-    const root = this.root
-    this.root = null
-    if (root) window.setTimeout(() => root.unmount(), 0)
+  destroy(dom: HTMLElement) {
+    const h = holders.get(dom)
+    holders.delete(dom)
+    if (h) window.setTimeout(() => h.root.unmount(), 0)
   }
   get estimatedHeight() {
     return 140
@@ -136,6 +211,21 @@ class TaskWidget extends WidgetType {
   }
 }
 
+/** 코드 블록 여는 펜스 자리 — 언어 이름만 작게 */
+class CodeLabelWidget extends WidgetType {
+  constructor(readonly lang: string) {
+    super()
+  }
+  eq(other: CodeLabelWidget) { return other.lang === this.lang }
+  toDOM() {
+    const s = document.createElement('span')
+    s.className = 'cm-hybrid-code-lang'
+    s.textContent = this.lang
+    return s
+  }
+  ignoreEvent() { return false }
+}
+
 class BulletWidget extends WidgetType {
   eq() { return true }
   toDOM() {
@@ -168,6 +258,27 @@ function build(state: EditorState, mdPath: string): DecorationSet {
   }
 
   const items: { from: number; to: number; deco: Decoration }[] = []
+
+  /** ``` 코드 블록: 줄마다 코드 상자 모양. 커서가 밖이면 펜스를 숨기고 언어 이름만 */
+  const codeBlock = (n: SyntaxNode, lang: string) => {
+    const first = doc.lineAt(n.from)
+    const marks = n.getChildren('CodeMark')
+    const closing = marks.length > 1 ? doc.lineAt(marks[marks.length - 1].from) : null
+    const last = closing ?? doc.lineAt(n.to)
+    const hideFences = !touchesActive(n.from, n.to)
+    for (let i = first.number; i <= last.number; i++) {
+      const line = doc.line(i)
+      const isFence = i === first.number || (closing !== null && i === closing.number)
+      let cls = 'cm-hybrid-code'
+      if (i === first.number) cls += ' is-first'
+      if (i === last.number) cls += ' is-last'
+      if (isFence && hideFences) cls += ' is-fence'
+      items.push({ from: line.from, to: line.from, deco: Decoration.line({ class: cls }) })
+    }
+    if (!hideFences) return
+    items.push({ from: first.from, to: first.to, deco: Decoration.replace({ widget: new CodeLabelWidget(lang) }) })
+    if (closing && closing.number !== first.number && closing.to > closing.from) items.push({ from: closing.from, to: closing.to, deco: hide })
+  }
   // 파서는 보이는 범위부터 느긋하게 돌므로 문서 끝의 펜스가 아직 트리에 없을 수 있다 → 끝까지 파싱해 둔다 (기획 문서 크기면 순간이다)
   const tree = ensureSyntaxTree(state, state.doc.length, 300) ?? syntaxTree(state)
   tree.iterate({
@@ -182,6 +293,8 @@ function build(state: EditorState, mdPath: string): DecorationSet {
           const from = doc.lineAt(node.from).from
           const to = doc.lineAt(node.to).to
           items.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(lang, code, mdPath), block: true }) })
+        } else if (lang !== 'mermaid' && lang !== 'tsv-view') {
+          codeBlock(node.node, lang)
         }
         return false // 코드 블록 안의 표식은 건드리지 않는다
       }
@@ -271,7 +384,8 @@ export function hybrid(mdPath: string): Extension {
 const hybridTheme = EditorView.baseTheme({
   '.cm-hybrid-block': { margin: '4px 0', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--panel2)', overflow: 'hidden' },
   '.cm-hybrid-bar': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1px 8px', fontSize: '11px', color: 'var(--muted)', background: 'var(--panel)', borderBottom: '1px solid var(--border)' },
-  '.cm-hybrid-bar button': { fontSize: '11px', padding: '0 6px', lineHeight: '16px' },
+  '.cm-hybrid-bar span': { flex: 1 },
+  '.cm-hybrid-bar button': { fontSize: '11px', padding: '0 6px', lineHeight: '16px', marginLeft: '4px' },
   '.cm-hybrid-host': { padding: '2px 10px' },
   '.cm-hybrid-host .tsv-view, .cm-hybrid-host .mermaid-box': { margin: '6px 0' },
   '.cm-hybrid-host .preview-body.is-inline': { padding: '4px 0', maxWidth: 'none', fontSize: 'inherit', lineHeight: 'inherit' },
@@ -282,4 +396,20 @@ const hybridTheme = EditorView.baseTheme({
   '.cm-hybrid-task': { margin: '0 6px 0 0', verticalAlign: 'middle' },
   '.cm-hybrid-quote': { borderLeft: '3px solid var(--border)', paddingLeft: '10px', color: 'var(--muted)' },
   '.cm-hybrid-bullet': { display: 'inline-block', width: '1em', color: 'var(--muted)' },
+  // 표 칸 편집
+  '.cm-hybrid-table td.is-editable, .cm-hybrid-table th.is-editable': { cursor: 'text' },
+  '.cm-hybrid-table td.is-editable:hover, .cm-hybrid-table th.is-editable:hover': { background: 'var(--hover)' },
+  '.cm-hybrid-table .is-editing': { padding: '0', outline: '2px solid var(--accent)', outlineOffset: '-2px' },
+  '.cm-hybrid-cell-input': {
+    font: 'inherit', fontWeight: 'inherit', color: 'var(--fg)', background: 'var(--bg)', border: 'none', outline: 'none',
+    padding: '4px 9px', width: '100%', minWidth: '6ch', boxSizing: 'border-box', fieldSizing: 'content', textAlign: 'inherit',
+  },
+  '.cm-hybrid-cell-empty': { display: 'inline-block', minWidth: '2ch' },
+  // ``` 코드 블록 — 미리보기의 pre 와 같은 모양
+  '.cm-line.cm-hybrid-code': { background: 'var(--code-bg)', fontFamily: 'var(--mono)', fontSize: '13px', lineHeight: '1.5', padding: '0 12px' },
+  '.cm-line.cm-hybrid-code span:not([class*="cm-"])': { background: 'transparent', fontSize: 'inherit' },
+  '.cm-line.cm-hybrid-code.is-first': { borderTopLeftRadius: '6px', borderTopRightRadius: '6px', paddingTop: '6px' },
+  '.cm-line.cm-hybrid-code.is-last': { borderBottomLeftRadius: '6px', borderBottomRightRadius: '6px', paddingBottom: '6px' },
+  '.cm-line.cm-hybrid-code.is-fence': { fontSize: '11px', lineHeight: '1.2' },
+  '.cm-hybrid-code-lang': { color: 'var(--muted)', fontFamily: 'var(--font)', fontSize: '11px' },
 })
