@@ -32,6 +32,7 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
   - **2026-10-31 브라우저 앱 전환(DESIGN §20)**: `server.mjs`·git 패널·zip 릴리즈를 없앴다. Edge 에 설치한 PWA 가 File System Access 로 폴더를 직접 읽고 쓴다(`lib/fsa/`). 시작 화면·권한 허용 화면(`StartScreen.tsx`), 자동 업데이트(`lib/pwa.ts`, `scripts/gen-sw.mjs`), Pages 배포(`deploy.yml`).
   - **2026-11-01 폴더 별칭 · 상세 경로 · 최근 10개 · 파일 탐색기 열기(DESIGN §21)**: 경로는 사용자가 넣는다(`lib/localPath.ts`, `FolderInfoDialog.tsx`). 탐색기는 PC 에 한 번 설치하는 연결 도우미로 연다(`lib/explorer.ts`, `public/helper/`).
   - **2026-11-01 앱에서 업데이트 확인(DESIGN §22)**: 켤 때 · 창으로 돌아올 때 · 1시간마다 확인하고, `UpdateButton.tsx` 가 확인 → 받는 중 → 적용(실패하면 다시 받기)을 보여 준다.
+  - **2026-11-17 최적화 · 키보드 흐름(DESIGN §24, §22 U8~U10)**: tsv-view 편집 소실 수정(`store.release(path, { keepDirty: true })`), 미리보기 재파싱 · 하이브리드 표 렌더 줄임, 그리드 · 계산식 성능(lookup 색인 · `stabilizeSchema` · 찾기 지연), `F6` 창 이동 · 트리 메뉴 키보드 · 마크다운 찾기 패널 한글화 · 도움말 검색, 서비스 워커 증분 업데이트(바뀐 파일만 받기) + `vendor` 청크 분리, 루트의 테스트 파일 삭제 · `CLAUDE.md` 신설. 하위 세션 다섯 개가 워크트리에서 나눠 작업해 `main` 에 선형으로 합쳤다.
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
 - 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`), TC 결과 기록(`786e4b2`) 까지 커밋됨. 그 뒤의 버그 수정·마크다운 표 붙여넣기는 커밋 전일 수 있다. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
@@ -77,12 +78,13 @@ Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위�
 
 TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재현은 TESTCASES 결과 칸):
 - ✅ 고침(2026-10-25, 브라우저로 확인): 열 삭제 크래시 + 미저장 편집 소실(TC-307·408 — 너비 배열을 렌더 중에 맞추고 그리드를 `PaneErrorBoundary` 로 감쌈), 재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음(TC-105·412·1211 — 당시엔 폴더별 고정 포트 `server.mjs` `stablePort` 로 막았다. 2026-10-31 전환으로 서버와 포트가 없어졌고, 지금은 같은 오리진의 localStorage 에 레이아웃은 작업 공간 id 별·열 너비와 보기 모드는 경로별로 남는다 — DESIGN §20 B3), Alt+W·팔레트 탭 닫기의 저장 확인(TC-904 — `Workbench.tsx` `confirmCloseTab`), 붙여넣기 칸 줄바꿈(TC-1310 — `onPaste` 가 `sanitizeFor`).
-- ❌ **tsv-view `where` 가 한글 열 이름을 못 읽음**(TC-1308, 1309 의 원인) — 토크나이저 id 정규식이 ASCII(`tsvView.ts:131`). bake 는 where 오류 때 걸러지지 않은 표를 그대로 쓴다(`bake.ts:126`).
-- ❌ **tsv-view 셀에서 Ctrl+Enter 가 그리드로 안 감**(TC-606) — `case 'Enter'` 가 Ctrl 을 가리지 않아 `:224` 분기에 못 간다(`PreviewPane.tsx:210`).
-- ❌ **하이브리드에서 블록이 여럿 보이면 ↑ 가 멀리 점프**(TC-210) — `.cm-hybrid-block { margin: 4px 0 }` 를 CM 높이 맵이 세지 않는다(`hybrid.ts:269`). margin 을 없애고 안쪽 여백으로.
-- ❌ **JSON 정렬(버튼·팔레트) 직후 Ctrl+Z 가 숨은 다른 탭을 되돌림**(TC-1108) — `formatActive`·팔레트 `onPick` 이 편집기에 포커스를 돌려주지 않는다(`MarkdownPane.tsx:66`, `App.tsx:335`). 팔레트 명령 전반(TC-801·811 도 포커스가 body).
-- ❌(TC 밖) **Ctrl+Alt+N 이 트리에서 고른 폴더를 안 따름** — `lastDir` 가 ＋파일/＋폴더에서만 갱신(`App.tsx:64`).
-- ⚠ 그 밖: 트리 F2·Delete 뒤 커서 사라짐(TC-807), 미리보기의 없는 그림 안내(TC-215), 모두 바꾸기 직후 Ctrl+Z(TC-410), 열 이동 되돌리기 때 너비(TC-411), 하이브리드의 baked 표 중복(TC-613), CP949 그리드 입력이 Enter 때야 거절(TC-1105), 읽기 전용 폴더의 F2·Delete·＋파일이 대화상자 뒤 오류(TC-1206), 오른쪽 클릭 메뉴 잘림(TC-1207). 문서: SHORTCUTS 의 Ctrl+Shift+V 설명에 하이브리드 없음.
+- ✅ 고침(2026-11-17, DESIGN §24 P8 · P9): **tsv-view `where` 가 한글 열 이름을 못 읽음**(TC-1308, 1309) — 식별자를 유니코드 글자로 받고, bake 는 where 오류 때 그 펜스를 건너뛴다.
+- ✅ 고침(2026-11-17): **tsv-view 셀에서 Ctrl+Enter 가 그리드로 안 감**(TC-606) — switch 앞에서 처리.
+- ✅ 고침(2026-11-17, §24 P7): **하이브리드에서 블록이 여럿 보이면 ↑ 가 멀리 점프**(TC-210) — margin 을 padding 으로, 테두리는 안쪽 상자로.
+- ✅ 고침(2026-11-17, §24 K3): **JSON 정렬(버튼·팔레트) 직후 Ctrl+Z 가 숨은 다른 탭을 되돌림**(TC-1108 · 801) — 팔레트 명령 뒤(`App.tsx` `pickCommand`)와 `formatActive` 끝에서 편집기로 포커스를 돌려준다.
+- ✅ 고침(2026-11-17, §24 K4): **Ctrl+Alt+N 이 트리에서 고른 폴더를 안 따름** — 트리가 고른 폴더를 `onSelectDir` 로 알린다.
+- ❌ 남은 것: TC-1212(없는 폴더 기록이 두 번째 재시작에서 사라짐).
+- ⚠ 그 밖: 트리 F2·Delete 뒤 커서 사라짐(TC-807), 미리보기의 없는 그림 안내(TC-215), 모두 바꾸기 직후 Ctrl+Z(TC-410), 열 이동 되돌리기 때 너비(TC-411), 하이브리드의 baked 표 중복(TC-613), CP949 그리드 입력이 Enter 때야 거절(TC-1105), 읽기 전용 폴더의 F2·Delete·＋파일이 대화상자 뒤 오류(TC-1206), 오른쪽 클릭 메뉴 잘림(TC-1207).
 
 새 기능 **마크다운 표 → TSV 붙여넣기 자동 확장**(2026-10-25 Jay 요청) — 넣었다. 규칙은 DESIGN §19.1(T1~T5), TC 는 TESTCASES §14. 실제 Ctrl+C 로 복사한 표(시스템 클립보드)는 Jay 가 손으로 한 번 볼 것 — 자동화는 붙여넣기 이벤트를 흉내 냈다. 새 단축키·팔레트 명령은 없다(Ctrl+V 설명만 늘림).
 
@@ -91,8 +93,10 @@ TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재�
 남은 숙제:
 1. ~~수식~~ — (b) 안으로 구현했다: `X_Calc.tsv` 의 규칙을 F9 로 값 열에 써 넣는다(`lib/calc/`). 남은 것: 식 자동완성, Calc 파일 전용 편집 UI(지금은 보통 그리드).
 2. **하이브리드 다듬기 2차** — 제목 크기 단계, 코드 펜스(일반 언어) 꾸밈, 각주, 표 안 편집. 지금은 표식 숨김 · 목록/인용 · 할 일 체크박스 · 이미지 · GFM 표/펜스 블록 위젯까지.
-3. 번들 1.2 MB(gz 390 KB) — flexlayout·react-markdown·CM 몫. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
+3. 번들 — 2026-11-17 에 `index` 183 kB + `vendor` 1,068 kB(gz 340 KB)로 나눴다(§22 U8). 합계는 그대로. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
 4. `npm audit` 가 mermaid 의존성 경고를 낸다(로컬 도구라 보류).
+5. **다음 묶음(DESIGN §24.4)** — ① 스토어 경로별 구독(먼저, 따로) ② 대화상자 · 알림 통일 ③ 남은 UX(미리보기 전용 모드 포커스 · 탭 클릭 포커스 · 빈 화면 안내 · 증분 검증 · oxlint).
+6. Jay 가 손으로 볼 것(TESTCASES §18): 하이브리드 표 칸 · 본문과 tsv-view 의 한글 조합, Edge 설치 앱에서 `F6`, 두 번째 배포 때 받는 파일 수.
 
 
 

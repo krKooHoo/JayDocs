@@ -77,6 +77,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     if (!r.ok) { setNotice(r.error); return }
     setNotice(null)
     if (r.text !== before) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: r.text } })
+    // 정렬 버튼을 누르면 포커스가 버튼에 남아 바로 누른 Ctrl+Z 가 이 편집기로 오지 않는다 (TC-1108)
+    view.focus()
   }
 
   const docText = d?.kind === 'text' ? d.text : null
