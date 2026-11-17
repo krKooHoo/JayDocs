@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { baseExtensions, isMarkdownPath, remote } from '../lib/cm'
+import { tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -32,6 +33,9 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const hybridComp = useRef(new Compartment())
   const [mode, setModeState] = useState<Mode>(() => loadMode(path))
   const [notice, setNotice] = useState<string | null>(null)
+  /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
+  const modeRef = useRef<Mode>(mode)
+  modeRef.current = mode
   const setMode = (m: Mode) => {
     setModeState(m)
     try { localStorage.setItem(modeKey(path), m) } catch { /* 무시 */ }
@@ -46,11 +50,13 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   // 전역 명령(보기 모드 순환 · 포커스)
   useEffect(() => onPaneAction(path, (a) => {
     if (a === 'cycleMdMode' && isMarkdownPath(path)) {
-      setModeState((m) => {
-        const next = MODES[(MODES.indexOf(m) + 1) % MODES.length]
-        try { localStorage.setItem(modeKey(path), next) } catch { /* 무시 */ }
-        return next
-      })
+      const next = MODES[(MODES.indexOf(modeRef.current) + 1) % MODES.length]
+      modeRef.current = next
+      setModeState(next)
+      try { localStorage.setItem(modeKey(path), next) } catch { /* 무시 */ }
+      // 편집기가 보이는 모드면 포커스를 지킨다 (미리보기 전용 → 소스로 돌아올 때 body 로 빠지지 않게).
+      // 미리보기 전용에서는 편집기가 숨겨지므로 포커스를 줄 곳이 없다
+      if (next !== 'preview') window.setTimeout(() => viewRef.current?.focus(), 0)
     }
     if (a === 'focus') window.setTimeout(() => viewRef.current?.focus(), 0)
     if (a === 'formatJson') formatActive()
@@ -125,7 +131,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       <div className="pane-bar">
         <span className="pane-path" title={path}>{path}</span>
         {isMd && (
-          <span className="seg" title="보기 모드 (Ctrl+Shift+V 로 순환)">
+          <span className="seg" title={tip('보기 모드 — 순환', 'cycleMdMode')}>
             <button className={mode === 'source' ? 'is-on' : ''} onClick={() => setMode('source')} title="소스만">소스</button>
             <button className={mode === 'hybrid' ? 'is-on' : ''} onClick={() => setMode('hybrid')} title="커서 줄은 원문, 나머지는 렌더 (Obsidian 식)">하이브리드</button>
             <button className={mode === 'split' ? 'is-on' : ''} onClick={() => setMode('split')} title="소스 + 미리보기">분할</button>
@@ -139,8 +145,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           </>
         )}
         <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
-        <button onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title="Ctrl+S">저장</button>
-        <button onClick={onSplit} title="이 문서를 오른쪽 창에도 연다 (Ctrl+\)">오른쪽에 분할</button>
+        <button onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title={tip('저장', 'save')}>저장</button>
+        <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
       {d?.conflict && (
         <div className="banner">

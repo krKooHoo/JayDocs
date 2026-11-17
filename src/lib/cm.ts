@@ -1,15 +1,36 @@
 import { Annotation, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, highlightSpecialChars, keymap, rectangularSelection, crosshairCursor } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
 import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { linter, lintGutter } from '@codemirror/lint'
 import { fileTypeOf } from './filetypes.mjs'
 
-/** CodeMirror 공통 설정 — 마크다운 창, diff 창, 이전 버전 보기가 같이 쓴다. */
+/** CodeMirror 공통 설정 — 마크다운 창과 평문/JSON 창이 같이 쓴다. */
+
+/** 찾기 패널 문구 — 그리드 찾기 막대(찾기 · 바꾸기 · 이전 · 다음 · 모두 바꾸기 · 대소문자 구분 · 닫기)에 맞춘다 */
+const KO_PHRASES: Record<string, string> = {
+  Find: '찾기',
+  Replace: '바꾸기',
+  next: '다음',
+  previous: '이전',
+  all: '모두 선택',
+  'match case': '대소문자 구분',
+  regexp: '정규식',
+  'by word': '단어 단위',
+  replace: '바꾸기',
+  'replace all': '모두 바꾸기',
+  close: '닫기',
+  'Go to line': '줄로 이동',
+  go: '이동',
+  'current match': '현재 일치',
+  'on line': '줄',
+  'replaced $ matches': '$개를 바꿨습니다',
+  'replaced match on line $': '$번 줄에서 바꿨습니다',
+}
 
 /** 다른 창(또는 디스크)에서 온 변경 표시. 되돌리기 이력에 넣지 않고, 스토어로 되돌려 보내지도 않는다. */
 export const remote = Annotation.define<boolean>()
@@ -58,6 +79,7 @@ const commonTheme = EditorView.theme({
   '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--selection-match)', outline: '1px solid var(--border)' },
   '.cm-panels': { backgroundColor: 'var(--panel)', color: 'var(--fg)', borderColor: 'var(--border)' },
   '.cm-panels.cm-panels-bottom': { borderTop: '1px solid var(--border)' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--border)' },
   '.cm-panel input, .cm-panel button': { background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: '4px' },
   '.cm-panel.cm-search label': { color: 'var(--fg)' },
   '.cm-tooltip': { background: 'var(--elev)', color: 'var(--fg)', border: '1px solid var(--border)' },
@@ -77,12 +99,6 @@ const plainTheme = EditorView.theme({
   '.cm-content': { padding: '0 16px' },
 })
 
-/** diff 창처럼 좁은 곳에서는 여백을 줄인다 */
-const compactTheme = EditorView.theme({
-  '.cm-scroller': { padding: '8px 0 20vh' },
-  '.cm-content': { padding: '0 12px', maxWidth: 'none' },
-})
-
 export function isMarkdownPath(path: string) {
   return fileTypeOf(path)?.kind === 'md'
 }
@@ -97,7 +113,6 @@ function languageExtensions(path: string, readOnly: boolean): Extension[] {
 
 export interface EditorOptions {
   readOnly?: boolean
-  compact?: boolean
   save?: () => void
 }
 
@@ -115,7 +130,8 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
     bracketMatching(),
     commonTheme,
     ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), EditorView.lineWrapping, proseTheme] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
-    ...(opts.compact ? [compactTheme] : []),
+    EditorState.phrases.of(KO_PHRASES),
+    search({ top: true }),
   ]
   if (opts.readOnly) {
     ext.push(EditorState.readOnly.of(true), EditorView.editable.of(false), keymap.of([...defaultKeymap, ...searchKeymap]))
@@ -127,6 +143,8 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
         ...(opts.save ? [{ key: 'Mod-s', run: () => { opts.save!(); return true } }] : []),
         ...defaultKeymap,
         ...historyKeymap,
+        // Windows 의 CodeMirror 기본은 Ctrl+Y 뿐이다 — 그리드와 같게 Ctrl+Shift+Z 도 다시 실행
+        { key: 'Mod-Shift-z', run: redo },
         ...searchKeymap,
         indentWithTab,
       ]),

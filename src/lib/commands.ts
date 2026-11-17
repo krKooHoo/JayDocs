@@ -39,6 +39,17 @@ for (const g of SHORTCUTS) {
 }
 for (let n = 1; n <= 9; n++) commandByCombo.set(`Alt+${n}`, `tab${n}`)
 
+/** 명령 id 의 단축키 (표의 첫 번째 것). 없으면 undefined */
+export function keysOf(id: string): string | undefined {
+  return keysByCommand.get(id)
+}
+
+/** 툴팁 문구에 단축키를 덧붙인다 — `tip('저장', 'save')` → `저장 (Ctrl+S)`. 손으로 적지 않고 표에서 뽑는다 */
+export function tip(text: string, id: string): string {
+  const k = keysByCommand.get(id)
+  return k ? `${text} (${k})` : text
+}
+
 export function registerCommands(cmds: Command[]): () => void {
   for (const c of cmds) registry.set(c.id, { ...c, keys: c.keys ?? keysByCommand.get(c.id) })
   emit()

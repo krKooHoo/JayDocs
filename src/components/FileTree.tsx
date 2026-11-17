@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MountInfo, TreeEntry } from '../lib/backend'
-import { runCommand } from '../lib/commands'
+import { keysOf, runCommand, tip } from '../lib/commands'
 import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
@@ -19,6 +19,8 @@ interface Props {
   onDelete: (path: string, isDir: boolean) => void
   onRefresh: () => void
   onRootAction: (action: RootAction, path: string) => void
+  /** 트리에서 고른 폴더가 바뀔 때 — 새 파일·새 폴더 단축키의 기본 위치가 된다 */
+  onSelectDir?: (dir: string) => void
 }
 
 interface Menu {
@@ -66,13 +68,37 @@ export function FileTree(p: Props) {
   const body = useRef<HTMLDivElement>(null)
   const menuBox = useRef<HTMLDivElement>(null)
 
-  // 메뉴가 창 밖으로 나가지 않게
+  // 고른 폴더를 앱에 알린다 (Ctrl+Alt+N / Ctrl+Alt+Shift+N 이 이 폴더에 만든다)
+  const onSelectDir = p.onSelectDir
+  useEffect(() => { onSelectDir?.(selectedDir) }, [selectedDir, onSelectDir])
+
+  // 메뉴가 창 밖으로 나가지 않게 + 열리면 첫 항목에 포커스 (키보드로 바로 고르게)
   useLayoutEffect(() => {
     if (!menu || !menuBox.current) return
     const { width, height } = menuBox.current.getBoundingClientRect()
     menuBox.current.style.left = `${Math.max(4, Math.min(menu.x, window.innerWidth - width - 4))}px`
     menuBox.current.style.top = `${Math.max(4, Math.min(menu.y, window.innerHeight - height - 4))}px`
+    menuBox.current.querySelector<HTMLElement>('button')?.focus()
   }, [menu])
+
+  /** 메뉴를 닫고 트리로 포커스를 돌려준다 (Esc · 항목 실행) */
+  const closeMenu = () => { setMenu(null); body.current?.focus() }
+
+  const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    const items = [...(menuBox.current?.querySelectorAll<HTMLElement>('button') ?? [])]
+    if (!items.length) return
+    const i = items.indexOf(document.activeElement as HTMLElement)
+    const move = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length].focus() }
+    switch (e.key) {
+      case 'ArrowDown': move(i + 1); break
+      case 'ArrowUp': move(i < 0 ? items.length - 1 : i - 1); break
+      case 'Tab': move(e.shiftKey ? i - 1 : i + 1); break
+      case 'Home': move(0); break
+      case 'End': move(items.length - 1); break
+      case 'Escape': e.preventDefault(); e.stopPropagation(); closeMenu(); break
+      default: break
+    }
+  }
 
   // 처음 트리가 오면 전부 펼친다. 그 뒤로는 사용자가 접은 상태를 유지.
   useEffect(() => {
@@ -100,11 +126,9 @@ export function FileTree(p: Props) {
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
     window.addEventListener('mousedown', close)
-    window.addEventListener('keydown', onKey)
     window.addEventListener('blur', close)
-    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', onKey); window.removeEventListener('blur', close) }
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('blur', close) }
   }, [menu])
 
   const rows = useMemo(() => flatten(p.entries, expanded), [p.entries, expanded])
@@ -228,15 +252,15 @@ export function FileTree(p: Props) {
 
   return (
     <div className="tree">
-      <button className="tree-search" onClick={() => runCommand('fileSearch')} title="파일 이름으로 찾아 열기 (Ctrl+P)">
+      <button className="tree-search" onClick={() => runCommand('fileSearch')} title={tip('파일 이름으로 찾아 열기', 'fileSearch')}>
         <span className="tree-search-icon">🔍</span>
         <span className="tree-search-label">파일 검색</span>
-        <kbd>Ctrl+P</kbd>
+        <kbd>{keysOf('fileSearch')}</kbd>
       </button>
       <div className="tree-bar">
         <span className="tree-dir" title={selectedDir || '(루트)'}>{selectedDir || '(루트)'}</span>
-        <button onClick={() => p.onNewFile(selectedDir)} title="선택한 폴더에 새 파일 (Ctrl+Alt+N)">＋파일</button>
-        <button onClick={() => p.onNewFolder(selectedDir)} title="선택한 폴더에 새 폴더 (Ctrl+Alt+Shift+N)">＋폴더</button>
+        <button onClick={() => p.onNewFile(selectedDir)} title={tip('선택한 폴더에 새 파일', 'newFile')}>＋파일</button>
+        <button onClick={() => p.onNewFolder(selectedDir)} title={tip('선택한 폴더에 새 폴더', 'newFolder')}>＋폴더</button>
         <button onClick={p.onRefresh} title="새로고침">↻</button>
       </div>
       <div
@@ -257,17 +281,17 @@ export function FileTree(p: Props) {
         const { mount, isRoot } = mountOf(menu.path)
         const writable = !mount?.readOnly
         const isPrimary = menu.path === ''
-        const act = (a: RootAction) => { setMenu(null); p.onRootAction(a, menu.path) }
+        const act = (a: RootAction) => { closeMenu(); p.onRootAction(a, menu.path) }
         return (
-          <div className="ctx-menu" ref={menuBox} style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="ctx-menu" role="menu" ref={menuBox} style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onMenuKeyDown}>
             <div className="ctx-title">{isPrimary ? '(루트)' : isRoot ? mount!.path ?? mount!.folder : menu.path}</div>
-            {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
-            {menu.isDir && writable && <button onClick={() => { setMenu(null); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
-            {!isRoot && writable && !menu.isDir && <button onClick={() => { setMenu(null); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
+            {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
+            {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
+            {!isRoot && writable && !menu.isDir && <button onClick={() => { closeMenu(); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
             {explorerSupported() && <button onClick={() => act('reveal')}>파일 탐색기에서 열기</button>}
             <button onClick={() => act('copyPath')}>전체 경로 복사</button>
             {(isRoot || isPrimary) && <button onClick={() => act('editRoot')}>{isPrimary ? '별칭 · 상세 경로 편집' : '상세 경로 편집'}</button>}
-            {!isRoot && !isPrimary && writable && <button className="is-danger" onClick={() => { setMenu(null); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}
+            {!isRoot && !isPrimary && writable && <button className="is-danger" onClick={() => { closeMenu(); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}
             {isRoot && <button onClick={() => act('toggleReadOnly')}>{mount!.readOnly ? '읽기 전용 끄기' : '읽기 전용 켜기'}</button>}
             {isRoot && <button onClick={() => act('refresh')}>새로 고침</button>}
             {isRoot && <button onClick={() => act('unmount')}>가져오기 해제 (파일은 그대로)</button>}

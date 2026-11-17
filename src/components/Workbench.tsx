@@ -33,6 +33,7 @@ interface Props {
   onRename: (path: string, isDir: boolean) => void
   onDelete: (path: string, isDir: boolean) => void
   onRootAction: (action: RootAction, path: string) => void
+  onSelectDir?: (dir: string) => void
 }
 
 const LAYOUT_VERSION = 1
@@ -112,6 +113,19 @@ function focusLater(selector: string) {
   window.setTimeout(() => document.querySelector<HTMLElement>(selector)?.focus(), 60)
 }
 
+/** 탭 하나의 문서 창 안에서 포커스를 받는 곳 — 에디터 본문 또는 그리드의 입력 칸 */
+const PANE_FOCUS = '.cm-content, textarea.grid-input'
+
+/**
+ * 그 탭(탭 id)의 창에 포커스. 같은 문서가 두 창에 열려 있어도 이 탭의 창만 받는다 (경로로 부르면 마지막 창이 가져간다).
+ * 막 선택한 탭은 다음 프레임에야 그려질 수 있어 몇 번 다시 시도한다. 미리보기 전용 모드처럼 줄 곳이 없으면 그만둔다.
+ */
+function focusTabPane(tabId: string, tries = 6) {
+  const el = document.querySelector<HTMLElement>(`[data-tab-id="${tabId}"] :is(${PANE_FOCUS})`)
+  if (el && el.offsetParent !== null) { el.focus(); return }
+  if (tries > 0) window.setTimeout(() => focusTabPane(tabId, tries - 1), 40)
+}
+
 const DOC_COMPONENTS = new Set(['md', 'tsv'])
 
 export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p, ref) {
@@ -170,7 +184,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     const i = ts.getSelected() ?? 0
     const next = children[(i + delta + children.length) % children.length] as TabNode
     model.doAction(Actions.selectTab(next.getId()))
-    paneAction((next.getConfig()?.path as string) ?? '', 'focus')
+    focusTabPane(next.getId())
   }, [model, activeTabSet])
 
   const selectTabIndex = useCallback((i: number) => {
@@ -178,7 +192,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     const tab = ts?.getChildren()[i] as TabNode | undefined
     if (!tab) return
     model.doAction(Actions.selectTab(tab.getId()))
-    paneAction((tab.getConfig()?.path as string) ?? '', 'focus')
+    focusTabPane(tab.getId())
   }, [model, activeTabSet])
 
   /** 같은 문서를 보는 마지막 탭을 닫을 때만 저장 여부를 묻는다. 닫아도 되면 true */
@@ -213,7 +227,33 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     else focusLater(selector)
   }, [toggleBorder])
   const focusTree = useCallback(() => focusPanel('tree', '[data-focus-target="tree"]'), [focusPanel])
-  const focusEditor = useCallback(() => { const path = activePath(); if (path) paneAction(path, 'focus') }, [activePath])
+  const focusEditor = useCallback(() => {
+    const tab = activeTab()
+    if (tab && DOC_COMPONENTS.has(tab.getComponent() ?? '')) focusTabPane(tab.getId())
+  }, [activeTab])
+
+  /** F6 / Shift+F6 — 파일 트리(펴져 있을 때) → 문서가 있는 탭 묶음들 순서로 포커스를 돌린다 */
+  const cyclePane = useCallback((delta: number) => {
+    const tabsets: TabSetNode[] = []
+    model.visitNodes((n: Node) => { if (n.getType() === 'tabset' && (n as TabSetNode).getChildren().length) tabsets.push(n as TabSetNode) })
+    const treeOpen = (findBorder(model, 'tree')?.border.getSelected() ?? -1) >= 0
+    const zones: Array<'tree' | TabSetNode> = [...(treeOpen ? ['tree' as const] : []), ...tabsets]
+    if (zones.length < 2) return
+    // 지금 포커스가 있는 영역 (없으면 활성 탭 묶음)
+    const ae = document.activeElement as HTMLElement | null
+    let cur = -1
+    if (ae?.closest('.tree')) cur = zones.indexOf('tree')
+    else {
+      const tabId = ae?.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId
+      const parent = tabId ? model.getNodeById(tabId)?.getParent() : model.getActiveTabset()
+      cur = zones.findIndex((z) => z !== 'tree' && z === parent)
+    }
+    const next = zones[(cur < 0 ? (delta > 0 ? 0 : zones.length - 1) : (cur + delta + zones.length) % zones.length)]
+    if (next === 'tree') { focusTree(); return }
+    model.doAction(Actions.setActiveTabset(next.getId()))
+    const tab = next.getSelectedNode()
+    if (tab) focusTabPane(tab.getId())
+  }, [model, focusTree])
 
   useEffect(() => registerCommands([
     { id: 'split', label: '오른쪽에 분할', run: splitActive, enabled: () => activePath() !== null },
@@ -224,10 +264,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => toggleBorder('tree') },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
-    { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
+    { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
+    { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },
+    { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 하이브리드 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, cyclePane])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'
@@ -274,13 +316,19 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
             onRename={p.onRename}
             onDelete={p.onDelete}
             onRootAction={p.onRootAction}
+            onSelectDir={p.onSelectDir}
           />
         )
       case 'md':
       case 'tsv': {
         // 저장된 레이아웃에는 예전 이름(md)이 남아 있을 수 있으니 확장자로 고른다
         const path = cfg.path as string
-        return isTsvPath(path) ? <GridPane path={path} onSplit={splitActive} /> : <MarkdownPane path={path} onSplit={splitActive} />
+        // display: contents — 레이아웃엔 영향이 없고, 이 탭의 창을 DOM 에서 찾을 이름표만 준다 (F6 · 탭 이동 포커스)
+        return (
+          <div data-tab-id={node.getId()} style={{ display: 'contents' }}>
+            {isTsvPath(path) ? <GridPane path={path} onSplit={splitActive} /> : <MarkdownPane path={path} onSplit={splitActive} />}
+          </div>
+        )
       }
       default:
         return <div className="pane-empty">알 수 없는 창: {node.getComponent()}</div>

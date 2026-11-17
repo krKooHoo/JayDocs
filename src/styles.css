@@ -28,8 +28,6 @@
   --warn-border: #f0d58c;
   --err-bg: #fff6f5;
   --err-border: #f3b4ae;
-  --diff-add: #f0fbf3;
-  --diff-del: #fff4f3;
   --diff-chg: #fffbec;
   --shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
   --badge-fg: #ffffff;
@@ -71,8 +69,6 @@
   --syn-key: #79c0ff;
   --syn-string: #a5d6ff;
   --syn-number: #ffa657;
-  --diff-add: #14261b;
-  --diff-del: #2d1816;
   --diff-chg: #2a2510;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   --badge-fg: #0f1218;
@@ -260,7 +256,7 @@ button.tree-search {
 }
 .ctx-menu .ctx-title { padding: 4px 10px 6px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--border); margin-bottom: 3px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 5px 12px; }
-.ctx-menu button:hover { background: var(--hover); }
+.ctx-menu button:hover, .ctx-menu button:focus { background: var(--hover); outline: none; }
 .ctx-menu button.is-danger { color: var(--danger); }
 
 /* ---- flexlayout 보정 ---- */
@@ -459,6 +455,12 @@ button.is-primary { background: var(--accent); color: var(--badge-fg); border-co
   background: var(--elev); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); outline: none;
 }
 .help-head { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.help-search { padding: 8px 14px 0; }
+.help-input {
+  width: 100%; padding: 6px 10px; font-size: 13.5px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); outline: none;
+}
+.help-input:focus { border-color: var(--accent); }
 .help-body { overflow: auto; padding: 6px 14px 14px; columns: 2; column-gap: 24px; }
 .help-body section { break-inside: avoid; margin-bottom: 14px; }
 .help-body h3 { font-size: 13px; margin: 8px 0 4px; }

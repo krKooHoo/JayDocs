@@ -12,7 +12,7 @@ import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
 import { GrantScreen, StartScreen } from './components/StartScreen'
 import { DOC_EXTS_LABEL, isDocName } from './lib/filetypes.mjs'
-import { allCommands, commandByCombo, registerCommands, runCommand, useCommandsVersion } from './lib/commands'
+import { allCommands, commandByCombo, registerCommands, runCommand, tip, useCommandsVersion } from './lib/commands'
 import { comboFromEvent } from './lib/keys'
 import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
@@ -124,8 +124,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const bench = useRef<WorkbenchHandle>(null)
-  /** 트리에서 마지막으로 고른 폴더 (새 파일의 기본 위치) — 트리가 알려 준다 */
+  /** 트리에서 마지막으로 고른 폴더 (새 파일·새 폴더 단축키의 기본 위치) — 트리가 고를 때마다 알려 준다 */
   const lastDir = useRef('')
+  /** 지금 떠 있는 창 (오버레이) — 지연 콜백이 최신 값을 읽는다 */
+  const overlayRef = useRef<Overlay>(null)
+  overlayRef.current = overlay
 
   const refreshTree = useCallback(async () => {
     try {
@@ -407,6 +410,18 @@ function Workspace({ layoutId }: { layoutId: string }) {
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
 
+  /** 팔레트에서 명령을 실행한 뒤: 팔레트가 사라지며 포커스가 body 로 빠졌으면 문서 창으로 돌린다.
+   *  다른 창을 연 명령(가져오기 · 도움말 …)이나 스스로 포커스를 옮긴 명령(트리로 포커스 …)은 건드리지 않는다. */
+  const pickCommand = useCallback((id: string) => {
+    setOverlay(null)
+    runCommand(id)
+    window.setTimeout(() => {
+      if (overlayRef.current) return
+      const ae = document.activeElement
+      if (!ae || ae === document.body) runCommand('focusEditor')
+    }, 80)
+  }, [])
+
   return (
     <div className="app">
       <header className="topbar">
@@ -416,16 +431,16 @@ function Workspace({ layoutId }: { layoutId: string }) {
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
         <UpdateButton notify={updateNotice} onApply={applyUpdate} />
         {app.canInstall && <button onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
-        <button onClick={() => setOverlay({ kind: 'import' })} title="폴더 가져오기 — 다른 폴더를 원래 자리에서 열기 (Ctrl+Shift+O)">📂 가져오기</button>
+        <button onClick={() => setOverlay({ kind: 'import' })} title={tip('폴더 가져오기 — 다른 폴더를 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
         <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>
-        <button onClick={() => setOverlay({ kind: 'palette' })} title="명령 팔레트 (Ctrl+Shift+P)">명령 ⌘</button>
-        <button onClick={() => bench.current?.saveActive()} title="Ctrl+S">저장</button>
-        <button onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title="Ctrl+Shift+S">
+        <button onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령 ⌘</button>
+        <button onClick={() => bench.current?.saveActive()} title={tip('저장', 'save')}>저장</button>
+        <button onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title={tip('모두 저장', 'saveAll')}>
           모두 저장{dirtyCount ? ` (${dirtyCount})` : ''}
         </button>
-        <button onClick={() => bench.current?.splitActive()} title="Ctrl+\">오른쪽에 분할</button>
-        <button onClick={toggleTheme} title="다크 / 라이트 (Ctrl+Alt+D)">{theme === 'dark' ? '☀' : '☾'}</button>
-        <button onClick={() => setOverlay({ kind: 'help' })} title="단축키 (F1)">?</button>
+        <button onClick={() => bench.current?.splitActive()} title={tip('현재 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
+        <button onClick={toggleTheme} title={tip('다크 / 라이트', 'toggleTheme')}>{theme === 'dark' ? '☀' : '☾'}</button>
+        <button onClick={() => setOverlay({ kind: 'help' })} title={tip('단축키', 'help')}>?</button>
       </header>
       <main className="workbench">
         {root && (
@@ -434,8 +449,9 @@ function Workspace({ layoutId }: { layoutId: string }) {
             layoutId={layoutId}
             tree={tree}
             onRefresh={() => void refreshTree()}
-            onNewFile={(d) => { lastDir.current = d; void newFile(d) }}
-            onNewFolder={(d) => { lastDir.current = d; void newFolder(d) }}
+            onSelectDir={(d) => { lastDir.current = d }}
+            onNewFile={(d) => void newFile(d)}
+            onNewFolder={(d) => void newFolder(d)}
             onRename={(path, isDir) => void rename(path, isDir)}
             onDelete={(path, isDir) => void remove(path, isDir)}
             onRootAction={rootAction}
@@ -443,7 +459,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         )}
       </main>
       {overlay?.kind === 'palette' && (
-        <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); runCommand(id) }} />
+        <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={pickCommand} />
       )}
       {overlay?.kind === 'files' && (
         <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id); window.setTimeout(() => runCommand('focusEditor'), 80) }} />
