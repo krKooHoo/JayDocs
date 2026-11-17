@@ -1,6 +1,6 @@
 # JayDocs 개발 문서
 
-사용법은 [README](../README.md) 와 [사용 가이드](guide/) 에 있다. 이 문서는 실행 · 배포 · 개발 · 소스 구조 · 보안이다. 설계 배경은 [DESIGN.md](../DESIGN.md), 다른 PC 에서 이어서 작업할 때는 [HANDOFF.md](../HANDOFF.md), 전체 기능을 손으로 검증할 때는 [TESTCASES.md](../TESTCASES.md), 단축키 전체는 [SHORTCUTS.md](../SHORTCUTS.md).
+사용법은 [README](../README.md) 와 [사용 가이드](guide/) 에 있다. 이 문서는 실행 · 배포 · 개발 · 소스 구조 · 보안이다. 작업 규칙은 [CLAUDE.md](../CLAUDE.md), 설계 배경은 [DESIGN.md](../DESIGN.md)(2026-10-31 전환 뒤 구조는 §20 이후), 현재 상태와 다음 작업은 [HANDOFF.md](../HANDOFF.md), 전체 기능을 손으로 검증할 때는 [TESTCASES.md](../TESTCASES.md), 단축키 전체는 [SHORTCUTS.md](../SHORTCUTS.md).
 
 ## 실행
 
@@ -29,7 +29,8 @@
 ## 한 곳에서 관리하는 표
 
 - 여는 파일 형식은 `src/lib/filetypes.mjs` 한 곳에 적는다.
-- 단축키는 `src/lib/shortcuts-table.mjs` 한 곳에 적는다. `npm run shortcuts` 가 SHORTCUTS.md 를 다시 만들고, 테스트가 둘이 같은지 본다. 브라우저가 먼저 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)은 쓰지 않는다.
+- 가져온 폴더의 경로 규칙(`@별칭/…`)은 `src/lib/roots.mjs` 한 곳에 적는다.
+- 단축키는 `src/lib/shortcuts-table.mjs` 한 곳에 적는다. `npm run shortcuts` 가 SHORTCUTS.md 를 다시 만들고, 테스트가 둘이 같은지 본다. 브라우저가 먼저 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)은 쓰지 않는다. 새 기능을 넣을 때는 단축키 표와 팔레트 명령을 같이 넣는다.
 
 ## 사용 가이드 스크린샷
 
@@ -38,16 +39,16 @@
 ## 개발
 
 ```bash
-npm run dev     # Vite 5173. http://127.0.0.1:5173 을 Edge/Chrome 에서 연다
+npm run dev     # Vite 5173. http://127.0.0.1:5173 을 Edge/Chrome 에서 연다 (포트를 바꾸려면 `-- --port 5177 --strictPort`)
 npm run build   # 타입 검사 + dist/ + sw.js
 npm test        # vitest — 파일 처리(메모리 파일 시스템)·TSV 왕복·편집·스키마·검증·tsv-view·계산식
 ```
 
-- 폴더 선택 창은 자동화가 못 누른다. 화면 시험은 `http://127.0.0.1:5173/?opfs` (개발 전용) — 브라우저 안 저장소를 문서 폴더로 쓴다. 변경 감지도 실제로 돈다.
+- 폴더 선택 창은 자동화가 못 누른다. 화면 시험은 `http://127.0.0.1:5173/?opfs` (개발 전용) — 브라우저 안 저장소를 문서 폴더로 쓴다. 변경 감지도 실제로 돈다. 샘플 문서는 `src/lib/fsa/devSeed.ts` 에 있다: 타입 행 · enum · bool · Key 검증 오류가 든 `data/Item/Item_Table.tsv` + `Item_Field.tsv` + `Item_Calc.tsv`, 그 표를 `tsv-view` 로 임베드한 `docs/아이템.md`. 샘플은 **파일이 비어 있을 때만** 쓴다 — 샘플을 고친 뒤에는 브라우저 저장소(OPFS)를 지우고 다시 연다.
 - 빌드본(서비스 워커 포함)은 `npx vite preview`. `.claude/launch.json` 에 둘 다 있다.
-- 테스트의 SagaDocs 왕복 항목은 `../SagaDocs`(이 리포 옆), `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾고, 없으면 건너뛴다.
+- 테스트의 SagaDocs 항목은 `../SagaDocs`(이 리포 옆), `C:\Users\user\SagaDocs` 등 후보 경로나 `SAGADOCS` 환경변수에서 리포를 찾는다. 리포가 없거나, 왕복 항목은 TSV 가 하나도 없을 때, 스키마 항목은 `10-World/Tile/Tile_Field.tsv` 등 필요한 파일이 없을 때 건너뛴다(실패가 아니다).
 
-다른 PC에서 이어서 작업할 때는 [HANDOFF.md](../HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](../TESTCASES.md).
+현재 상태와 다음 작업은 [HANDOFF.md](../HANDOFF.md). 전체 기능을 손으로 검증할 때는 [TESTCASES.md](../TESTCASES.md).
 
 ## 구조
 
@@ -63,7 +64,7 @@ src/
   lib/localPath.ts    상세 경로 다듬기 · 검사 · 앱 경로와 합치기 · 미리 채울 값
   lib/explorer.ts     파일 탐색기 열기 (jaydocs-open: → 연결 도우미)
   lib/fsa/fake.ts     시험용 메모리 파일 시스템
-  lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험
+  lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험 (스키마 · 계산식 · tsv-view 샘플 포함)
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
   lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘)

@@ -2,6 +2,8 @@
 
 작성 2026-10-11 · 상태 **설계 확정 (같은 날 피드백 반영, §13)** · 2026-10-21 폴더 가져오기·형식 확장 추가(§18) · 위치 독립 리포 `JayDocs` (2026-10-25 `JayTools/JayDocs/` 에서 기록째 분리) · 2026-10-31 브라우저 앱 전환(§20)
 
+> **절 안내**: 번호는 다른 문서의 `§n` 참조 때문에 바꾸지 않았다. **§15(출처)는 맨 끝(§23 뒤)** 에 있다. 현재 구조는 §20 이후가 우선한다 — §20 브라우저 앱 전환 · §21 폴더 별칭 · 탐색기 · §22 업데이트 확인 · §23 하이브리드 표 칸 편집. 2026-10-31 전환으로 없어진 절은 맨 위에 "폐기 — §20 참조" 가 달려 있다(내용은 지우지 않았다).
+>
 > 이름: **JayDocs** — "Jay의 문서". Notion·Asana·Google Sheets를 오가던 기획 문서와 데이터를 한곳(git)에 모으는 Jay 전용 Docs라는 뜻.
 > 폴더명도 `JayDocs`(리포의 `TeamBuilder`·`MemoryBoard`처럼 PascalCase).
 
@@ -140,6 +142,8 @@ Glide 채택+패치와 동급 이상**이라는 결론이다. 어느 쪽이든 �
 
 ### 3.4 셸 · git · 레이아웃
 
+> 일부 폐기 — 호스팅 · diff · TSV 셀 diff 행은 §20 참조(선택한 구현이 바뀌었다). 레이아웃 행은 그대로 유효하다.
+
 | 영역 | 후보 | 권고 |
 |---|---|---|
 | 호스팅 | 브라우저+File System Access API / **Node 사이드카** / Tauri / Electron / Bun 단일 exe / VS Code 확장 | **Node 사이드카** — Node 22가 이미 있고, 진짜 git CLI를 쓰므로 isomorphic-git의 CRLF(autocrlf 미구현)·성능·훅 문제가 통째로 사라진다. Tauri는 Rust+MSVC 툴체인·SmartScreen, Electron은 무게로 제외 |
@@ -164,6 +168,8 @@ Glide 채택+패치와 동급 이상**이라는 결론이다. 어느 쪽이든 �
 ---
 
 ## 4. 아키텍처
+
+> 폐기 — §20 참조. 사이드카 · git 패널 · `/api` · `/ws` 는 없어졌다. DocumentStore 와 페인 구조는 그대로 유효하다(백엔드는 `lib/fsa/fsaBackend.ts`).
 
 ```mermaid
 flowchart LR
@@ -208,6 +214,8 @@ flowchart LR
 
 ### D1. 셸 = Node 사이드카 + 브라우저
 
+> 폐기 — §20 참조(B1 · B2). Node 사이드카 · 고정 포트 · 토큰은 없어지고 Edge PWA + File System Access 로 바뀌었다.
+
 - **결정** `node server.mjs --root <폴더> --open` 이 `127.0.0.1:<포트>`에 뜨고 Edge 앱 모드 창을 연다. 포트는 문서 폴더 경로로 정한 고정값(43000~44999)이고, 쓰이고 있으면 임의 포트 — 브라우저 저장소(레이아웃·열 너비·보기 모드·테마)가 오리진별이라 실행마다 포트가 바뀌면 다시 열 때마다 처음 상태가 된다(2026-10-25 TC-105 에서 발견, §19).
 - **근거** Node 22·git 2.45·Edge/Chrome이 이미 설치되어 있다. 진짜 git CLI를 쓰므로 사용자의 autocrlf·credential helper·hooks가 그대로 동작한다.
   파일 감시는 `fs.watch({recursive:true})`가 Windows에서 네이티브로 된다. 실행 모델이 `python -m http.server` 습관과 같다.
@@ -240,6 +248,8 @@ flowchart LR
 - **되돌리기** 페인은 레이아웃 라이브러리를 모른다(`{type, path, mode}` 레코드만). 교체 시 Layout 컴포넌트 하나만 바뀐다.
 
 ### D5. git = CLI 위임, 앱은 다섯 가지만
+
+> 폐기 — §20 참조(B10). git 기능은 앱 범위에서 뺐다. git 은 앱 밖에서 쓴다.
 
 - **결정** ① 트리·탭에 상태 배지(`git status --porcelain=v2`) ② 현재 파일 vs HEAD — md는 `@codemirror/merge`(청크 되돌리기), tsv는 Key 매칭 셀 diff ③ 선택 파일 커밋(메시지 입력) ④ `git log --follow`로 파일 히스토리, 특정 버전 열기(`git show REV:path`) ⑤ 복원(`git restore`).
 - **근거** 문서 편집기에 필요한 git은 이 다섯이고 전부 CLI 출력 파싱으로 끝난다. push/pull/브랜치는 v2에 버튼 하나로 위임.
@@ -359,6 +369,8 @@ template: |
 
 ## 8. 화면
 
+> 일부 폐기 — 아래 그림의 git 패널 · 배지(`M/A/?`) · `Ctrl+Enter` 커밋은 §20 B10 에서 없앴다. 나머지(탭 · 분할 · 그리드 표시)는 유효하다.
+
 ```
 ┌ 파일 트리 ─┬─ 탭셋 A ─────────────────────┬─ 탭셋 B ────────────────┐
 │ docs/      │ [타일 기획.md ●] [지구.md]     │ [Tile_Table.tsv ●]        │
@@ -382,6 +394,8 @@ template: |
 
 ## 9. 사이드카 API 초안
 
+> 폐기 — §20 참조. 서버가 없어 이 API 는 없다. 같은 역할은 `Backend` 인터페이스(`lib/backend.ts`)와 `lib/fsa/fsaBackend.ts` 가 한다.
+
 | 메서드 | 경로 | 역할 |
 |---|---|---|
 | GET | `/api/tree` | `.md/.tsv` 트리(`.git`, `node_modules` 제외) + git 상태 배지 |
@@ -400,6 +414,8 @@ template: |
 ---
 
 ## 10. 프로젝트 구조 · 빌드 · 실행
+
+> 폐기 — §20 참조. `server.mjs` · `start.cmd` · `bin/jaydocs.mjs` · `npm run pack` · zip 릴리즈는 없어졌다. 현재 구조 · 실행 · 배포는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ```
 JayDocs/
@@ -429,6 +445,8 @@ JayDocs/
 ---
 
 ## 11. 단계별 계획
+
+> Phase 0 의 사이드카 · Phase 2 의 git 항목은 폐기 — §20 참조. 당시 달성 기록으로 남긴다.
 
 각 Phase 끝에 "검증" 조건을 통과해야 다음으로 간다. 기간은 집중 작업일 기준의 추정이다.
 
@@ -491,6 +509,8 @@ JayDocs/
 ---
 
 ## 12. 리스크와 대응
+
+> 사이드카 · Edge 앱 모드 · git 관련 행은 폐기 — §20 참조.
 
 | 리스크 | 대응 |
 |---|---|
@@ -617,6 +637,8 @@ Jay 가 미뤄 둔 "수식" 을 넣으려면 파일 계약(§2: 셀은 값 그�
 
 ## 18. 폴더 가져오기 · 형식 확장 (2026-10-21)
 
+> 서버 관련 내용(F2 · F3 · F7, §18.3 의 사이드카 항목, §18.4 API 전체, §18.5 의 git 항목)은 폐기 — §20 참조. 폴더 가져오기 자체는 §20 B3 · §21 로 이어진다.
+
 계획·결정 과정·단계별 완료 메모는 [PLAN-folder-import.md](PLAN-folder-import.md). 여기에는 확정된 결과만 적는다.
 
 ### 18.1 요구 (Jay, 2026-10-21)
@@ -690,7 +712,7 @@ TC 156개를 Jay 기억 + Claude 자동 실행으로 채운 뒤(결과는 TESTCA
 - **열 삭제 크래시(TC-307·408)** — 열 너비 배열을 effect 가 아니라 렌더 중에 표 너비에 맞춘다(`Grid.tsx`). 덧붙여 그리드를 `PaneErrorBoundary` 로 감쌌다: 렌더 오류가 나도 GridPane 이 남아 문서를 붙잡고 있으므로 flexlayout 오류 화면 → Retry 로 저장 안 한 편집을 잃지 않는다.
 - **Alt+W·팔레트 탭 닫기(TC-904)** — `model.doAction` 은 Layout 의 `onAction` 을 거치지 않는다. 저장 확인(`confirmCloseTab`)을 둘이 같이 쓴다.
 - **붙여넣기 칸 줄바꿈(TC-1310)** — 붙여넣는 모든 칸이 `sanitizeFor` 를 거친다(위 T5).
-- **재시작하면 레이아웃 등이 사라짐(TC-105·412·1211)** — 폴더별 고정 포트(D1).
+- **재시작하면 레이아웃 등이 사라짐(TC-105·412·1211)** — 폴더별 고정 포트(D1). (§20 이후 서버와 포트가 없어졌다 — 레이아웃은 작업 공간 id 별로 저장, B3.)
 
 ## 20. 브라우저 앱 전환 (2026-10-31)
 

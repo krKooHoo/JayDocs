@@ -1,6 +1,6 @@
-# JayDocs 인수인계 (2026-10-31, 브라우저 앱 전환 시점)
+# JayDocs 인수인계 (2026-11-17)
 
-다른 PC의 **새 세션**에 아래 프롬프트를 그대로 붙여 넣으면 된다. 이 문서 자체가 그 세션이 처음 읽을 문서다.
+작업 규칙·계약은 리포 루트 `CLAUDE.md` 에 있고 세션이 시작할 때 자동으로 읽힌다. 이 문서는 **지금 상태와 다음 작업**이다. 다른 PC의 새 세션이 처음 읽을 문서이기도 하다.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ```
 JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 적힌 순서로 문서를 읽은 뒤
-환경을 준비하고 "다음 작업" 을 시작해 줘. 시작 전에 HANDOFF.md 의 "핵심 사실" 을 memory 에 저장해 둬.
+환경을 준비하고 "다음 작업" 을 시작해 줘.
 ```
 
 ---
@@ -37,7 +37,8 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
 
 ## 2. 읽을 순서 (10분)
 
-1. `DESIGN.md` — §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계), **§19 마크다운 표 붙여넣기 · TC 뒤 수정**(결정 T1~T5), **§20 브라우저 앱 전환**(결정 B1~B10, 실측), **§21 폴더 별칭 · 파일 탐색기**(결정 P1~P9), **§22 앱에서 업데이트 확인**(결정 U1~U7).
+0. `CLAUDE.md` — 작업 규칙, 포맷 계약, 한 곳에서 관리하는 표, 개발·검증 명령.
+1. `DESIGN.md` — (2026-10-31 전환으로 폐기된 절은 맨 위에 "폐기 — §20 참조" 가 달려 있다.) §0 결론, §2 TSV 포맷 규칙(= 계약), §5 핵심 결정 D1~D7, §6 데이터 모델, §7 결합 문법(Phase 3 의 bake·Mermaid 템플릿), §11 Phase 1·2 구현 메모와 Phase 3 범위, §13 피드백 반영, §14 SagaDocs 구조, **§18 폴더 가져오기·형식 확장**(결정 F1~F9, API, 한계), **§19 마크다운 표 붙여넣기 · TC 뒤 수정**(결정 T1~T5), **§20 브라우저 앱 전환**(결정 B1~B10, 실측), **§21 폴더 별칭 · 파일 탐색기**(결정 P1~P9), **§22 앱에서 업데이트 확인**(결정 U1~U7).
 2. `docs/DEVELOPMENT.md` — 실행·배포·개발 명령, 소스 구조, 보안. 사용법은 `README.md` 와 `docs/guide/`(그리드 · tsv-view · 계산식 등).
 3. `SagaDocs/README.md`, `SagaDocs/00-Overview/용어집.md` — 실제 데이터와 규칙.
 
@@ -53,24 +54,20 @@ npm test             # SagaDocs 실제 파일 왕복 포함 (리포를 못 찾�
 - 화면 시험: `npm run dev` 뒤 `http://127.0.0.1:5173/?opfs` — 폴더 선택 창 없이 브라우저 안 저장소를 문서 폴더로 쓴다(개발 전용, 변경 감지도 돈다). 빌드본·서비스 워커는 `npx vite preview`. 둘 다 `.claude/launch.json` 에 있다.
 - 실제 폴더 선택 창은 자동화가 못 누른다 → 실제 폴더로 하는 확인은 Jay 가 한다(TESTCASES §15).
 - 배포: `.github/workflows/deploy.yml` — `main` push 마다 `npm ci` → `npm test` → `npm run build` → Pages(https://krkoohoo.github.io/JayDocs/). 테스트가 실패하면 배포 안 됨. 리포는 공개다. 같은 주소의 위키·`portfolio-test` 에 외부 스크립트를 넣지 않는다(DESIGN §20 B9).
-- 이 PC 의 `C:\Users\gaber\Documents\GitHub\SagaDocs` 에는 옛 경로의 TSV 가 없어 `tsv.test.ts` 의 SagaDocs 항목 2개가 실패한다(전환과 무관, 러너에는 폴더가 없어 skip).
+- `tsv.test.ts` 의 SagaDocs 항목은 리포를 찾고 필요한 파일(왕복: TSV 1개 이상, 스키마: `10-World/Tile/Tile_Field.tsv` 등 옛 경로 4개)이 있을 때만 돈다. 없으면 skip 이라 `npm test` 는 실패 0 이다. 이 PC 의 `C:\Users\gaber\Documents\GitHub\SagaDocs` 는 구조가 바뀌어 둘 다 skip 된다.
 - Node 22+. 설치 시점 버전: Vite 8, TypeScript 7, flexlayout-react 0.11, CodeMirror 6.43, react-markdown 10, remark-gfm 4, mermaid 12. (@tanstack/react-virtual 은 뺐다 — 숨은 탭에서 마운트된 그리드가 보인 뒤에도 행을 안 그리는 일이 있어 고정 높이 윈도잉을 직접 계산한다.)
 
-## 4. 핵심 사실 (memory 에 저장할 것)
+## 4. 핵심 사실
 
-- Jay는 1인 개발. 한국어. 커밋·push는 Jay가 말할 때만. 권고는 하나로 강하게, 되돌릴 수 있는 건 정하고 알리고, 질문은 끝에 모아서.
+작업 규칙(한국어 · 커밋·push 는 Jay 가 말할 때만 · 권고는 하나로), 포맷 계약, 한 곳에서 관리하는 표(`filetypes.mjs` · `roots.mjs` · `shortcuts-table.mjs`), 새 기능에 단축키·팔레트 명령을 같이 넣는 규칙, Bash 백슬래시 주의, 개발·검증 명령은 **`CLAUDE.md`** 에 있다. 아래는 거기 없는 배경이다.
+
 - 기획 원본은 **git(SagaDocs)**. Notion·Asana·Sheets는 더 이상 원본이 아니다.
-- **게임(Project-SAGA)은 SagaDocs TSV를 직접 읽지 않는다.** SAGA의 `/design` 세션이 읽고 게임 형식으로 옮겨 쓴다. 복사·서브모듈·링크 없음. → JayDocs 포맷은 DESIGN §2 그대로가 계약.
-- 지킬 것: Key는 파일 안에서 유일, `_Field` 시트는 빈 줄로 블록 구분·첫 줄이 블록 이름(SAGA 비교 도구 기준).
+- **게임(Project-SAGA)은 SagaDocs TSV를 직접 읽지 않는다.** SAGA의 `/design` 세션이 읽고 게임 형식으로 옮겨 쓴다. 복사·서브모듈·링크 없음. → JayDocs 포맷은 DESIGN §2 그대로가 계약. `_Field` 블록 구분은 SAGA 비교 도구 기준이다.
 - Google Sheets export TSV는 **CRLF**다. SagaDocs 리포는 `.gitattributes`로 **LF 정규화**. JayDocs는 파일별 EOL·BOM·끝 개행을 감지해 보존한다(DESIGN §6.1). 왕복 테스트는 CRLF 입력과 LF 입력 둘 다 통과.
-- v1 마크다운은 소스 + 미리보기(하이브리드는 Phase 3). TSV 그리드는 **자체 제작**(DOM + 행 가상화, 라이브러리 아님 — 이유는 DESIGN §3.3/D3). 입력은 항상 떠 있는 textarea 하나가 받고 한글 조합이 그 안에서 시작된다.
+- TSV 그리드는 **자체 제작**(DOM + 행 가상화, 라이브러리 아님 — 이유는 DESIGN §3.3/D3). 입력은 항상 떠 있는 textarea 하나가 받고 한글 조합이 그 안에서 시작된다.
 - 다른 세션에 보낼 프롬프트는 작게(질문 3~5개). 이전에 10항목 조사 프롬프트가 과한 작업을 만들었다.
-- Jay 의 사용 기준(2026-10-11 피드백): 가벼울 것. 모든 작업이 키보드로 되어야 하고, 단축키는 Sheets·Excel 관행을 따르며 `SHORTCUTS.md` 에 계속 쌓는다(한 곳 `shortcuts-table.mjs` 에서 생성). 새 기능을 넣을 때 단축키 표와 팔레트 명령을 같이 넣을 것.
-- Claude Code 의 Bash 도구는 명령 문자열의 백슬래시를 한 단계 벗긴다 → `sed`/`node -e`/heredoc 으로 `\\` 가 든 치환은 조용히 실패하고, CSS 처럼 따옴표·백슬래시가 섞인 heredoc 은 깨진다. 그런 편집은 Edit/Write 도구로.
 - (2026-10-21) Jay 는 유니티 강사이기도 하다. 폴더 가져오기의 대상은 **수업 자료 · Unity 프로젝트 문서 · 수강생 제출물**. 가져오기는 복사가 아니라 **원래 자리에서 편집**.
 - (2026-10-31) JayDocs 는 **Edge 에 설치한 PWA**. 서버·git 기능은 없앴고 git 은 앱 밖에서 쓴다. `Backend` 구현은 `lib/fsa/fsaBackend.ts` 하나.
-- 파일 형식은 `src/lib/filetypes.mjs`, 가져온 폴더 경로 규칙은 `src/lib/roots.mjs` 한 곳.
-- UTF-8 이 아닌 파일은 절대 그대로 덮어쓰지 않는다(`fsaBackend.write` 가 막는다). CSV 를 UTF-8 로 바꿀 때는 BOM 을 붙인다(Excel 한글).
 
 ## 5. 다음 작업 — 사용 피드백 반영 + 남은 숙제
 
@@ -79,7 +76,7 @@ npm test             # SagaDocs 실제 파일 왕복 포함 (리포를 못 찾�
 Phase 0~3 과 폴더 가져오기·형식 확장(DESIGN §18)의 계획 범위는 끝났다. **`TESTCASES.md`(156개 TC)** — 2026-10-25 Jay 기억(✅ 37개)과 Claude 자동 실행(내장 브라우저, SagaDocs 임시 복사본)으로 전부 채웠다: ✅ 111 · ◐ 18 · ⚠ 12 · ❌ 11 · ⏭ 4. ◐ 는 실제 한글 IME·Excel·OS 창처럼 자동화가 못 보는 부분이 남은 것 — Jay 가 손으로 볼 것은 TC-201/211/302/605(IME), 1304/1305/1307(Excel), 003/004(앱 창). 데이터를 잃는 ❌ 4건은 같은 날 고쳤다(아래 ✅, DESIGN §19.2). **남은 ❌ 부터 고친다.** 그 다음은 실제로 써 보고 주는 피드백 (단축키 조합 정리를 넘겨 주기로 했다 — `src/lib/shortcuts-table.mjs` 만 고치면 앱·SHORTCUTS.md·F1 이 같이 바뀐다).
 
 TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재현은 TESTCASES 결과 칸):
-- ✅ 고침(2026-10-25, 브라우저로 확인): 열 삭제 크래시 + 미저장 편집 소실(TC-307·408 — 너비 배열을 렌더 중에 맞추고 그리드를 `PaneErrorBoundary` 로 감쌈), 재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음(TC-105·412·1211 — 폴더별 고정 포트 43000~44999, `server.mjs` `stablePort`), Alt+W·팔레트 탭 닫기의 저장 확인(TC-904 — `Workbench.tsx` `confirmCloseTab`), 붙여넣기 칸 줄바꿈(TC-1310 — `onPaste` 가 `sanitizeFor`).
+- ✅ 고침(2026-10-25, 브라우저로 확인): 열 삭제 크래시 + 미저장 편집 소실(TC-307·408 — 너비 배열을 렌더 중에 맞추고 그리드를 `PaneErrorBoundary` 로 감쌈), 재시작하면 레이아웃·열 너비·보기 모드·테마를 잃음(TC-105·412·1211 — 당시엔 폴더별 고정 포트 `server.mjs` `stablePort` 로 막았다. 2026-10-31 전환으로 서버와 포트가 없어졌고, 지금은 같은 오리진의 localStorage 에 레이아웃은 작업 공간 id 별·열 너비와 보기 모드는 경로별로 남는다 — DESIGN §20 B3), Alt+W·팔레트 탭 닫기의 저장 확인(TC-904 — `Workbench.tsx` `confirmCloseTab`), 붙여넣기 칸 줄바꿈(TC-1310 — `onPaste` 가 `sanitizeFor`).
 - ❌ **tsv-view `where` 가 한글 열 이름을 못 읽음**(TC-1308, 1309 의 원인) — 토크나이저 id 정규식이 ASCII(`tsvView.ts:131`). bake 는 where 오류 때 걸러지지 않은 표를 그대로 쓴다(`bake.ts:126`).
 - ❌ **tsv-view 셀에서 Ctrl+Enter 가 그리드로 안 감**(TC-606) — `case 'Enter'` 가 Ctrl 을 가리지 않아 `:224` 분기에 못 간다(`PreviewPane.tsx:210`).
 - ❌ **하이브리드에서 블록이 여럿 보이면 ↑ 가 멀리 점프**(TC-210) — `.cm-hybrid-block { margin: 4px 0 }` 를 CM 높이 맵이 세지 않는다(`hybrid.ts:269`). margin 을 없애고 안쪽 여백으로.
