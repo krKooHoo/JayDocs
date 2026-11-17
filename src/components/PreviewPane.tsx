@@ -1,7 +1,7 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { store, useStoreVersion } from '../store/documents'
+import { store, useDocVersion, useFieldsVersion } from '../store/documents'
 import { backend } from '../lib/backend'
 import { openPath } from '../lib/nav'
 import { useTheme } from '../lib/theme'
@@ -141,9 +141,11 @@ function useGeneratedMermaid(template: string | null, result: TsvViewResult | nu
 }
 
 export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
-  useStoreVersion()
   const spec = useMemo(() => parseTsvViewSpec(body), [body])
   const file = spec.file ? resolveViewPath(spec.file, mdPath) : null
+  // 이 보기가 읽는 것은 표 파일 하나와 Field 파일들(스키마)뿐이다 — md 본문이나 다른 문서가 바뀌어도 다시 그리지 않는다
+  useDocVersion(file)
+  useFieldsVersion()
   /** 사라지기 직전에 입력 중이던 칸을 써 넣는다 (아래에서 채운다) */
   const flushRef = useRef<(() => void) | null>(null)
   useEffect(() => {
@@ -421,9 +423,9 @@ function childClassName(children: ReactNode): string {
 
 // ---------------------------------------------------------------- 미리보기
 export function PreviewPane({ path }: { path: string }) {
-  useStoreVersion()
+  useDocVersion(path)
   const d = store.get(path)
-  // 스토어는 어떤 문서가 바뀌어도 다시 그리게 한다 (전역 버전 하나). 그래서 문자열 변환 · 파싱은 이 문서의 Text 가
+  // 이 문서가 바뀔 때만 다시 그리지만, 내용 말고도(저장 중 · 충돌 등) 바뀐다. 그래서 문자열 변환 · 파싱은 Text 가
   // 바뀌었을 때만 한다 — Text 는 불변이라 편집마다 새 객체다. 디바운스도 Text 객체에 건다
   const text = d?.kind === 'text' && d.status === 'ready' ? d.text : null
   const debounced = useDebounced(text, 150)

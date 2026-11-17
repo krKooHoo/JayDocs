@@ -16,7 +16,7 @@ import { allCommands, commandByCombo, registerCommands, runCommand, tip, useComm
 import { comboFromEvent } from './lib/keys'
 import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
-import { store, useStoreVersion } from './store/documents'
+import { store, useDirtyPaths } from './store/documents'
 import { Workbench, type WorkbenchHandle } from './components/Workbench'
 import { Palette, type PaletteItem } from './components/Palette'
 import { HelpDialog } from './components/HelpDialog'
@@ -111,7 +111,6 @@ type Overlay =
   | null
 
 function Workspace({ layoutId }: { layoutId: string }) {
-  useStoreVersion()
   useCommandsVersion()
   const theme = useTheme()
   const app = usePwa()
@@ -394,7 +393,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
     }
   }, [])
 
-  const dirtyCount = store.dirtyPaths().size
+  // 글자를 칠 때마다가 아니라 저장 안 한 문서의 구성이 바뀔 때만 다시 그린다
+  const dirtyCount = useDirtyPaths().size
   const watching = backend().watching()
   const primary = backend().rootDetail(null)
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { backend } from '../lib/backend'
 import { splitRootPath } from '../lib/roots.mjs'
-import { store } from '../store/documents'
+import { store, useDocVersion } from '../store/documents'
 
 /**
  * 읽기 전용으로 연 창 위의 안내. 이유는 둘 —
@@ -9,6 +9,8 @@ import { store } from '../store/documents'
  * - UTF-8 이 아닌 파일 (옛 메모장 txt, 한글 Excel 의 CSV 등): 원래 인코딩으로 되쓰지 못하므로 UTF-8 로 바꿔 저장해야 고칠 수 있다
  */
 export function ReadOnlyBanner({ path }: { path: string }) {
+  // 읽기 전용 이유(가져온 폴더 · 인코딩)는 이 경로의 버전에 실려 온다 — 부모 창이 다시 그리지 않아도 따라가게
+  useDocVersion(path)
   const [busy, setBusy] = useState(false)
   const reason = store.readOnlyReason(path)
   if (!reason) return null

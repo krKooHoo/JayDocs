@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { ChangeSet, Text } from '@codemirror/state'
 import { backend, ConflictError, type ChangeEvent, type TreeEntry } from '../lib/backend'
 import type { TsvTable } from '../lib/tsv/model'
@@ -79,12 +79,30 @@ function serialize(d: Doc): string {
   return (d.bom ? '﻿' : '') + s
 }
 
+const NO_DIRTY: ReadonlySet<string> = new Set()
+
 class DocumentStore {
-  version = 0
   private docs = new Map<string, Doc>()
   private refs = new Map<string, number>()
-  private listeners = new Set<() => void>()
   private changeListeners = new Map<string, Set<ChangeListener>>()
+
+  // ---- 구독 (DESIGN §24.5). 전역 버전은 없다 — 무엇이 바뀌었는지에 따라 네 갈래로 알린다.
+  //  · 경로: 그 경로의 문서 상태(내용 · dirty · saving · conflict · error · 읽기 전용 · bakeErrors)나 보조 표 캐시가 바뀜
+  //  · dirty 집합: 저장 안 한 문서의 집합이 실제로 바뀜 ("모두 저장 (N)", 트리 · 탭의 ●)
+  //  · Field: 스키마 유도에 쓰는 Field 파일 목록이나 그 내용이 바뀜 (fieldFiles() 를 읽는 곳)
+  //  · 트리: 파일 경로 집합이 바뀜 (hasPath() 를 읽는 곳)
+  /** 버전은 스토어 전체에서 하나씩 올라가는 번호를 받는다 — 문서가 내려갔다 다시 열려도 같은 값이 다시 나오지 않는다 */
+  private seq = 0
+  /** 경로 → 마지막으로 바뀐 때의 번호. 지우지 않는다 (경로마다 숫자 하나) */
+  private pathVersions = new Map<string, number>()
+  private pathListeners = new Map<string, Set<() => void>>()
+  /** 저장 안 한 문서들. 구성이 바뀔 때만 새 객체가 된다 (useSyncExternalStore 의 스냅샷) */
+  private dirtySet: ReadonlySet<string> = NO_DIRTY
+  private dirtyListeners = new Set<() => void>()
+  private fieldsVersion = 0
+  private fieldsListeners = new Set<() => void>()
+  private treeVersion = 0
+  private treeListeners = new Set<() => void>()
 
   // ---- 보조 표 (Field 시트 = 스키마 힌트, Calc 시트 = 계산식, lookup 대상 표) ----
   // 열려 있지 않은 표를 디스크에서 읽어 들고 있는다. 열린 문서는 그 (저장 전) 표를 우선한다.
@@ -97,14 +115,63 @@ class DocumentStore {
   private fieldsResult: FieldFile[] = []
   private fieldsStale = true
 
-  subscribe = (l: () => void) => {
-    this.listeners.add(l)
-    return () => { this.listeners.delete(l) }
+  /** 이 경로의 문서(또는 보조 표)가 바뀔 때 부른다 */
+  subscribePath(path: string, l: () => void) {
+    let set = this.pathListeners.get(path)
+    if (!set) this.pathListeners.set(path, (set = new Set()))
+    set.add(l)
+    return () => {
+      set.delete(l)
+      if (set.size === 0 && this.pathListeners.get(path) === set) this.pathListeners.delete(path)
+    }
   }
-  getVersion = () => this.version
-  private emit() {
-    this.version++
-    for (const l of this.listeners) l()
+  /** 이 경로가 마지막으로 바뀐 때의 번호 (바뀐 적 없으면 0). 값의 크기에는 뜻이 없고 같은지만 본다 */
+  pathVersion(path: string) { return this.pathVersions.get(path) ?? 0 }
+
+  subscribeDirty = (l: () => void) => {
+    this.dirtyListeners.add(l)
+    return () => { this.dirtyListeners.delete(l) }
+  }
+  subscribeFields = (l: () => void) => {
+    this.fieldsListeners.add(l)
+    return () => { this.fieldsListeners.delete(l) }
+  }
+  getFieldsVersion = () => this.fieldsVersion
+  subscribeTree = (l: () => void) => {
+    this.treeListeners.add(l)
+    return () => { this.treeListeners.delete(l) }
+  }
+  getTreeVersion = () => this.treeVersion
+
+  /** 붙어 있는 구독자 수 (시험 · 진단용). path 를 주면 그 경로만 */
+  subscriberCount(path?: string) {
+    if (path !== undefined) return this.pathListeners.get(path)?.size ?? 0
+    let n = this.dirtyListeners.size + this.fieldsListeners.size + this.treeListeners.size
+    for (const s of this.pathListeners.values()) n += s.size
+    return n
+  }
+
+  /**
+   * 경로 하나의 상태가 바뀌었다 — 문서를 고치는 모든 곳이 끝에 부른다.
+   * dirty 집합도 여기서 맞춘다: 그 경로의 dirty 여부가 달라졌을 때만 새 집합을 만들고 알린다.
+   */
+  private touch(path: string) {
+    this.pathVersions.set(path, ++this.seq)
+    const dirty = this.isDirty(path)
+    if (dirty !== this.dirtySet.has(path)) {
+      const next = new Set(this.dirtySet)
+      if (dirty) next.add(path)
+      else next.delete(path)
+      this.dirtySet = next
+      for (const l of [...this.dirtyListeners]) l()
+    }
+    // Field 문서는 다른 표들의 스키마에 들어간다. 무엇이 바뀌었는지 가리지 않고 알린다 (fieldFiles() 가 같은 배열을 주면 다시 유도하지 않는다)
+    if (isFieldFile(path)) this.touchFields()
+    for (const l of [...(this.pathListeners.get(path) ?? [])]) l()
+  }
+  private touchFields() {
+    this.fieldsVersion++
+    for (const l of [...this.fieldsListeners]) l()
   }
 
   get(path: string) { return this.docs.get(path) }
@@ -122,7 +189,8 @@ class DocumentStore {
     const next = new Set(mounts.filter((m) => m.readOnly).map((m) => m.alias))
     if ([...next].sort().join('\n') === [...this.readOnlyAliases].sort().join('\n')) return
     this.readOnlyAliases = next
-    this.emit()
+    // 읽기 전용 여부는 어느 경로든 달라질 수 있다 — 드문 일이라 열린 문서와 구독 중인 경로를 모두 깨운다
+    for (const p of new Set([...this.docs.keys(), ...this.pathListeners.keys()])) this.touch(p)
   }
 
   /** 왜 읽기 전용인가. 가져온 폴더가 우선 (그때는 UTF-8 변환도 막는다) */
@@ -137,8 +205,11 @@ class DocumentStore {
   isReadOnly(path: string) {
     return this.readOnlyReason(path) !== null
   }
+  // 아래 둘은 그 자리에서 다시 센다 — 닫기 전 경고 · 이름 바꾸기 · 삭제를 막는 데 쓰여, 구독용 집합(dirtySnapshot)에 기대지 않는다
   anyDirty() { return this.all().some((d) => this.isDirty(d.path)) }
   dirtyPaths() { return new Set(this.all().filter((d) => this.isDirty(d.path)).map((d) => d.path)) }
+  /** 화면이 구독하는 dirty 집합. 구성이 그대로면 같은 객체다 (touch 가 맞춘다) — 고치지 말 것 */
+  dirtySnapshot = (): ReadonlySet<string> => this.dirtySet
 
   /** 창이 문서를 쓰기 시작할 때. 처음이면 디스크에서 읽는다. */
   retain(path: string) {
@@ -158,7 +229,7 @@ class DocumentStore {
     const n = (this.refs.get(path) ?? 1) - 1
     if (n > 0) { this.refs.set(path, n); return }
     this.refs.delete(path)
-    if (opts.keepDirty && this.isDirty(path)) { this.emit(); return }
+    if (opts.keepDirty && this.isDirty(path)) { this.touch(path); return }
     const d = this.docs.get(path)
     queueMicrotask(() => {
       if (!this.refs.has(path) && this.docs.get(path) === d) this.drop(path)
@@ -171,10 +242,17 @@ class DocumentStore {
   }
 
   private drop(path: string) {
+    // 보조 표로도 읽히던 표(계산식 · lookup 대상 · Field)라면 캐시는 탭을 열기 전에 읽은 옛 내용이다 — 내 저장은
+    // 수정 시각이 같아 handleExternal 이 건너뛴다. 내려가는 문서의 "디스크와 같은 표" 로 바꿔 둔다 (모르면 버리고 다시 읽게)
+    if (this.auxCache.has(path)) {
+      const d = this.docs.get(path)
+      if (d?.kind === 'tsv' && d.status === 'ready' && !d.conflict && d.mtime !== null) this.auxCache.set(path, { mtime: d.mtime, table: d.savedTable })
+      else this.auxCache.delete(path)
+    }
     this.docs.delete(path)
     this.changeListeners.delete(path)
     if (isFieldFile(path)) this.fieldsStale = true
-    this.emit()
+    this.touch(path)
   }
 
   /** 창 없이 남아 있던 문서가 더는 dirty 가 아니면 (저장됨 · 디스크 내용 받음) 내린다 */
@@ -191,7 +269,7 @@ class DocumentStore {
       : { ...base, kind: 'text', text: empty, savedText: empty, eol: '\n', bom: false, bakeErrors: [] }
     if (d.kind === 'tsv') d.savedTable = d.table
     this.docs.set(path, d)
-    this.emit()
+    this.touch(path)
     try {
       const f = await backend().read(path)
       if (this.docs.get(path) !== d) return // 읽는 사이 닫힘
@@ -208,7 +286,7 @@ class DocumentStore {
       d.status = 'error'
       d.error = (e as Error).message
     }
-    this.emit()
+    this.touch(path)
   }
 
   // ---------------------------------------------------------------- 텍스트 문서
@@ -225,7 +303,7 @@ class DocumentStore {
     if (!d || d.status !== 'ready' || d.kind !== 'text') return
     d.text = changes.apply(d.text)
     for (const l of this.changeListeners.get(path) ?? []) l(changes, source)
-    this.emit()
+    this.touch(path)
   }
 
   // ---------------------------------------------------------------- TSV 문서
@@ -240,7 +318,7 @@ class DocumentStore {
     d.future = []
     d.table = next
     if (isFieldFile(path)) this.fieldsStale = true
-    this.emit()
+    this.touch(path)
   }
   canUndo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.past.length > 0 }
   canRedo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.future.length > 0 }
@@ -250,7 +328,7 @@ class DocumentStore {
     d.future.push(d.table)
     d.table = d.past.pop()!
     if (isFieldFile(path)) this.fieldsStale = true
-    this.emit()
+    this.touch(path)
   }
   redo(path: string) {
     const d = this.docs.get(path)
@@ -258,7 +336,7 @@ class DocumentStore {
     d.past.push(d.table)
     d.table = d.future.pop()!
     if (isFieldFile(path)) this.fieldsStale = true
-    this.emit()
+    this.touch(path)
   }
 
   // ---------------------------------------------------------------- Field 시트
@@ -274,12 +352,19 @@ class DocumentStore {
     }
     walk(entries)
     paths.sort()
+    const prev = this.treePaths
+    const treeChanged = prev.size !== all.size || [...all].some((p) => !prev.has(p))
     this.treePaths = all
-    for (const p of [...this.auxCache.keys()]) if (!all.has(p)) this.auxCache.delete(p)
+    // 사라진 파일의 캐시는 버린다. 그 표를 보조 표로 읽던 창(계산식 · lookup)이 알게 한다
+    for (const p of [...this.auxCache.keys()]) if (!all.has(p)) { this.auxCache.delete(p); this.touch(p) }
     if (paths.join('\n') !== this.fieldPaths.join('\n')) {
       this.fieldPaths = paths
       this.fieldsStale = true
-      this.emit()
+      this.touchFields()
+    }
+    if (treeChanged) {
+      this.treeVersion++
+      for (const l of [...this.treeListeners]) l()
     }
     for (const p of this.fieldPaths) this.ensureAux(p)
   }
@@ -289,17 +374,21 @@ class DocumentStore {
     return this.treePaths.size === 0 || this.treePaths.has(path)
   }
 
-  /** 열려 있지 않은 표를 디스크에서 읽어 둔다. 읽히면 emit — 다시 그릴 때 auxTable 이 값을 준다 */
-  ensureAux(path: string) {
+  /**
+   * 열려 있지 않은 표를 디스크에서 읽어 둔다. 읽히면 그 경로의 구독자를 깨운다 — 다시 그릴 때 auxTable 이 값을 준다.
+   * notifyOnFail: 못 읽었을 때도 깨운다. 있던 캐시를 버리고 다시 읽는 handleExternal 만 쓴다 —
+   * 평소에 켜면 렌더 → auxTable → 읽기 실패 → 알림 → 렌더 … 로 돈다.
+   */
+  ensureAux(path: string, notifyOnFail = false) {
     if (!isTsvPath(path) || this.auxCache.has(path) || this.auxLoading.has(path) || this.docs.has(path) || !this.hasPath(path)) return
     this.auxLoading.add(path)
     backend().read(path)
       .then((f) => {
         this.auxCache.set(path, { mtime: f.mtime, table: parseTable(f.text, path) })
         if (isFieldFile(path)) this.fieldsStale = true
-        this.emit()
+        this.touch(path)
       })
-      .catch(() => { /* 못 읽으면 없는 것으로 */ })
+      .catch(() => { if (notifyOnFail) this.touch(path) /* 못 읽으면 없는 것으로 */ })
       .finally(() => this.auxLoading.delete(path))
   }
 
@@ -371,7 +460,7 @@ class DocumentStore {
     }
     d.mtime = mtime
     d.conflict = null
-    this.emit()
+    this.touch(d.path)
     this.dropIfOrphan(d.path)
   }
 
@@ -383,7 +472,7 @@ class DocumentStore {
     const ro = this.readOnlyReason(path)
     if (ro === 'mount' || (ro === 'encoding' && !opts.convert)) return
     d.saving = true
-    this.emit()
+    this.touch(path)
     if (d.kind === 'text' && fileTypeOf(path)?.kind === 'md') await this.bakeIfNeeded(d)
     const snapshot = d.kind === 'tsv' ? d.table : d.text
     try {
@@ -399,7 +488,7 @@ class DocumentStore {
       else d.error = (e as Error).message
     } finally {
       d.saving = false
-      this.emit()
+      this.touch(path)
       this.dropIfOrphan(path)
     }
   }
@@ -429,7 +518,7 @@ class DocumentStore {
    */
   private async bakeIfNeeded(d: TextDoc) {
     const text = d.text.toString()
-    if (!/bake\s*:\s*(true|yes|1)\b/i.test(text)) { if (d.bakeErrors.length) { d.bakeErrors = []; this.emit() } return }
+    if (!/bake\s*:\s*(true|yes|1)\b/i.test(text)) { if (d.bakeErrors.length) { d.bakeErrors = []; this.touch(d.path) } return }
     const sources = new Map<string, BakeSource>()
     for (const file of bakeTargets(text, d.path)) {
       const open = this.docs.get(file)
@@ -447,7 +536,7 @@ class DocumentStore {
     d.bakeErrors = r.errors
     if (r.changes.length) {
       this.applyChanges(d.path, ChangeSet.of(r.changes.map((c) => ({ from: c.from, to: c.to, insert: c.insert })), now.length), null)
-    } else this.emit()
+    } else this.touch(d.path)
   }
 
   /** 충돌: 내 내용으로 덮어쓴다 */
@@ -466,7 +555,7 @@ class DocumentStore {
     const d = this.docs.get(e.path)
     if (!d) {
       // 열려 있지 않은 보조 표(Field·Calc·lookup 대상)가 바뀌면 캐시를 버리고 다시 읽는다
-      if (this.auxCache.has(e.path)) { this.auxCache.delete(e.path); if (isFieldFile(e.path)) this.fieldsStale = true; this.ensureAux(e.path) }
+      if (this.auxCache.has(e.path)) { this.auxCache.delete(e.path); if (isFieldFile(e.path)) this.fieldsStale = true; this.ensureAux(e.path, true) }
       return
     }
     if (d.status !== 'ready' || d.saving) return
@@ -475,7 +564,7 @@ class DocumentStore {
     if (d.mtime !== null && Math.abs(f.mtime - d.mtime) < 1) return
     const encoding = f.encoding ?? 'utf-8'
     if (!this.isDirty(e.path)) this.replaceAll(d, f.text, f.mtime, encoding)
-    else { d.conflict = { text: f.text, mtime: f.mtime, encoding }; this.emit() }
+    else { d.conflict = { text: f.text, mtime: f.mtime, encoding }; this.touch(e.path) }
   }
 
   /** 무엇이 바뀌었는지 모를 때 (창에 돌아옴, 감시 끊김) 열린 문서를 디스크와 맞춰 본다 */
@@ -486,7 +575,39 @@ class DocumentStore {
 
 export const store = new DocumentStore()
 
-/** 스토어가 바뀔 때마다 다시 그리게 한다. 값은 버전 번호라 비교만 쓴다. */
-export function useStoreVersion() {
-  return useSyncExternalStore(store.subscribe, store.getVersion)
+// ---------------------------------------------------------------- React 구독 (DESIGN §24.5)
+// 돌려주는 값은 "바뀌었다" 는 신호일 뿐이다 — 내용은 렌더 중에 store.get(path) 등으로 읽는다.
+// 스냅샷은 숫자 · 문자열 · 구성이 바뀔 때만 새로 생기는 Set 이라, 바뀐 게 없으면 다시 그리지 않는다.
+
+const noSubscription = () => () => {}
+
+/** 이 경로의 문서(또는 보조 표)가 바뀔 때만 다시 그린다. null 이면 구독하지 않는다 */
+export function useDocVersion(path: string | null): number {
+  const subscribe = useCallback((l: () => void) => (path === null ? noSubscription() : store.subscribePath(path, l)), [path])
+  return useSyncExternalStore(subscribe, () => (path === null ? 0 : store.pathVersion(path)))
+}
+
+/** 여러 경로 중 하나라도 바뀌면 다시 그린다 — 그리드가 읽는 lookup 대상 표들처럼 개수가 정해지지 않은 의존 */
+export function useDocVersions(paths: readonly string[]): string {
+  const key = paths.join('\n')
+  const subscribe = useCallback((l: () => void) => {
+    const offs = (key ? key.split('\n') : []).map((p) => store.subscribePath(p, l))
+    return () => { for (const off of offs) off() }
+  }, [key])
+  return useSyncExternalStore(subscribe, () => paths.map((p) => store.pathVersion(p)).join(','))
+}
+
+/** 저장 안 한 문서의 경로들 — 구성이 바뀔 때만 다시 그린다 (글자를 더 쳐도 그대로다) */
+export function useDirtyPaths(): ReadonlySet<string> {
+  return useSyncExternalStore(store.subscribeDirty, store.dirtySnapshot)
+}
+
+/** store.fieldFiles() 를 읽는 곳 — Field 파일 목록이나 내용이 바뀔 때 다시 그린다 */
+export function useFieldsVersion(): number {
+  return useSyncExternalStore(store.subscribeFields, store.getFieldsVersion)
+}
+
+/** store.hasPath() 를 읽는 곳 — 파일 경로 집합이 바뀔 때 다시 그린다 */
+export function useTreeVersion(): number {
+  return useSyncExternalStore(store.subscribeTree, store.getTreeVersion)
 }

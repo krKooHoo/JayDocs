@@ -6,7 +6,7 @@ import { tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
-import { store, useStoreVersion } from '../store/documents'
+import { store, useDocVersion } from '../store/documents'
 import { PreviewPane } from './PreviewPane'
 import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { hybrid } from './hybrid'
@@ -27,7 +27,7 @@ function loadMode(path: string): Mode {
 }
 
 export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => void }) {
-  useStoreVersion()
+  useDocVersion(path)
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const hybridComp = useRef(new Compartment())

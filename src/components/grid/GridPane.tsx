@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
 import { backend } from '../../lib/backend'
-import { store, useStoreVersion } from '../../store/documents'
+import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
 import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
@@ -40,7 +40,10 @@ const PREFILL_MAX = 40
 
 /** TSV 문서 창. 스토어의 표를 그리드로 보여 주고 편집·되돌리기·행/열 조작·저장을 잇는다. */
 export function GridPane({ path, onSplit }: { path: string; onSplit: () => void }) {
-  useStoreVersion()
+  // 이 창이 읽는 것만 구독한다: 이 표, Field 파일들(스키마), 트리(계산식 파일이 있는지), 계산식 파일, lookup 대상 표들(아래)
+  useDocVersion(path)
+  useFieldsVersion()
+  useTreeVersion()
   const grid = useRef<GridHandle>(null)
   const [active, setActive] = useState<CellPos>({ r: 0, c: 0 })
   const [notice, setNotice] = useState<string | null>(null)
@@ -77,12 +80,15 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   // ---- 계산식 (같은 폴더 X_Calc.tsv, DESIGN §17). 결과는 F9 로 값 열에 써 넣는다
   const calcPath = siblingCalcPath(path)
+  useDocVersion(calcPath)
   const hasCalc = calcPath !== path && store.hasPath(calcPath)
   const calcTable = hasCalc ? store.auxTable(calcPath) : null
   const calcRules = useMemo(() => (calcTable ? parseCalcRules(calcTable) : null), [calcTable])
   const lookupFiles = useMemo(() => (calcRules ? calcLookupFiles(calcRules.rules) : []), [calcRules])
   // lookup 파일 이름은 이 표가 속한 루트(주 폴더 또는 가져온 폴더) 기준
   useEffect(() => { for (const f of lookupFiles) store.ensureAux(inRootOf(path, f)) }, [lookupFiles, path])
+  // 대상 표가 읽히거나(보조 표 캐시) 열려서 고쳐지면 다시 그린다
+  useDocVersions(lookupFiles.map((f) => inRootOf(path, f)))
   // lookup 표가 읽히거나 바뀌면 다시 계산되게 — 표 객체 번호로 의존성을 만든다
   const lookupKey = lookupFiles.map((f) => { const t = store.auxTable(inRootOf(path, f)); return t ? `${f}#${tableId(t)}` : `${f}#-` }).join('|')
   const lookupSource = useCallback((f: string): LookupSource | null => {

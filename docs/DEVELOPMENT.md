@@ -90,7 +90,7 @@ src/
     expr.ts           계산식 토크나이저 · 파서 · 평가기 (함수 · lookup)
     calc.ts           X_Calc.tsv 규칙 읽기 · 계산 · 적용 (stale 판정)
     *.test.ts         vitest
-  store/documents.ts  DocumentStore — 경로당 문서 하나 (TextDoc | TsvDoc), 창 간 동기화, undo 스택, Field 캐시, dirty·충돌·저장
+  store/documents.ts  DocumentStore — 경로당 문서 하나 (TextDoc | TsvDoc), 창 간 동기화, undo 스택, Field 캐시, dirty·충돌·저장. 화면은 경로별로 구독한다(`useDocVersion` 등, DESIGN §24.5)
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
     FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)

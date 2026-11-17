@@ -11,7 +11,7 @@ export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'reveal' | '
 interface Props {
   entries: TreeEntry[]
   activePath: string | null
-  dirtyPaths: Set<string>
+  dirtyPaths: ReadonlySet<string>
   onOpen: (path: string) => void
   onNewFile: (dir: string) => void
   onNewFolder: (dir: string) => void

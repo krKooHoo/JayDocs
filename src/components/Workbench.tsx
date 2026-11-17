@@ -3,7 +3,7 @@ import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action,
 import type { TreeEntry } from '../lib/backend'
 import { registerCommands } from '../lib/commands'
 import { paneAction, setOpener } from '../lib/nav'
-import { isTsvPath, store, useStoreVersion } from '../store/documents'
+import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { FileTree, type RootAction } from './FileTree'
@@ -129,7 +129,8 @@ function focusTabPane(tabId: string, tries = 6) {
 const DOC_COMPONENTS = new Set(['md', 'tsv'])
 
 export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p, ref) {
-  useStoreVersion()
+  // 글자를 칠 때마다가 아니라 저장 안 한 문서의 구성이 바뀔 때만 다시 그린다 (트리 · 탭 제목의 ●)
+  const dirtyPaths = useDirtyPaths()
   const [model] = useState(() => loadModel(p.layoutId))
 
   const activeTabSet = useCallback(() => model.getActiveTabset() ?? firstTabSet(model), [model])
@@ -139,6 +140,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (!tab || !DOC_COMPONENTS.has(tab.getComponent() ?? '')) return null
     return (tab.getConfig()?.path as string | undefined) ?? null
   }, [activeTab])
+  /**
+   * 트리가 강조할 "지금 문서". flexlayout 은 탭 내용(트리 포함)을 이 컴포넌트가 다시 그려질 때만 다시 그린다 —
+   * 탭을 바꿔도 모델만 바뀐다. 예전에는 스토어가 바뀔 때마다 다시 그려져 강조가 (늦게나마) 따라왔다.
+   * 이제 그 렌더가 없으니 모델이 바뀔 때 활성 문서를 state 로 받아, 그것이 달라질 때만 다시 그린다.
+   */
+  const [activeDoc, setActiveDoc] = useState<string | null>(() => activePath())
 
   const selectTab = useCallback((tab: TabNode) => {
     model.doAction(Actions.selectTab(tab.getId()))
@@ -307,8 +314,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
         return (
           <FileTree
             entries={p.tree}
-            activePath={activePath()}
-            dirtyPaths={store.dirtyPaths()}
+            activePath={activeDoc}
+            dirtyPaths={dirtyPaths}
             onOpen={openFile}
             onRefresh={p.onRefresh}
             onNewFile={p.onNewFile}
@@ -339,7 +346,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     const comp = node.getComponent() ?? ''
     const path = node.getConfig()?.path as string | undefined
     if (!path || !DOC_COMPONENTS.has(comp)) return
-    if (store.isDirty(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
+    if (dirtyPaths.has(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
   }
 
   // 탭의 × (Layout 이 내는 동작)
@@ -350,6 +357,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
 
   const onModelChange = (m: Model) => {
     try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
+    setActiveDoc(activePath())
   }
 
   return (
