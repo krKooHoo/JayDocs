@@ -54,6 +54,17 @@ describe('where 식', () => {
     expect(t('AllowedTerrain in ["Hill"]')).toBe(true)
     expect(t('AllowedTerrain in ["Mountain"]')).toBe(false)
   })
+  it('한글 열 이름 (TC-1308 · 1309)', () => {
+    const k = { 지형: '산', 이동비용: '9', 건설가능: 'FALSE', '3층': '예', 'HP최대': '10' }
+    const tk = (src: string) => compileWhere(src)(k)
+    expect(tk('지형 == "산"')).toBe(true)
+    expect(tk('이동비용 > 5 && 지형 in ["산", "언덕"]')).toBe(true)
+    expect(tk('이동비용>5')).toBe(true)
+    expect(tk('not 건설가능')).toBe(true)
+    expect(tk('3층 == "예"')).toBe(true)
+    expect(tk('HP최대 >= 10')).toBe(true)
+    expect(tk('지형 == 산')).toBe(false) // 따옴표 없는 산 은 열 이름 (없는 열 = 빈 값)
+  })
   it('문법 오류', () => {
     expect(() => compileWhere('TerrainType ==')).toThrow()
     expect(() => compileWhere('(a == 1')).toThrow()
@@ -81,6 +92,13 @@ describe('적용', () => {
     expect(bad.error).toContain('없는 열: Nope')
     expect(bad.error).toContain('where:')
     expect(bad.rows.length).toBe(4)
+  })
+  it('한글 열 이름으로 거르기', () => {
+    const kt = parseTsv('#string\tenum\tbyte\n키\t지형\t비용\nA\t산\t9\nB\t언덕\t3\nC\t산\t7\n')
+    const ks = deriveSchema(kt, 'K_Table.tsv', [])
+    const r = applyTsvView(parseTsvViewSpec('file: x\nwhere: 지형 == "산" && 비용 > 8'), kt, ks)
+    expect(r.error).toBeNull()
+    expect(r.rows.map((x) => x.cells[0])).toEqual(['A'])
   })
 })
 

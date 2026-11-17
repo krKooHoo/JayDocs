@@ -124,11 +124,12 @@ function tokenize(src: string): Token[] {
       i = j + 1
       continue
     }
+    // 열 이름은 한글 등 유니코드 글자도 된다 (`이동비용 > 5`). `3층` 처럼 숫자로 시작하는 이름은 숫자로 읽지 않는다
     const num = /^-?\d+(\.\d+)?/.exec(src.slice(i))
-    if (num && !/[A-Za-z_]/.test(src[i + num[0].length] ?? '')) { out.push({ k: 'num', v: num[0] }); i += num[0].length; continue }
+    if (num && !/[\p{L}_]/u.test(src[i + num[0].length] ?? '')) { out.push({ k: 'num', v: num[0] }); i += num[0].length; continue }
     const op = /^(==|!=|>=|<=|&&|\|\||[><!()[\],])/.exec(src.slice(i))
     if (op) { out.push({ k: 'op', v: op[0] }); i += op[0].length; continue }
-    const id = /^[A-Za-z_][\w-]*/.exec(src.slice(i))
+    const id = /^[\p{L}\p{N}_][\p{L}\p{M}\p{N}_-]*/u.exec(src.slice(i))
     if (id) { out.push({ k: 'id', v: id[0] }); i += id[0].length; continue }
     throw new Error(`알 수 없는 글자: ${ch}`)
   }

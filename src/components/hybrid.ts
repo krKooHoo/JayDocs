@@ -6,8 +6,7 @@ import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
 import { redo, undo } from '@codemirror/commands'
 import type { SyntaxNode } from '@lezer/common'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Mermaid, TsvView, imageSrc } from './PreviewPane'
+import { Mermaid, REMARK_PLUGINS, TsvView, imageSrc } from './PreviewPane'
 import { HybridTable } from './HybridTable'
 import { appendRowChange, cellChange, parseTable, type TextChange } from '../lib/md/tableEdit'
 
@@ -33,7 +32,7 @@ type BlockKind = 'mermaid' | 'tsv-view' | 'table'
 function renderBlock(kind: BlockKind, code: string, mdPath: string): ReactNode {
   if (kind === 'mermaid') return createElement(Mermaid, { code })
   if (kind === 'tsv-view') return createElement(TsvView, { body: code, mdPath })
-  return createElement('div', { className: 'preview-body is-inline' }, createElement(ReactMarkdown, { remarkPlugins: [remarkGfm] }, code))
+  return createElement('div', { className: 'preview-body is-inline' }, createElement(ReactMarkdown, { remarkPlugins: REMARK_PLUGINS }, code))
 }
 
 /** 위젯 DOM 하나에 붙은 React 트리와 지금 원문. 표는 문서가 바뀌어도 이 DOM 을 계속 쓴다 (updateDOM) */
@@ -111,7 +110,12 @@ class BlockWidget extends WidgetType {
     bar.append(label)
     const host = document.createElement('div')
     host.className = 'cm-hybrid-host'
-    wrap.append(bar, host)
+    // 위아래 틈은 wrap 의 padding 으로 둔다 (margin 은 CM 높이 맵이 세지 않아 ↑↓ 가 엉뚱한 줄로 튄다, TC-210).
+    // 테두리 · 배경은 안쪽 상자에
+    const box = document.createElement('div')
+    box.className = 'cm-hybrid-box'
+    box.append(bar, host)
+    wrap.append(box)
     const h: Holder = {
       root: createRoot(host),
       kind: this.kind,
@@ -382,7 +386,9 @@ export function hybrid(mdPath: string): Extension {
 }
 
 const hybridTheme = EditorView.baseTheme({
-  '.cm-hybrid-block': { margin: '4px 0', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--panel2)', overflow: 'hidden' },
+  // 블록 위젯에는 margin 을 주지 않는다 — CM 은 위젯 높이를 테두리 상자로 재므로 margin 만큼 줄 위치가 어긋난다
+  '.cm-hybrid-block': { padding: '4px 0' },
+  '.cm-hybrid-box': { border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--panel2)', overflow: 'hidden' },
   '.cm-hybrid-bar': { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1px 8px', fontSize: '11px', color: 'var(--muted)', background: 'var(--panel)', borderBottom: '1px solid var(--border)' },
   '.cm-hybrid-bar span': { flex: 1 },
   '.cm-hybrid-bar button': { fontSize: '11px', padding: '0 6px', lineHeight: '16px', marginLeft: '4px' },

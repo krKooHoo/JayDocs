@@ -1,7 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { parseTable, unescapeCell } from '../lib/md/tableEdit'
+
+/** 렌더마다 새 배열을 만들지 않게 모듈 상수 (PreviewPane 을 들이면 순환 import 가 되어 따로 둔다) */
+const REMARK_PLUGINS = [remarkGfm]
 
 /**
  * 하이브리드 모드의 표 (DESIGN §23). 칸은 렌더된 글자로 보이고, 누르면 그 칸만 입력 칸이 된다.
@@ -23,10 +26,11 @@ interface Pos { row: number; col: number }
 
 const inline = { p: ({ children }: { children?: React.ReactNode }) => <>{children}</> }
 
-function Cell({ raw }: { raw: string }) {
+/** 칸 하나. 칸마다 마크다운을 파싱하므로 원문이 같으면 다시 그리지 않는다 (한 글자에 모든 칸이 재파싱되지 않게) */
+const Cell = memo(function Cell({ raw }: { raw: string }) {
   if (!raw) return <span className="cm-hybrid-cell-empty">{' '}</span>
-  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={inline}>{raw}</ReactMarkdown>
-}
+  return <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={inline}>{raw}</ReactMarkdown>
+})
 
 export function HybridTable({ source, readOnly, onEdit, onAddRow, onUndo, onLeave }: HybridTableProps) {
   const table = useMemo(() => parseTable(source), [source])

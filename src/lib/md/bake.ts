@@ -1,6 +1,6 @@
 import type { TsvTable } from '../tsv/model'
 import type { TableSchema } from '../tsv/schema'
-import { applyTsvView, parseTsvViewSpec, resolveViewPath, type TsvViewSpec } from './tsvView'
+import { applyTsvView, compileWhere, parseTsvViewSpec, resolveViewPath, type TsvViewSpec } from './tsvView'
 
 /**
  * `bake: true` 인 tsv-view 펜스 바로 아래에 파이프 표를 다시 생성한다 (DESIGN §7.1).
@@ -123,6 +123,13 @@ export function bakeMarkdown(text: string, mdPath: string, resolve: (file: strin
     files.push(file)
     const src = resolve(file)
     if (!src) { errors.push(`bake: ${file} 을 읽지 못해 건너뜀`); continue }
+    // where 식이 틀리면 걸러지지 않은 표 전체가 써지게 된다 → 이 펜스는 건너뛰고 지금 baked 표를 그대로 둔다
+    if (f.spec.where) {
+      try { compileWhere(f.spec.where) } catch (e) {
+        errors.push(`bake: ${file} — where: ${(e as Error).message} (건너뜀, 기존 표 유지)`)
+        continue
+      }
+    }
     const { markdown, error } = renderPipeTable(f.spec, src.table, src.schema)
     if (error) errors.push(`bake: ${file} — ${error}`)
     if (!markdown) continue

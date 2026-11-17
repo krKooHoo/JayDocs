@@ -145,15 +145,42 @@ class DocumentStore {
     this.refs.set(path, (this.refs.get(path) ?? 0) + 1)
     if (!this.docs.has(path)) void this.load(path)
   }
-  /** 창이 문서를 놓을 때. 마지막 창이면 메모리에서 내린다 (닫기 확인은 창 쪽에서). */
-  release(path: string) {
+  /**
+   * 창이 문서를 놓을 때. 마지막 창이면 메모리에서 내린다.
+   * - 탭(그리드 · md 창)은 닫기 확인을 거친 뒤 놓는다 → 저장 안 한 내용이 있어도 내린다 (사용자가 "버리고 닫기" 를 골랐다).
+   * - 그 자리 보기(tsv-view)는 `keepDirty` 로 놓는다. 확인 없이 사라지므로 (md 탭 닫기, 소스 모드, 하이브리드에서 커서가 펜스에 들어감)
+   *   저장 안 한 내용이 있으면 문서를 남겨 둔다. 그 문서는 계속 dirty 라 "모두 저장" 과 닫기 전 경고에 들고,
+   *   트리에서 다시 열면 고친 내용이 그대로 보인다. 저장되면 그때 내린다 (dropIfOrphan).
+   * 내리는 것은 마이크로태스크 하나 뒤다 — 같은 순간에 다시 붙잡으면 (React StrictMode 의 effect 두 번 실행,
+   * 창을 옮기며 다시 그리기) 내리지 않는다. 그 사이 디스크에서 다시 읽거나 남겨 둔 편집을 잃지 않게.
+   */
+  release(path: string, opts: { keepDirty?: boolean } = {}) {
     const n = (this.refs.get(path) ?? 1) - 1
     if (n > 0) { this.refs.set(path, n); return }
     this.refs.delete(path)
+    if (opts.keepDirty && this.isDirty(path)) { this.emit(); return }
+    const d = this.docs.get(path)
+    queueMicrotask(() => {
+      if (!this.refs.has(path) && this.docs.get(path) === d) this.drop(path)
+    })
+  }
+
+  /** 아무 창도 붙잡지 않은 문서인가 (keepDirty 로 남은 문서) */
+  isOrphan(path: string) {
+    return this.docs.has(path) && !this.refs.has(path)
+  }
+
+  private drop(path: string) {
     this.docs.delete(path)
     this.changeListeners.delete(path)
     if (isFieldFile(path)) this.fieldsStale = true
     this.emit()
+  }
+
+  /** 창 없이 남아 있던 문서가 더는 dirty 가 아니면 (저장됨 · 디스크 내용 받음) 내린다 */
+  private dropIfOrphan(path: string) {
+    const d = this.docs.get(path)
+    if (d && !this.refs.has(path) && !d.saving && !this.isDirty(path)) this.drop(path)
   }
 
   private async load(path: string) {
@@ -345,6 +372,7 @@ class DocumentStore {
     d.mtime = mtime
     d.conflict = null
     this.emit()
+    this.dropIfOrphan(d.path)
   }
 
   async save(path: string, baseMtime?: number | null, opts: { convert?: boolean } = {}) {
@@ -372,6 +400,7 @@ class DocumentStore {
     } finally {
       d.saving = false
       this.emit()
+      this.dropIfOrphan(path)
     }
   }
 

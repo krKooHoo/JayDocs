@@ -59,6 +59,29 @@ describe('bake', () => {
     expect(r.changes.length).toBe(0)
     expect(r.errors[0]).toContain('nope.tsv')
   })
+  it('where 가 틀리면 그 펜스는 건너뛰고 기존 baked 표를 그대로 둔다 (걸러지지 않은 표를 쓰지 않는다)', () => {
+    const old = '<!-- tsv-view:baked -->\n| Key |\n| --- |\n| A |\n<!-- /tsv-view -->'
+    const md = `\`\`\`tsv-view\nfile: X_Table.tsv\nwhere: Cost >\nbake: true\n\`\`\`\n${old}\n`
+    const r = bakeMarkdown(md, 'doc.md', resolve)
+    expect(r.changes).toEqual([])
+    expect(r.count).toBe(0)
+    expect(r.errors.length).toBe(1)
+    expect(r.errors[0]).toContain('where:')
+    expect(r.errors[0]).toContain('X_Table.tsv')
+    // baked 블록이 아직 없을 때도 아무것도 넣지 않는다
+    const fresh = bakeMarkdown('```tsv-view\nfile: X_Table.tsv\nwhere: Terrain == \nbake: true\n```\n', 'doc.md', resolve)
+    expect(fresh.changes).toEqual([])
+    expect(fresh.errors[0]).toContain('where:')
+  })
+  it('한글 열 이름 where 로 bake', () => {
+    const kt = parseTsv('#string\tenum\tbyte\n키\t지형\t비용\nA\t산\t9\nB\t언덕\t3\n')
+    const ks = deriveSchema(kt, 'K_Table.tsv', [])
+    const r = bakeMarkdown('```tsv-view\nfile: K_Table.tsv\nwhere: 지형 == "산"\nbake: true\n```\n', 'doc.md', () => ({ table: kt, schema: ks }))
+    expect(r.errors).toEqual([])
+    const out = applyChanges('```tsv-view\nfile: K_Table.tsv\nwhere: 지형 == "산"\nbake: true\n```\n', r.changes)
+    expect(out).toContain('| A | 산 | 9 |')
+    expect(out).not.toContain('| B |')
+  })
   it('CRLF 문서에는 CRLF 로', () => {
     const md = '```tsv-view\r\nfile: X_Table.tsv\r\nbake: true\r\n```\r\n'
     const r = bakeMarkdown(md, 'doc.md', resolve, '\r\n')

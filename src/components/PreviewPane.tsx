@@ -21,6 +21,9 @@ import { isDocName } from '../lib/filetypes.mjs'
  * 하이브리드 모드(components/hybrid.ts)도 같은 Mermaid · TsvView 컴포넌트를 쓴다.
  */
 
+/** 미리보기 · 하이브리드 표가 같이 쓴다. 렌더마다 새 배열을 만들지 않게 모듈 상수 */
+export const REMARK_PLUGINS = [remarkGfm]
+
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
   useEffect(() => {
@@ -39,10 +42,40 @@ function loadMermaid(): Promise<MermaidApi> {
 }
 let mermaidSeq = 0
 
+/**
+ * 그린 SVG 캐시 (테마 + 코드 → svg). 하이브리드에서 커서가 펜스를 스칠 때마다 위젯이 새로 만들어지는데,
+ * 그때 처음부터 다시 그리지 않고 바로 보여 준다. 오래 안 쓴 것부터 버린다 (Map 순서 = 쓴 순서).
+ */
+const MERMAID_CACHE_MAX = 40
+const mermaidCache = new Map<string, { id: string; svg: string }>()
+function cachedMermaid(key: string): string | null {
+  const hit = mermaidCache.get(key)
+  if (!hit) return null
+  mermaidCache.delete(key)
+  mermaidCache.set(key, hit)
+  // SVG 안의 id(스타일 · 화살표 marker 가 가리킨다)를 새로 매긴다 — 같은 그림이 두 곳(미리보기 · 하이브리드)에 떠도 id 가 겹치지 않게
+  const id = `jd-mmd-${++mermaidSeq}`
+  return hit.svg.replace(new RegExp(`${hit.id}(?!\\d)`, 'g'), id)
+}
+function rememberMermaid(key: string, id: string, svg: string) {
+  mermaidCache.delete(key)
+  mermaidCache.set(key, { id, svg })
+  while (mermaidCache.size > MERMAID_CACHE_MAX) mermaidCache.delete(mermaidCache.keys().next().value!)
+}
+
 export function Mermaid({ code }: { code: string }) {
   const theme = useTheme()
-  const [state, setState] = useState<{ svg: string } | { error: string } | null>(null)
+  const key = `${theme}\n${code}`
+  const [state, setState] = useState<{ svg: string } | { error: string } | null>(() => {
+    const svg = cachedMermaid(key)
+    return svg ? { svg } : null
+  })
+  const shown = useRef(state && 'svg' in state ? key : null)
   useEffect(() => {
+    // 처음 그릴 때 캐시에서 이미 보여 줬으면 끝
+    if (shown.current === key) return
+    const svg = cachedMermaid(key)
+    if (svg) { shown.current = key; setState({ svg }); return }
     let alive = true
     setState(null)
     loadMermaid()
@@ -52,15 +85,17 @@ export function Mermaid({ code }: { code: string }) {
           m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: theme === 'dark' ? 'dark' : 'neutral', fontFamily: 'inherit' })
           const ok = await m.parse(code, { suppressErrors: true })
           if (!ok) throw new Error('Mermaid 문법 오류')
-          const { svg } = await m.render(`jd-mmd-${++mermaidSeq}`, code)
-          if (alive) setState({ svg })
+          const id = `jd-mmd-${++mermaidSeq}`
+          const { svg } = await m.render(id, code)
+          rememberMermaid(key, id, svg)
+          if (alive) { shown.current = key; setState({ svg }) }
         } catch (e) {
           if (alive) setState({ error: (e as Error).message })
         }
       })
       .catch((e) => { if (alive) setState({ error: `mermaid 를 불러오지 못했습니다: ${(e as Error).message}` }) })
     return () => { alive = false }
-  }, [code, theme])
+  }, [key, code, theme])
   if (!state) return <div className="mermaid-box is-loading">다이어그램 그리는 중…</div>
   if ('error' in state) {
     return (
@@ -109,10 +144,16 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   useStoreVersion()
   const spec = useMemo(() => parseTsvViewSpec(body), [body])
   const file = spec.file ? resolveViewPath(spec.file, mdPath) : null
+  /** 사라지기 직전에 입력 중이던 칸을 써 넣는다 (아래에서 채운다) */
+  const flushRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     if (!file) return
     store.retain(file)
-    return () => store.release(file)
+    // 이 보기는 확인 없이 사라진다 (md 탭 닫기 · 소스 모드 · 하이브리드 커서) → 저장 안 한 표는 스토어에 남긴다
+    return () => {
+      flushRef.current?.()
+      store.release(file, { keepDirty: true })
+    }
   }, [file])
   const d = file ? store.get(file) : undefined
   const fields = store.fieldFiles()
@@ -182,13 +223,30 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     const c = colIndexOf(sel.ci)
     store.editTable(file, (t) => setCell(t, r, c, clean))
     el.value = ''
+    liveEdit.current = false
     setEditing(false)
     if (move) moveSel(move)
   }, [sel, file, editing, colIndexOf, moveSel])
 
+  // 사라질 때(언마운트) 입력 중이던 칸. ref 는 정리 함수보다 먼저 null 이 되므로 요소를 여기서 잡아 둔다
+  const liveEdit = useRef(false)
+  liveEdit.current = editing
+  {
+    const el = ta.current
+    const s = sel
+    flushRef.current = editing && el && s && file ? () => {
+      if (!liveEdit.current) return
+      liveEdit.current = false
+      const [clean] = sanitizeFor(tableFormatOf(file), el.value)
+      const c = colIndexOf(s.ci)
+      store.editTable(file, (t) => setCell(t, s.r, c, clean))
+    } : null
+  }
+
   const cancel = useCallback(() => {
     const el = ta.current
     if (el) el.value = ''
+    liveEdit.current = false
     setEditing(false)
   }, [])
 
@@ -201,6 +259,8 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
       else if (e.key === 'Escape') { e.preventDefault(); cancel() }
       return
     }
+    // Ctrl+Enter = 그리드로 열기. 아래 switch 의 Enter(편집 시작)보다 먼저 본다 (TC-606)
+    if (mod && e.key === 'Enter') { e.preventDefault(); openPath(file, { r: sel.r, c: colIndexOf(sel.ci) }); return }
     switch (e.key) {
       case 'ArrowUp': e.preventDefault(); moveSel('up'); return
       case 'ArrowDown': e.preventDefault(); moveSel('down'); return
@@ -221,7 +281,6 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     }
     if (mod && e.code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) store.redo(file); else store.undo(file); return }
     if (mod && e.code === 'KeyY') { e.preventDefault(); store.redo(file); return }
-    if (mod && e.key === 'Enter') { e.preventDefault(); openPath(file, { r: sel.r, c: colIndexOf(sel.ci) }); return }
   }
   const onInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     if (!editing) { if (!sel) { e.currentTarget.value = ''; return } setEditing(true) }
@@ -364,9 +423,11 @@ function childClassName(children: ReactNode): string {
 export function PreviewPane({ path }: { path: string }) {
   useStoreVersion()
   const d = store.get(path)
-  const text = d?.kind === 'text' && d.status === 'ready' ? d.text.toString() : ''
+  // 스토어는 어떤 문서가 바뀌어도 다시 그리게 한다 (전역 버전 하나). 그래서 문자열 변환 · 파싱은 이 문서의 Text 가
+  // 바뀌었을 때만 한다 — Text 는 불변이라 편집마다 새 객체다. 디바운스도 Text 객체에 건다
+  const text = d?.kind === 'text' && d.status === 'ready' ? d.text : null
   const debounced = useDebounced(text, 150)
-  const source = useMemo(() => stripBaked(debounced), [debounced])
+  const source = useMemo(() => (debounced ? stripBaked(debounced.toString()) : ''), [debounced])
 
   const components = useMemo<Components>(() => ({
     pre: ({ node, children, ...rest }) => {
@@ -393,11 +454,13 @@ export function PreviewPane({ path }: { path: string }) {
     img: ({ node, src, alt, ...rest }) => (typeof src === 'string' ? <LocalImage src={src} mdPath={path} alt={alt} {...rest} /> : null),
   }), [path])
 
+  // react-markdown 은 렌더될 때마다 문서 전체를 다시 파싱한다 (내부 memo 없음) → 원문이 바뀔 때만 새 엘리먼트.
+  // 안의 TsvView 는 스스로 스토어를 구독하므로 표가 바뀌면 그것만 다시 그린다
+  const body = useMemo(() => <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>{source}</ReactMarkdown>, [source, components])
+
   return (
     <div className="preview">
-      <div className="preview-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{source}</ReactMarkdown>
-      </div>
+      <div className="preview-body">{body}</div>
     </div>
   )
 }
