@@ -88,6 +88,14 @@ export interface LookupSource {
   schema: TableSchema
 }
 
+/** computeCalc 안에서 lookup 파일 하나당 한 번 만드는 색인 */
+interface LookupIndex {
+  /** Key 열 값 → 그 행의 셀들 (같은 Key 는 앞 행) */
+  byKey: Map<string, readonly string[]>
+  /** 열 이름 → index (이름이 겹치면 앞 열) */
+  colByName: Map<string, number>
+}
+
 /**
  * 모든 규칙을 평가해 셀별 계산값을 낸다 (표는 바꾸지 않는다). 규칙이 다른 규칙의 결과를 읽을 수 있으니 값이 안정될 때까지 최대 5번 돈다.
  */
@@ -118,22 +126,26 @@ export function computeCalc(table: TsvTable, schema: TableSchema, rules: CalcRul
 
   // 작업용 값 복사본 (규칙 결과를 다음 규칙·다음 바퀴가 읽는다)
   const work = table.rows.map((r) => [...r.cells])
-  const lookupCache = new Map<string, Map<string, readonly string[]> | null>()
-  const lookupIndex = (file: string): { byKey: Map<string, readonly string[]>; schema: TableSchema } | null => {
+  // lookup 파일마다 한 번만 읽고(스키마 유도 포함) Key → 행, 열 이름 → index 를 만들어 둔다. 캐시를 먼저 본다 —
+  // 행 × 규칙 × 바퀴마다 lookupTables(= 스키마 유도)를 부르면 표가 조금만 커져도 계산이 수백 ms 걸린다
+  const lookupCache = new Map<string, LookupIndex | null>()
+  const lookupIndex = (file: string): LookupIndex | null => {
+    const cached = lookupCache.get(file)
+    if (cached !== undefined) return cached
     const src = lookupTables(file)
     if (!src) { lookupCache.set(file, null); return null }
-    let byKey = lookupCache.get(file) ?? undefined
-    if (byKey === undefined) {
-      byKey = new Map()
-      const k = src.schema.columns.find((c) => c.isKey)?.index ?? 0
-      for (let r = src.schema.headerRows; r < src.table.rows.length; r++) {
-        const cells = src.table.rows[r].cells
-        const key = cells[k] ?? ''
-        if (key !== '' && !byKey.has(key)) byKey.set(key, cells)
-      }
-      lookupCache.set(file, byKey)
+    const byKey = new Map<string, readonly string[]>()
+    const k = src.schema.columns.find((c) => c.isKey)?.index ?? 0
+    for (let r = src.schema.headerRows; r < src.table.rows.length; r++) {
+      const cells = src.table.rows[r].cells
+      const key = cells[k] ?? ''
+      if (key !== '' && !byKey.has(key)) byKey.set(key, cells)
     }
-    return byKey ? { byKey, schema: src.schema } : null
+    const colByName = new Map<string, number>()
+    for (const c of src.schema.columns) if (!colByName.has(c.name)) colByName.set(c.name, c.index) // 이름이 겹치면 앞 열
+    const index: LookupIndex = { byKey, colByName }
+    lookupCache.set(file, index)
+    return index
   }
   const reported = new Set<string>()
   const report = (rule: CalcRule, row: number, message: string) => {
@@ -155,9 +167,9 @@ export function computeCalc(table: TsvTable, schema: TableSchema, rules: CalcRul
           lookup: (file, key, column) => {
             const idx = lookupIndex(file)
             if (!idx) return null
-            const c = idx.schema.columns.find((x) => x.name === column)
-            if (!c) throw new Error(`lookup: ${file} 에 열 ${column} 이 없습니다`)
-            return idx.byKey.get(key)?.[c.index] ?? ''
+            const ci = idx.colByName.get(column)
+            if (ci === undefined) throw new Error(`lookup: ${file} 에 열 ${column} 이 없습니다`)
+            return idx.byKey.get(key)?.[ci] ?? ''
           },
         }
         let value: string

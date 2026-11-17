@@ -214,15 +214,16 @@ interface RowProps {
   calcCells: ReadonlyMap<number, CalcCell>
   rowSelected: boolean
   head: boolean
-  style?: React.CSSProperties
+  /** 본문 행의 세로 위치(px). style 객체를 props 로 넘기면 매 렌더 새 객체라 memo 가 깨져 스크롤마다 모든 행이 다시 그려진다 */
+  top?: number
 }
 
-const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, style }: RowProps) {
+const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, top }: RowProps) {
   let cls = 'grid-row'
   cls += head ? ' is-head' : ' is-body'
   if (head && schema.typed && r === 0) cls += ' is-type'
   return (
-    <div className={cls} style={{ ...style, width: totalWidth }}>
+    <div className={cls} style={top === undefined ? { width: totalWidth } : { transform: `translateY(${top}px)`, width: totalWidth }}>
       <div className={'grid-rownum' + (activeC >= 0 || rowSelected ? ' is-active-row' : '')} data-rownum={r} title="클릭: 행 선택">{r + 1}</div>
       {widths.map((w, c) => (
         <Cell
@@ -672,7 +673,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
           else { const g = range; onEdit((t) => fillDown(t, g)) }
           return
         case 'KeyR': { e.preventDefault(); const g = range; onEdit((t) => fillRight(t, g)); return }
-        // Ctrl+Shift+F · Ctrl+Shift+H 는 전역 명령(HEAD 비교 · 커밋 기록)이라 건드리지 않는다
+        // Shift·Alt 가 겹친 Ctrl+F / Ctrl+H (Ctrl+Shift+F 등)는 그리드가 가로채지 않고 전역 단축키에 맡긴다
         case 'KeyF': if (e.shiftKey || e.altKey) return; e.preventDefault(); onFind(false); return
         case 'KeyH': if (e.shiftKey || e.altKey) return; e.preventDefault(); onFind(true); return
         default:
@@ -947,7 +948,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 calcCells={calcCells}
                 rowSelected={wholeRow && s.c1 >= 0}
                 head={false}
-                style={{ transform: `translateY(${headerH + vi.start}px)` }}
+                top={headerH + vi.start}
               />
             )
           })}

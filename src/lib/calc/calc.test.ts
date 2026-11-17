@@ -4,6 +4,7 @@ import { applyCalc, calcLookupFiles, computeCalc, parseCalcRules, siblingCalcPat
 import { parseTsv } from '../tsv/parse'
 import { deriveSchema } from '../tsv/schema'
 import { serializeTsv } from '../tsv/serialize'
+import { issueKey } from '../tsv/validate'
 
 const row = (vals: Record<string, string>) => ({ get: (n: string) => vals[n] })
 const ev = (src: string, vals: Record<string, string> = {}) => compileExpr(src)(row(vals))
@@ -101,5 +102,24 @@ describe('Calc 파일', () => {
     expect([...r.cells.values()][0].computed).toBe('8')
     const missing = computeCalc(table, schema, rules, () => null)
     expect(missing.errors[0].message).toContain('읽지 못했습니다')
+  })
+  it('lookup 파일은 계산 한 번에 한 번만 읽는다 (행 × 규칙 × 바퀴마다 스키마를 유도하지 않는다)', () => {
+    const rows = Array.from({ length: 50 }, (_, i) => `B${i}\tD${i % 5}\t`).join('\n')
+    const table = parseTsv(`#string\tstring\tuint\tuint\nKey\tDistrictKey\tLimit\tLimit2\n${rows}`)
+    const schema = deriveSchema(table, 'Building_Table.tsv', [])
+    const district = parseTsv('#string\tbyte\tbyte\nKey\tBuildingLimit\tBuildingLimit\nD0\t1\t10\nD1\t2\t20\nD2\t3\t30\nD3\t4\t40\nD4\t5\t50')
+    const rules = parseCalcRules(parseTsv('Target\tFormula\nLimit\t=lookup("D.tsv", DistrictKey, "BuildingLimit")\nLimit2\t=lookup("D.tsv", DistrictKey, "BuildingLimit") + Limit')).rules
+    let calls = 0
+    const r = computeCalc(table, schema, rules, () => { calls++; return { table: district, schema: deriveSchema(district, 'D.tsv', []) } })
+    expect(calls).toBe(1)
+    expect(r.errors).toEqual([])
+    // 열 이름이 겹치면 앞 열 (BuildingLimit = 1열), 같은 Key 는 앞 행
+    expect(r.cells.get(issueKey(table.width, 2, 2))?.computed).toBe('1') // B0(첫 데이터 행) → D0 → 1
+    expect(r.cells.get(issueKey(table.width, 3, 3))?.computed).toBe('4') // B1 → D1: Limit 2, Limit2 = 2 + Limit(2)
+    // 못 읽은 파일(null)도 한 번만 묻는다
+    let misses = 0
+    const m = computeCalc(table, schema, rules, () => { misses++; return null })
+    expect(misses).toBe(1)
+    expect(m.errors[0].message).toContain('읽지 못했습니다')
   })
 })

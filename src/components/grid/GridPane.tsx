@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
 import { backend } from '../../lib/backend'
 import { store, useStoreVersion } from '../../store/documents'
@@ -6,7 +6,7 @@ import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, 
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
 import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
-import { baseName, deriveSchema } from '../../lib/tsv/schema'
+import { baseName, deriveSchema, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
@@ -24,6 +24,16 @@ function tableId(t: object): number {
   let id = tableIds.get(t)
   if (!id) { id = nextTableId++; tableIds.set(t, id) }
   return id
+}
+/** lookup 대상 표의 스키마 — 표 객체(와 Field 파일 목록)가 그대로면 다시 유도하지 않는다. 계산할 때마다(셀 확정마다) 부르는 곳이라 */
+type FieldList = Parameters<typeof deriveSchema>[2]
+const lookupSchemas = new WeakMap<TsvTable, { path: string; fields: FieldList; schema: TableSchema }>()
+function lookupSchema(t: TsvTable, p: string, fields: FieldList): TableSchema {
+  const hit = lookupSchemas.get(t)
+  if (hit && hit.path === p && hit.fields === fields) return hit.schema
+  const schema = deriveSchema(t, p, fields)
+  lookupSchemas.set(t, { path: p, fields, schema })
+  return schema
 }
 /** Ctrl+F 때 활성 셀 값을 찾을 말로 미리 채우는 최대 길이 */
 const PREFILL_MAX = 40
@@ -54,7 +64,15 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const doc = d?.kind === 'tsv' && d.status === 'ready' ? d : null
   const table = doc?.table ?? null
   const fields = store.fieldFiles()
-  const schema = useMemo(() => (table ? deriveSchema(table, path, fields) : null), [table, path, fields])
+  // 셀을 확정할 때마다 스키마를 다시 유도하지만, 내용이 같은 열 객체는 이전 것을 쓴다 (Grid 의 Cell memo 가 col 참조로 비교한다)
+  const prevSchema = useRef<{ path: string; schema: TableSchema } | null>(null)
+  const schema = useMemo(() => {
+    if (!table) return null
+    const prev = prevSchema.current?.path === path ? prevSchema.current.schema : null
+    const next = stabilizeSchema(prev, deriveSchema(table, path, fields))
+    prevSchema.current = { path, schema: next }
+    return next
+  }, [table, path, fields])
   const validation = useMemo(() => (table && schema ? validateTable(table, schema) : null), [table, schema])
 
   // ---- 계산식 (같은 폴더 X_Calc.tsv, DESIGN §17). 결과는 F9 로 값 열에 써 넣는다
@@ -70,7 +88,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const lookupSource = useCallback((f: string): LookupSource | null => {
     const p = inRootOf(path, f)
     const t = store.auxTable(p)
-    return t ? { table: t, schema: deriveSchema(t, p, fields) } : null
+    return t ? { table: t, schema: lookupSchema(t, p, fields) } : null
   }, [fields, path])
   const calcResult = useMemo<CalcResult | null>(
     () => (table && schema && calcRules ? computeCalc(table, schema, calcRules.rules, lookupSource) : null),
@@ -184,7 +202,12 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const findInput = useRef<HTMLInputElement>(null)
   const replaceInput = useRef<HTMLInputElement>(null)
   const findOpts = useMemo<FindOptions>(() => ({ matchCase, wholeCell }), [matchCase, wholeCell])
-  const hits = useMemo(() => (findOpen && table ? findMatches(table, query, findOpts) : NO_HITS), [findOpen, table, query, findOpts])
+  // 찾을 말 입력 칸은 바로 반응하고, 표 전체를 훑는 찾기는 한 박자 뒤(입력이 이어지면 건너뛰고)에 돈다 — 2만 행 표에서 한 글자마다 수십 ms 가 걸렸다
+  const deferredQuery = useDeferredValue(query)
+  const hitsStale = deferredQuery !== query
+  const hits = useMemo(() => (findOpen && table ? findMatches(table, deferredQuery, findOpts) : NO_HITS), [findOpen, table, deferredQuery, findOpts])
+  /** 눌렀을 때의 결과 — 막 친 글자가 아직 반영 전이면 지금 말로 바로 찾는다 */
+  const currentHits = (): FindHit[] => (!table ? NO_HITS : hitsStale ? findMatches(table, query, findOpts) : hits)
   const hitKeys = useMemo<ReadonlySet<number>>(
     () => (table && hits.length ? new Set(hits.map((h) => issueKey(table.width, h.r, h.c))) : NO_KEYS),
     [hits, table],
@@ -225,13 +248,13 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const findStep = useCallback((dir: 1 | -1) => {
     if (!table) return
     if (!query) { openFind(false); return }
-    const list = findOpen ? hits : findMatches(table, query, findOpts)
+    const list = findOpen && !hitsStale ? hits : findMatches(table, query, findOpts)
     if (!findOpen) setFindOpen(true)
     const i = stepMatch(list, active, dir)
     if (i < 0) { showNotice(`찾지 못했습니다: ${query}`); return }
     grid.current?.clearRange()
     setActive({ r: list[i].r, c: list[i].c })
-  }, [table, query, findOpen, hits, findOpts, active, openFind, showNotice])
+  }, [table, query, findOpen, hits, hitsStale, findOpts, active, openFind, showNotice])
 
   const cleanReplacement = (): string => {
     const [rep, changed] = sanitizeFor(table?.format, replacement)
@@ -245,7 +268,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     const rep = cleanReplacement()
     const { r, c } = active
     let after = table
-    if (matchIndex(hits, active) >= 0) {
+    if (matchIndex(currentHits(), active) >= 0) {
       after = setCell(table, r, c, replaceInCell(cellAt(table, r, c), query, rep, findOpts))
       edit((t) => setCell(t, r, c, replaceInCell(cellAt(t, r, c), query, rep, findOpts)))
     }
@@ -284,7 +307,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   const hitIdx = findOpen ? matchIndex(hits, active) : -1
   let findCount = ''
-  if (query) findCount = hits.length ? `${hitIdx >= 0 ? hitIdx + 1 : '–'} / ${hits.length}` : '결과 없음'
+  if (query) findCount = hits.length ? `${hitIdx >= 0 ? hitIdx + 1 : '–'} / ${hits.length}` : hitsStale ? '…' : '결과 없음'
 
   const dirty = store.isDirty(path)
   const readOnly = store.isReadOnly(path)
@@ -405,7 +428,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
               <label title="셀 값 전체가 찾을 말과 같아야 걸린다. 바꾸면 셀 전체가 바뀐다">
                 <input type="checkbox" checked={wholeCell} onChange={(e) => setWholeCell(e.target.checked)} /> 셀 전체 일치
               </label>
-              <span className={'grid-find-count' + (query && !hits.length ? ' is-none' : '')}>{findCount}</span>
+              <span className={'grid-find-count' + (query && !hits.length && !hitsStale ? ' is-none' : '')}>{findCount}</span>
               <button onClick={() => findStep(-1)} title="이전 (Shift+Enter · Shift+F3)">이전</button>
               <button onClick={() => findStep(1)} title="다음 (Enter · F3)">다음</button>
               <button onClick={replaceOne} title="지금 셀에서 바꾸고 다음 결과로">바꾸기</button>

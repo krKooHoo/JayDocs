@@ -113,6 +113,39 @@ function distinctColumnValues(t: TsvTable, headerRows: number, c: number): strin
   return [...set].sort((a, b) => a.localeCompare(b))
 }
 
+function sameStrings(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+function sameColumn(a: ColumnSchema, b: ColumnSchema): boolean {
+  if (a.index !== b.index || a.name !== b.name || a.type !== b.type || a.rawType !== b.rawType || a.isKey !== b.isKey || a.list !== b.list) return false
+  if (a.enumSource !== b.enumSource || a.description !== b.description || !sameStrings(a.enumValues, b.enumValues)) return false
+  if (a.notes.length !== b.notes.length) return false
+  for (let i = 0; i < a.notes.length; i++) if (a.notes[i].label !== b.notes[i].label || a.notes[i].text !== b.notes[i].text) return false
+  return true
+}
+
+/**
+ * 스키마를 다시 유도할 때마다 열 객체가 전부 새로 생긴다 — 그리드의 Cell memo 가 `col` 참조로 비교하니 셀 하나만 고쳐도 보이는 모든 셀이
+ * 다시 그려진다. 내용이 같은 열은 이전 객체를 그대로 쓰고, 전부 같으면 이전 스키마 자체를 돌려준다. 값은 그대로이고 참조만 안정된다.
+ */
+export function stabilizeSchema(prev: TableSchema | null, next: TableSchema): TableSchema {
+  if (!prev) return next
+  let allSame = prev.columns.length === next.columns.length
+  const columns = next.columns.map((col, i) => {
+    const old = prev.columns[i]
+    if (old && sameColumn(old, col)) return old
+    allSame = false
+    return col
+  })
+  if (allSame && prev.typed === next.typed && prev.headerRows === next.headerRows && prev.prefix === next.prefix
+    && prev.defBlock?.file === next.defBlock?.file && prev.defBlock?.name === next.defBlock?.name && sameStrings(prev.fieldFiles, next.fieldFiles)) return prev
+  return { ...next, columns }
+}
+
 export function deriveSchema(t: TsvTable, path: string, allFields: readonly FieldFile[]): TableSchema {
   // Field 시트는 같은 루트(주 폴더 또는 같은 가져온 폴더) 안에서만 찾는다
   const fields = allFields.filter((f) => sameRoot(f.path, path))

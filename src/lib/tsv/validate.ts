@@ -19,6 +19,17 @@ export function issueKey(width: number, r: number, c: number) {
 const INT = /^\d+$/
 const FLOAT = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/
 
+/**
+ * enum 허용값 Set — 열(의 enumValues 배열) 하나당 한 번만 만든다. 셀마다 만들면 2만 행 표 검증이 수십 ms 늘어난다.
+ * 키가 배열이라 스키마를 다시 유도해도 내용이 같은 열을 재사용하면(`stabilizeSchema`) Set 도 그대로 쓴다.
+ */
+const allowedSets = new WeakMap<readonly string[], ReadonlySet<string>>()
+function allowedOf(values: readonly string[]): ReadonlySet<string> {
+  let s = allowedSets.get(values)
+  if (!s) { s = new Set(values); allowedSets.set(values, s) }
+  return s
+}
+
 export function checkValue(col: ColumnSchema, v: string): string | null {
   if (v === '') return null
   switch (col.type) {
@@ -33,7 +44,7 @@ export function checkValue(col: ColumnSchema, v: string): string | null {
       return FLOAT.test(v) && Number.isFinite(Number(v)) ? null : '숫자여야 합니다'
     case 'enum': {
       if (col.enumSource !== 'field' || !col.enumValues) return null
-      const allowed = new Set(col.enumValues)
+      const allowed = allowedOf(col.enumValues)
       const items = col.list ? v.split(',').map((s) => s.trim()) : [v.trim()]
       const bad = items.filter((s) => s !== '' && !allowed.has(s))
       return bad.length ? `허용되지 않은 값: ${bad.join(', ')}` : null
