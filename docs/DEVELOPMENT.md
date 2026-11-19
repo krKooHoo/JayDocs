@@ -77,7 +77,17 @@ src/
   lib/cm.ts           CodeMirror 공통 설정 (마크다운 창 · 평문/JSON 창)
   lib/md/tsvView.ts   tsv-view 펜스 파서(YAML 부분집합) · where 식 · 필터/정렬 적용
   lib/md/template.ts  Mermaid 생성용 Mustache 부분집합 (each · if · .list · .id)
-  lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산
+  lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산 · baked 를 걷어 낸 글의 줄 → 원문 줄
+  lib/md/sourceLines.ts  렌더된 조각에 원문 줄 번호(`data-line`)를 찍는 rehype 플러그인 (훑어보기 패널)
+  lib/templates.ts    새 문서 템플릿 표 (형식마다 빈 문서 · 예시) · 이름 칸 → 경로 · 내 템플릿(`_templates/`) 목록
+  lib/skim/           훑어보기 (DESIGN §25)
+    index.ts          `useSkimText(path)` — 열린 문서는 스토어, 안 연 파일은 디스크에서
+    reader.ts         읽기 캐시 (경로 + 수정 시각, 200개, 한 번에 4개)
+    fit.ts            썸네일 배율 (A4 틀 · 짧은 문서는 3배까지)
+    head.ts           앞 N줄만 자르기 · BOM · 줄바꿈 맞추기
+    lineMap.ts        패널의 줄 ↔ 위치 지도
+    panel.ts          패널 켬 · 끔 · 너비 (localStorage)
+    grid.ts           폴더 격자의 열 수 · 방향키 이동
   lib/tsv/
     model.ts          TsvTable / TsvRow (불변, raw 행 보관)
     parse.ts          텍스트 → 표 (탭 split 만, 따옴표 해석 없음) · 열 때 경고
@@ -106,6 +116,11 @@ src/
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
     ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
+    DocView.tsx       훑어보기 공통 렌더러 — `DocView`(md · 표 · 평문) · `DocFileView`(읽어서 그림) · `DocThumb`(A4 틀 썸네일)
+    NewDocDialog.tsx  새 문서 창 — 빈 문서 · 예시 · 내 템플릿 카드, 이름 칸
+    SkimPanel.tsx     훑어보기 패널 — 문서 창 오른쪽의 축소된 문서, 클릭 → 커서, 범위 상자
+    QuickLook.tsx     훑어보기 창 — 트리 `Space`. 파일은 문서, 폴더는 썸네일 격자
+    docPanes.ts       문서 창 수 context (패널은 문서 창이 하나일 때만 보인다)
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯 · 코드 상자)
     HybridTable.tsx   하이브리드 표 위젯 — 칸을 눌러 그 자리에서 고친다 (lib/md/tableEdit.ts)
     grid/Grid.tsx     자체 DOM 그리드 — 행 윈도잉(고정 높이, 직접 계산) · 고정 헤더 · 입력 textarea 하나 · 드롭다운 · 범위 선택 · 채우기 핸들 · 열 드래그

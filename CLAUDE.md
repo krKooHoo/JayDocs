@@ -21,6 +21,7 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭·분할로 편집하는 로컬 PWA. Vite +
 - 여는 파일 형식: `src/lib/filetypes.mjs`
 - 가져온 폴더 경로 규칙(`@별칭/…`): `src/lib/roots.mjs`
 - 단축키: `src/lib/shortcuts-table.mjs` → `npm run shortcuts` 가 `SHORTCUTS.md` 를 만든다(테스트가 동기화를 검사).
+- 새 문서 템플릿(형식마다 빈 문서 · 예시): `src/lib/templates.ts` — 형식을 늘리면 여기에도 넣는다(테스트가 검사).
 - **새 기능을 넣을 때 단축키 표와 팔레트 명령을 같이 넣는다.** 모든 작업이 키보드로 되어야 하고 Sheets · Excel 관행을 따른다. 브라우저가 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)과 글자 키 단독 단축키는 쓰지 않는다.
 
 ## 개발 · 검증

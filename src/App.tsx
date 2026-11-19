@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { backend, ConflictError, setBackend, type MountInfo, type RootDetail, type TreeEntry } from './lib/backend'
 import { FsaBackend } from './lib/fsa/fsaBackend'
 import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurrentWorkspace, touchWorkspace, type Workspace as WorkspaceData } from './lib/fsa/workspace'
@@ -28,10 +28,6 @@ import { dismissAllNotices, dismissNotice, noticeList, notify, notifyError } fro
 import { checkEntryPath, cleanEntryPath, nameStemRange } from './lib/names'
 import { setTreeCursor } from './lib/nav'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
-
-// 확인용 임시 화면 (PLAN-skim Phase A): 개발 빌드의 `?opfs&skimdemo` 에서만 불러온다. 배포 빌드에는 들어가지 않는다.
-// Phase B~E 가 들어오면 지운다 (components/SkimDemo.tsx 와 아래 App 의 한 줄)
-const SkimDemo = import.meta.env.DEV && new URLSearchParams(location.search).has('skimdemo') ? lazy(() => import('./components/SkimDemo')) : null
 
 type Phase =
   | { kind: 'loading' }
@@ -104,7 +100,6 @@ export default function App() {
   return (
     <>
       {screen()}
-      {SkimDemo && phase.kind === 'ready' && <Suspense fallback={null}><SkimDemo /></Suspense>}
       <NoticeHost />
       <DialogHost />
     </>
