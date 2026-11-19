@@ -90,7 +90,7 @@ sort: BuildCost
 | 6 | [작업 환경](docs/guide/workspace.md) | 탭 · 분할 · 명령 팔레트 · 폴더 가져오기 · 바깥 변경 · 다크 모드 · 업데이트 |
 | 7 | [자주 묻는 질문](docs/guide/faq.md) | 권한 · 읽기 전용 · 저장 안 됨 · 지운 파일 · 브라우저 |
 
-단축키 전체는 [SHORTCUTS.md](SHORTCUTS.md) (앱에서는 `F1`).
+단축키 전체는 [SHORTCUTS.md](SHORTCUTS.md) (앱에서는 `F1`). 버전마다 바뀐 것은 [패치 노트](PATCHNOTES.md)에 있어요.
 
 ## 피드백 부탁드려요 🙏
 
