@@ -62,14 +62,16 @@ export function onTreeCursor(l: TreeCursorListener): () => void {
 }
 
 // ---- 훑어보기 창 (PLAN-skim Phase D). 창의 열림은 트리 안의 state 라 팔레트 명령은 이 길로 보낸다
-const quickLookListeners = new Set<() => void>()
+/** item: 트리 커서의 항목 (Phase D) · folder: 트리에서 고른 폴더의 격자, 포커스는 첫 카드 (Phase E) */
+export type QuickLookMode = 'item' | 'folder'
+const quickLookListeners = new Set<(mode: QuickLookMode) => void>()
 
-/** 트리 커서의 항목으로 훑어보기 창을 연다 — 트리가 포커스를 받으면(이미 있으면 바로) 열린다 */
-export function requestQuickLook() {
-  for (const l of quickLookListeners) l()
+/** 훑어보기 창을 연다 — 트리가 포커스를 받으면(이미 있으면 바로) 열린다 */
+export function requestQuickLook(mode: QuickLookMode = 'item') {
+  for (const l of quickLookListeners) l(mode)
 }
 
-export function onQuickLookRequest(l: () => void): () => void {
+export function onQuickLookRequest(l: (mode: QuickLookMode) => void): () => void {
   quickLookListeners.add(l)
   return () => { quickLookListeners.delete(l) }
 }

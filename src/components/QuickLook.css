@@ -18,11 +18,25 @@
 .quicklook-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .quicklook-file > .doc-view.preview-body { padding: 16px 24px 40px; }
 .quicklook-file > .doc-note { margin: 16px; }
-.quicklook-folder { padding: 14px 18px; font-size: 13px; }
-.quicklook-folder-name { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-.quicklook-folder-list { list-style: none; margin: 0; padding: 0; }
-.quicklook-folder-list li { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.quicklook-folder-list li.is-dir { font-weight: 600; }
-.quicklook-folder-icon { display: inline-block; width: 1.6em; color: var(--muted); }
+/* 폴더 훑어보기 (Phase E) — 썸네일 격자. 열 수는 QuickLookFolder 가 너비로 정해 style 로 준다 */
+.quicklook-folder { padding: 12px 14px 20px; font-size: 13px; outline: none; }
+.quicklook-folder-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; min-width: 0; }
+.quicklook-folder-name { font-size: 15px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quicklook-folder-empty, .quicklook-folder-count { color: var(--muted); }
-.quicklook-folder-count { margin-top: 10px; font-size: 12px; }
+.quicklook-folder-count { flex: none; font-size: 12px; }
+.quicklook-folder-empty { margin-bottom: 10px; }
+.ql-grid { display: grid; align-items: start; }
+.ql-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 4px; border-radius: 6px; cursor: default; outline: none; }
+.ql-card:hover .doc-thumb { border-color: var(--muted); }
+/* 고른 카드 (포커스) — 테두리를 굵게 강조색으로. 라이트 · 다크 모두 --accent */
+.ql-card:focus { background: var(--panel); }
+.ql-card:focus .doc-thumb { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.ql-card:focus .ql-card-name { color: var(--fg); font-weight: 600; }
+.ql-card-name { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.ql-card-icon:not(:empty) { margin-right: 4px; }
+.ql-card.is-dir .ql-card-name { color: var(--fg); font-weight: 600; }
+/* 아직 그리지 않은 카드 — 썸네일과 같은 크기의 빈 틀 (.doc-thumb 이 크기 · 테두리를 준다) */
+.ql-blank { background: var(--panel2); }
+.ql-dir { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); color: var(--muted); }
+.ql-dir-icon { font-size: 40px; line-height: 1; }
+.ql-dir-count { font-size: 12px; text-align: center; }

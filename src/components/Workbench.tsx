@@ -340,6 +340,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
+    { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },

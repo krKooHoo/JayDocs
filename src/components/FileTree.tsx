@@ -4,7 +4,7 @@ import { keysOf, runCommand, tip } from '../lib/commands'
 import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
-import { onQuickLookRequest, onTreeCursor } from '../lib/nav'
+import { onQuickLookRequest, onTreeCursor, type QuickLookMode } from '../lib/nav'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
 
@@ -80,6 +80,14 @@ export function FileTree(p: Props) {
   const [treeBox, setTreeBox] = useState<HTMLDivElement | null>(null)
   /** 팔레트 명령이 열라고 한 때 — 트리가 아직 포커스를 받기 전이면 받을 때 연다 */
   const quickLookAsked = useRef(0)
+  const quickLookAskedMode = useRef<QuickLookMode>('item')
+  /**
+   * 폴더 훑어보기가 주 폴더 루트('')를 보여 주는 중 (Phase E). 루트는 트리에 항목이 없어 커서로 가리킬 수 없다 →
+   * 이 동안 창은 트리 맨 위 단계 전체를 한 폴더로 보여 준다. 트리에서 커서를 옮기면 풀린다
+   */
+  const [lookRoot, setLookRoot] = useState(false)
+  /** 창이 뜨면 격자의 첫 카드로 포커스를 옮길 것 (팔레트 "폴더 훑어보기") — 청한 때 */
+  const gridFocusAsked = useRef(0)
 
   // 고른 폴더를 앱에 알린다 (Ctrl+Alt+N / Ctrl+Alt+Shift+N 이 이 폴더에 만든다)
   const onSelectDir = p.onSelectDir
@@ -113,10 +121,10 @@ export function FileTree(p: Props) {
     }
   }
 
-  // 팔레트 명령 "훑어보기" (lib/nav requestQuickLook) — 트리로 포커스를 보낸 뒤 오는 요청이다
-  useEffect(() => onQuickLookRequest(() => {
-    if (document.activeElement === body.current) setQuickLook(true)
-    else quickLookAsked.current = Date.now()
+  // 팔레트 명령 "훑어보기" · "폴더 훑어보기" (lib/nav requestQuickLook) — 트리로 포커스를 보낸 뒤 오는 요청이다
+  useEffect(() => onQuickLookRequest((mode) => {
+    if (document.activeElement === body.current) openLookRef.current(mode)
+    else { quickLookAsked.current = Date.now(); quickLookAskedMode.current = mode }
   }), [])
 
   /** 포커스가 트리를 떠날 때 — 트리 · 훑어보기 창 밖으로 갔으면 창을 닫는다 (다른 곳 클릭 · F6 · 팔레트 · 메뉴 …) */
@@ -187,6 +195,7 @@ export function FileTree(p: Props) {
   // 앱이 시키는 커서 이동 (lib/nav 의 setTreeCursor): 접힌 상위 폴더를 펴고 커서와 "고른 폴더" 를 옮긴다
   useEffect(() => onTreeCursor((path) => {
     awaited.current = path
+    setLookRoot(false)
     setCursor(path)
     setSelectedDir(parentOf(path))
     const up = ancestorDirs(path)
@@ -221,16 +230,65 @@ export function FileTree(p: Props) {
 
   const activate = (row: FlatRow) => {
     const e = row.entry
+    setLookRoot(false)
     setCursor(e.path)
     if (e.type === 'dir') { toggle(e.path); setSelectedDir(e.path) }
     else { p.onOpen(e.path); setSelectedDir(parentOf(e.path)) }
   }
 
+  // ---- 폴더 훑어보기 (PLAN-skim Phase E). 격자는 트리 커서의 폴더(또는 루트)를 보여 준다
+  /** 주 폴더 루트 — 트리 맨 위 단계(가져온 폴더 `@별칭` 포함)를 바로 아래 항목으로 */
+  const rootEntry = useMemo<TreeEntry>(() => ({ type: 'dir', name: '(루트)', path: '', children: p.entries }), [p.entries])
+  const lookEntry = lookRoot ? rootEntry : cursorRow?.entry ?? null
+
+  /** 트리 커서를 그 폴더로 (접힌 상위 폴더는 편다) — 격자가 그 폴더로 바뀐다 */
+  const lookAtDir = (path: string) => {
+    setLookRoot(false)
+    setCursor(path)
+    setSelectedDir(path)
+    const up = ancestorDirs(path)
+    setExpanded((s) => (up.every((d) => s.has(d)) ? s : new Set([...s, ...up])))
+  }
+  /** 격자에서 고른 카드 — 폴더는 그 폴더로, 문서는 열고 창을 닫는다(편집기로 포커스) */
+  const onLookPick = (en: TreeEntry) => {
+    if (en.type === 'dir') { lookAtDir(en.path); return }
+    setQuickLook(false)
+    setSelectedDir(parentOf(en.path))
+    p.onOpen(en.path, true)
+  }
+  /** 격자에서 Backspace — 상위 폴더로. 맨 위 단계의 폴더에서는 루트로, 루트에서는 그대로 */
+  const onLookUp = (): boolean => {
+    if (lookRoot || !cursorRow || cursorRow.entry.type !== 'dir') return false
+    if (cursorRow.parent === '') { setLookRoot(true); setSelectedDir(''); return true }
+    lookAtDir(cursorRow.parent)
+    return true
+  }
+  /** 창을 연다. folder: 트리에서 고른 폴더(루트면 루트)로 열고 격자의 첫 카드로 포커스 */
+  const openLook = (mode: QuickLookMode) => {
+    if (mode === 'folder') {
+      if (selectedDir === '') { setLookRoot(true); setSelectedDir('') }
+      else lookAtDir(selectedDir)
+      gridFocusAsked.current = Date.now()
+    } else setLookRoot(false)
+    setQuickLook(true)
+  }
+  const openLookRef = useRef(openLook)
+  openLookRef.current = openLook
+
+  // 창이 뜨면 (팔레트 "폴더 훑어보기") 격자로 포커스 — 창이 그려진 뒤라야 한다
+  useEffect(() => {
+    if (!gridFocusAsked.current) return
+    if (!quickLook || Date.now() - gridFocusAsked.current > 1000) { gridFocusAsked.current = 0; return }
+    if (quickLookBox.current?.focusGrid()) gridFocusAsked.current = 0
+  })
+  // 창이 닫히면 루트 보기도 끝
+  useEffect(() => { if (!quickLook) setLookRoot(false) }, [quickLook])
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (menu) return
     const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
     const idx = cursorRow ? rows.indexOf(cursorRow) : -1
-    const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
+    const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setLookRoot(false); setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); go(idx + 1); return
       case 'ArrowUp': e.preventDefault(); go(idx <= 0 ? 0 : idx - 1); return
@@ -274,6 +332,11 @@ export function FileTree(p: Props) {
         e.preventDefault()
         e.stopPropagation()
         setQuickLook(false)
+        return
+      // 창이 폴더 격자면 첫 카드로 들어간다 (Phase E). 그 밖에는 지금처럼 브라우저의 Tab
+      case 'Tab':
+        if (!quickLook || !plain) return
+        if (quickLookBox.current?.focusGrid()) e.preventDefault()
         return
       // 창이 열려 있으면 창 안을 한 화면씩. 닫혀 있으면 지금처럼 트리를 스크롤한다(브라우저 기본)
       case 'PageUp':
@@ -373,7 +436,7 @@ export function FileTree(p: Props) {
         onKeyDown={onKeyDown}
         onFocus={() => {
           if (!cursor && rows.length) setCursor(p.activePath ?? rows[0].entry.path)
-          if (quickLookAsked.current && Date.now() - quickLookAsked.current < 1000) setQuickLook(true)
+          if (quickLookAsked.current && Date.now() - quickLookAsked.current < 1000) openLook(quickLookAskedMode.current)
           quickLookAsked.current = 0
         }}
         onBlur={(ev) => { if (quickLook) onFocusLeave(ev.relatedTarget as Element | null) }}
@@ -382,7 +445,9 @@ export function FileTree(p: Props) {
         {p.entries.length === 0 && <div className="tree-empty">{DOC_EXTS_LABEL} 파일이 없습니다</div>}
         {rows.map(renderRow)}
       </div>
-      {quickLook && cursorRow && <QuickLook ref={quickLookBox} entry={cursorRow.entry} anchor={treeBox} onFocusOut={onFocusLeave} />}
+      {quickLook && lookEntry && (
+        <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} />
+      )}
       {menu && (() => {
         const { mount, isRoot } = mountOf(menu.path)
         const writable = !mount?.readOnly
