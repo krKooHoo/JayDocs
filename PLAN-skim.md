@@ -525,6 +525,95 @@ function sourceLineOf(el: Element | null, within?: Element | null): number | nul
 
 - 트리 `Space` · 커서 따라가기 · 닫기(SK11).
 
+#### Phase D 완료 메모 (2026-11-19)
+
+`npm test` 341 통과 · 2 skip(SagaDocs), `npm run build` 성공, `npm run lint` 는 새 경고 없음(바꾼 파일에 경고 0건).
+내장 브라우저 `http://127.0.0.1:5176/?opfs` 에서 확인: 트리에서 `Space` 로 열고 `Space` · `Esc` 로 닫힘 / `↓` 로 md(Mermaid 포함) · csv · tsv · txt · json · `@가져온폴더` 의 md 를 차례로 넘겨 봄(포커스는 내내 `tree-body`) / 폴더(`data`, `@가져온폴더`)에서 이름 목록 / 긴 md(120절, 높이 14728px)에서 `PageDown` · `PageUp` 이 창만 한 화면(292px)씩 움직이고 트리 스크롤 · 커서는 그대로 / `Enter` 로 열면 창이 닫히고 편집기(`cm-content`)에 포커스 / 저장 안 한 편집이 창에 보임 / EUC-KR 파일의 머리에 `EUC-KR` / 창 안 클릭은 열린 채 포커스 트리, 편집기 클릭 · 상단 글자 클릭 · `F6` · `Ctrl+B` 는 닫힘 / 팔레트 "훑어보기"(트리가 접혀 있어도 펴고 열린다) / 메뉴 첫 항목 "훑어보기" / `F2` · `Delete` 는 창을 닫고 전과 같은 대화상자, 저장 안 한 파일의 `F2` 는 전과 같은 알림 / `Shift+F10` 메뉴 / 폴더에서 `Enter` 는 펼치기 · 접기만 하고 창은 그대로 / 라이트 · 다크.
+
+**만든 · 고친 파일**
+
+| 파일 | 내용 |
+|---|---|
+| `src/components/QuickLook.tsx` (새) | `QuickLook`(틀) · `QuickLookFile` · `QuickLookFolder`(Phase D 자리) · `QUICKLOOK_DELAY` |
+| `src/components/QuickLook.css` (새) | 창 · 머리 · 폴더 목록 |
+| `src/components/FileTree.tsx` | 창 열림 state, `Space` · `Esc` · `PageUp/PageDown`, `Enter` · `→` · `F2` · `Delete` 앞에서 닫기, 포커스가 트리 · 창 밖으로 가면 닫기, 메뉴 항목 "훑어보기", `onOpen(path, focus?)` |
+| `src/lib/nav.ts` | `requestQuickLook()` · `onQuickLookRequest()` — 팔레트 명령 → 트리 |
+| `src/components/Workbench.tsx` | 팔레트 명령 `quickLook` 한 줄 + import |
+| `src/lib/shortcuts-table.mjs` · `SHORTCUTS.md` | "파일 트리" 묶음에 `Space` · `PageUp / PageDown` (command 없음 — 트리가 직접 받는 키) |
+
+`App.tsx` · `commands.ts` · `styles.css` 는 고치지 않았다.
+
+**공개 모양 (Phase E 가 쓸 접점)**
+
+```ts
+// components/QuickLook.tsx
+const QUICKLOOK_DELAY = 100   // 커서를 늦게 따라가는 ms
+
+interface QuickLookHandle {
+  scrollPage(dir: 1 | -1): void          // 창의 스크롤 상자를 한 화면
+  contains(node: Node | null): boolean   // 그 노드가 창 안인가
+}
+interface QuickLookProps {
+  entry: TreeEntry                 // 트리 커서의 항목. 같은 경로의 새 객체(트리를 다시 읽음)는 바로, 다른 경로는 100ms 뒤에 따라간다
+  anchor: HTMLElement | null       // 이 요소(.tree) 오른쪽에 뜬다
+  onFocusOut?: (to: Element | null) => void   // 포커스가 창 밖으로 나갔을 때 (FileTree 가 "트리도 아니면 닫기"로 쓴다)
+}
+const QuickLook: ForwardRefExoticComponent<QuickLookProps & RefAttributes<QuickLookHandle>>   // document.body 로 portal
+
+function QuickLookFile(p: { path: string }): JSX.Element          // <DocFileView path weight="rich" /> 를 inert 상자에
+interface QuickLookFolderProps { entry: TreeEntry }                // entry.children = 바로 아래 항목
+function QuickLookFolder(p: QuickLookFolderProps): JSX.Element    // ← Phase E 가 바꿀 곳
+
+// lib/nav.ts
+function requestQuickLook(): void                    // 트리가 포커스를 받으면(이미 있으면 바로) 커서의 항목으로 연다 (1초 안)
+function onQuickLookRequest(l: () => void): () => void
+```
+
+- 틀(`QuickLook`)은 머리(경로 · 형식 이름 · UTF-8 아니면 인코딩)와 스크롤 상자(`.quicklook-scroll`)를 그리고, 안에 `entry.type` 에 따라 `QuickLookFile` 또는 `QuickLookFolder` 를 넣는다. 항목이 바뀌면 스크롤을 맨 위로.
+- **E 가 알아야 할 것 — 포커스**: 틀은 mousedown 의 기본 동작을 막아 클릭해도 포커스가 트리에 남게 한다. 예외는 `.quicklook-folder` 안의 `button` · `a` · `input` · `[tabindex]`(그리고 `inert` 밖) — 격자 카드를 이 중 하나로 만들면 클릭으로 포커스를 받는다. `Tab` 으로 들어가는 길은 지금 없다: 창이 `document.body` 끝에 portal 로 붙어 있어 트리의 다음 `Tab` 순서가 아니다. E 는 트리의 `onKeyDown` 에 `Tab` 을 더해(창이 열려 있고 폴더일 때) 격자의 첫 카드에 `focus()` 를 하면 된다. 포커스가 창 안에 있는 동안 창은 닫히지 않는다(`onFocusOut` 이 창 안 · 트리로 간 것은 넘긴다). 격자의 `Esc` 는 격자가 받아 `body.focus()` 로 트리에 돌려줘야 한다 — 지금 `Esc` 는 트리의 `onKeyDown` 에서만 창을 닫는다.
+- **E 가 알아야 할 것 — 키**: 포커스가 트리에 있는 동안의 `Space` · `Esc` · `PageUp/PageDown` · `Enter` 는 `FileTree.onKeyDown` 이 처리한다. 창이 열린 상태는 `FileTree` 의 `quickLook` state 하나다(폴더 · 파일 공통).
+- 폴더 쪽은 지금 `entry.children`(트리가 이미 가진 목록)만 쓴다 — 디스크를 읽지 않는다. 폴더 쪽 내용도 스크롤 상자 안이라 `PageUp/PageDown` 이 그대로 스크롤한다.
+
+**계획과 달라진 점**
+
+- **`Enter` 로 열 때 편집기로 포커스**: 지금 트리의 `Enter` 는 파일을 열고 포커스를 트리에 둔다. 창이 열려 있을 때만 `onOpen(path, true)`(= `Workbench.openFile` 의 `focus`)로 편집기에 포커스를 보낸다. 창이 닫혀 있을 때의 `Enter` 는 전과 같다. 이유: 끝난 모습의 "Enter 로 열면 닫히고 편집기에 포커스". 이를 위해 `FileTree` 의 `onOpen` 형에 `focus?` 를 더했다(`Workbench` 는 이미 `openFile(path, focus)` 를 넘기고 있어 바뀐 줄이 없다).
+- **`→` 로 파일을 열 때도 창을 닫는다**(포커스도 `Enter` 와 같이 편집기로). `→` 는 파일에서 "열기"라 `Enter` 와 맞췄다.
+- **팔레트 명령은 `Workbench` 에 넣었다**(`App.tsx` 가 아니라): 트리로 포커스(`focusTree`)가 거기 있다. 트리는 접혀 있으면 펴진 뒤에 포커스를 받으므로 요청을 1초 동안 들고 있다가 포커스를 받을 때 연다.
+- **너비**: 높이 ÷ 1.414 (세로 A4), 최소 280px, 트리 오른쪽 남은 너비를 넘지 않는다. 남은 너비가 280px 도 안 되면 화면 오른쪽 끝으로 당겨 트리를 일부 가린다. 내용은 그 너비에 그대로 그린다(축소 없음).
+- **z-index 90**: 오른쪽 클릭 메뉴(100) · 알림(300) · 대화상자(400) 아래.
+- **창이 닫히는 때**: 포커스가 트리 · 창 밖으로 갈 때(옮겨 간 곳이 없으면 한 박자 뒤 `document.activeElement` 로 본다 — `Alt+Tab` 으로 앱 창을 떠날 때는 포커스가 트리에 남아 있어 닫히지 않는다), `Esc` · `Space`, 파일을 열 때, `F2` · `Delete`, 오른쪽 클릭 메뉴가 뜰 때(포커스가 메뉴로 가므로).
+- **그림 파일**: 트리에 안 보인다(`filetypes.mjs` 의 형식만 트리에 뜬다) → 넘어갔다.
+- **누르고 있는 `Space`**: 반복 입력은 무시한다(열렸다 닫혔다 하지 않게).
+
+**TC 초안**
+
+- 트리에서 파일에 커서를 두고 `Space` → 트리 오른쪽에 그 파일이 렌더된 창이 뜨고, 트리 커서 테두리(포커스)는 그대로다.
+- 창이 떠 있을 때 `↓` `↑` → 커서가 옮겨지고 잠깐 뒤 창의 내용이 그 파일로 바뀐다(md · tsv · csv · txt · json). 머리에 경로와 형식 이름이 보인다.
+- `↓` 를 누르고 있기 → 커서가 빠르게 내려가는 동안 창이 파일마다 깜빡이지 않고, 멈추면 그 파일이 보인다.
+- 폴더에 커서 → 창에 폴더 이름과 바로 아래 하위 폴더 · 문서 이름, "폴더 n · 문서 m".
+- 긴 문서에서 `PageDown` / `PageUp` → 창만 한 화면씩 움직이고 트리는 그대로. 창 위에서 마우스 휠도 창을 스크롤한다.
+- `Space` 또는 `Esc` → 창이 닫히고 포커스는 트리.
+- 창이 떠 있을 때 파일에서 `Enter` → 파일이 탭으로 열리고 창이 닫히고 편집기에 커서. 창이 없을 때 `Enter` 는 전처럼 포커스가 트리에 남는다.
+- 창이 떠 있을 때 폴더에서 `Enter` → 폴더가 접히고 펴지기만 하고 창은 그대로.
+- 문서를 고치고 저장하지 않은 채 트리에서 그 파일에 `Space` → 고친 내용이 보인다.
+- UTF-8 이 아닌(EUC-KR) 파일에 `Space` → 내용이 읽히고 머리에 `EUC-KR`.
+- 창 안을 클릭 → 창이 떠 있고 포커스는 트리(↓ 가 그대로 듣는다). 창 안의 링크 · tsv-view 칸은 눌리지 않는다.
+- 창이 떠 있을 때 편집기 클릭 · 빈 곳 클릭 · `F6` · `Ctrl+Shift+P` · `Ctrl+B` → 창이 닫힌다.
+- 다른 앱으로 `Alt+Tab` 했다가 돌아오기 → 창이 그대로 있다.
+- 창이 떠 있을 때 `F2` / `Delete` → 창이 닫히고 전과 같은 이름 바꾸기 / 지우기 대화상자. 취소하면 포커스는 트리.
+- 트리 항목 오른쪽 클릭 · `Shift+F10` → 메뉴 맨 위에 "훑어보기 Space". 누르면 그 항목으로 창이 뜬다. 빈 곳(루트) 메뉴에는 없다.
+- 팔레트 "훑어보기" → 트리로 포커스가 가고 커서의 항목으로 창이 뜬다. 트리를 `Ctrl+B` 로 접어 둔 채여도 트리가 펴지고 뜬다.
+- 가져온 폴더(`@별칭`)의 파일에 `Space` → 그 파일이 보인다.
+- 라이트 · 다크 전환(`Ctrl+Alt+D`) → 창의 바탕 · 글자 · 테두리가 테마를 따른다.
+
+**확인하지 못한 것**
+
+- 실제 폴더(File System Access)에서 — OPFS 로만 봤다.
+- 마우스 휠 스크롤 — 내장 브라우저 창이 가려져 있어 좌표 클릭 · 휠을 못 했다. 스크롤 상자는 `overflow: auto` 이고 내용은 `inert` 라 휠이 상자로 간다고 보지만 눈으로 보지 않았다. `Alt+Tab` 뒤 그대로인지도 보지 않았다(자동화로 앱 창을 떠날 수 없다).
+- `↓` 를 누르고 있을 때의 느낌 · 큰 파일에서 읽는 시간 — 재지 않았다.
+- 창 크기는 `resize` 이벤트 · 트리의 `ResizeObserver` 로 다시 잡는다. 브라우저 확인 중 뷰포트 흉내(emulation)로 크기를 바꿨을 때는 `resize` 이벤트가 안 와 손으로 일으켜 봤다 — 실제 창 크기 바꾸기에서는 오는 것이 보통이지만 눈으로 보지 않았다.
+- 실제 한글 IME 상태에서의 `Space` — 트리에는 입력 칸이 없어 조합이 없다고 보지만 보지 않았다.
+
 ### Phase E — 폴더 훑어보기 (어림 1일)
 
 - 격자 · 지연 읽기 · 키보드(SK12).

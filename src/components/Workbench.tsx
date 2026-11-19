@@ -4,7 +4,7 @@ import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
-import { paneAction, setOpener } from '../lib/nav'
+import { paneAction, requestQuickLook, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -339,6 +339,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     // 트리에 포커스가 있을 때 접으면 포커스가 body 로 빠진다 — 문서 창(없으면 빈 화면 안내)으로 보낸다
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
+    { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },

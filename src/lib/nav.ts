@@ -61,6 +61,19 @@ export function onTreeCursor(l: TreeCursorListener): () => void {
   return () => { treeCursorListeners.delete(l) }
 }
 
+// ---- 훑어보기 창 (PLAN-skim Phase D). 창의 열림은 트리 안의 state 라 팔레트 명령은 이 길로 보낸다
+const quickLookListeners = new Set<() => void>()
+
+/** 트리 커서의 항목으로 훑어보기 창을 연다 — 트리가 포커스를 받으면(이미 있으면 바로) 열린다 */
+export function requestQuickLook() {
+  for (const l of quickLookListeners) l()
+}
+
+export function onQuickLookRequest(l: () => void): () => void {
+  quickLookListeners.add(l)
+  return () => { quickLookListeners.delete(l) }
+}
+
 export function onPaneAction(path: string, l: ActionListener): () => void {
   let set = actionListeners.get(path)
   if (!set) actionListeners.set(path, (set = new Set()))

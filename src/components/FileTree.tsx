@@ -4,8 +4,9 @@ import { keysOf, runCommand, tip } from '../lib/commands'
 import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
-import { onTreeCursor } from '../lib/nav'
+import { onQuickLookRequest, onTreeCursor } from '../lib/nav'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
+import { QuickLook, type QuickLookHandle } from './QuickLook'
 
 /** 트리 오른쪽 클릭의 폴더·경로 동작 */
 export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'reveal' | 'copyPath' | 'editRoot'
@@ -16,7 +17,8 @@ interface Props {
   entries: TreeEntry[]
   activePath: string | null
   dirtyPaths: ReadonlySet<string>
-  onOpen: (path: string) => void
+  /** focus: 연 문서의 편집기로 포커스 (훑어보기 창에서 열 때) */
+  onOpen: (path: string, focus?: boolean) => void
   onNewFile: (dir: string) => void
   onNewFolder: (dir: string) => void
   onRename: (path: string, isDir: boolean) => void
@@ -71,6 +73,13 @@ export function FileTree(p: Props) {
   const [cursor, setCursor] = useState<string | null>(null)
   const body = useRef<HTMLDivElement>(null)
   const menuBox = useRef<HTMLDivElement>(null)
+  /** 훑어보기 창 (PLAN-skim Phase D) — 커서의 항목을 열지 않고 트리 오른쪽에 크게. 포커스는 트리에 남는다 */
+  const [quickLook, setQuickLook] = useState(false)
+  const quickLookBox = useRef<QuickLookHandle>(null)
+  /** 창이 붙는 자리 (트리 전체) */
+  const [treeBox, setTreeBox] = useState<HTMLDivElement | null>(null)
+  /** 팔레트 명령이 열라고 한 때 — 트리가 아직 포커스를 받기 전이면 받을 때 연다 */
+  const quickLookAsked = useRef(0)
 
   // 고른 폴더를 앱에 알린다 (Ctrl+Alt+N / Ctrl+Alt+Shift+N 이 이 폴더에 만든다)
   const onSelectDir = p.onSelectDir
@@ -102,6 +111,21 @@ export function FileTree(p: Props) {
       case 'Escape': e.preventDefault(); e.stopPropagation(); closeMenu(); break
       default: break
     }
+  }
+
+  // 팔레트 명령 "훑어보기" (lib/nav requestQuickLook) — 트리로 포커스를 보낸 뒤 오는 요청이다
+  useEffect(() => onQuickLookRequest(() => {
+    if (document.activeElement === body.current) setQuickLook(true)
+    else quickLookAsked.current = Date.now()
+  }), [])
+
+  /** 포커스가 트리를 떠날 때 — 트리 · 훑어보기 창 밖으로 갔으면 창을 닫는다 (다른 곳 클릭 · F6 · 팔레트 · 메뉴 …) */
+  const onFocusLeave = (to: Element | null) => {
+    const inside = (el: Element | null) => !!el && (!!body.current?.contains(el) || !!quickLookBox.current?.contains(el))
+    if (inside(to)) return
+    if (to) { setQuickLook(false); return }
+    // 옮겨 간 곳이 없다: 창 전환(Alt+Tab — 포커스는 트리에 그대로) 또는 포커스 없는 곳을 누름(body 로) → 한 박자 뒤에 본다
+    window.setTimeout(() => { if (!inside(document.activeElement)) setQuickLook(false) }, 0)
   }
 
   // 처음 트리가 오면 지난번에 펼쳐 둔 대로 (저장분이 없으면 전부) 펼친다. 그 뒤로는 사용자가 접고 편 상태를 유지하고 저장한다.
@@ -204,6 +228,7 @@ export function FileTree(p: Props) {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (menu) return
+    const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
     const idx = cursorRow ? rows.indexOf(cursorRow) : -1
     const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
     switch (e.key) {
@@ -215,7 +240,7 @@ export function FileTree(p: Props) {
         e.preventDefault()
         if (!cursorRow) { go(0); return }
         if (cursorRow.entry.type === 'dir') { if (!expanded.has(cursorRow.entry.path)) toggle(cursorRow.entry.path); else go(idx + 1) }
-        else p.onOpen(cursorRow.entry.path)
+        else { p.onOpen(cursorRow.entry.path, quickLook); setQuickLook(false) }
         return
       case 'ArrowLeft': {
         e.preventDefault()
@@ -227,14 +252,44 @@ export function FileTree(p: Props) {
       }
       case 'Enter':
         e.preventDefault()
+        // 훑어보기 창에서 파일을 열면 창을 닫고 편집기로 간다 (폴더는 펼치기 · 접기라 그대로). 창이 없으면 지금처럼 포커스는 트리에
+        if (cursorRow && quickLook && cursorRow.entry.type === 'file') {
+          setQuickLook(false)
+          setSelectedDir(cursorRow.parent)
+          p.onOpen(cursorRow.entry.path, true)
+          return
+        }
         if (cursorRow) activate(cursorRow)
+        return
+      // 훑어보기 창 열기 · 닫기 (PLAN-skim SK11). 누르고 있어도 한 번만
+      case ' ':
+        if (!plain) return
+        e.preventDefault()
+        if (e.repeat) return
+        if (quickLook) setQuickLook(false)
+        else if (cursorRow) setQuickLook(true)
+        return
+      case 'Escape':
+        if (!quickLook) return
+        e.preventDefault()
+        e.stopPropagation()
+        setQuickLook(false)
+        return
+      // 창이 열려 있으면 창 안을 한 화면씩. 닫혀 있으면 지금처럼 트리를 스크롤한다(브라우저 기본)
+      case 'PageUp':
+      case 'PageDown':
+        if (!quickLook || !plain) return
+        e.preventDefault()
+        quickLookBox.current?.scrollPage(e.key === 'PageDown' ? 1 : -1)
         return
       case 'F2':
         e.preventDefault()
+        setQuickLook(false)
         if (cursorRow && !cursorRow.entry.mount) p.onRename(cursorRow.entry.path, cursorRow.entry.type === 'dir')
         return
       case 'Delete':
         e.preventDefault()
+        setQuickLook(false)
         // 가져온 폴더의 루트는 지우지 않는다 (해제는 메뉴에서)
         if (cursorRow && !cursorRow.entry.mount) p.onDelete(cursorRow.entry.path, cursorRow.entry.type === 'dir')
         return
@@ -296,7 +351,7 @@ export function FileTree(p: Props) {
   }
 
   return (
-    <div className="tree">
+    <div className="tree" ref={setTreeBox}>
       <button className="tree-search" onClick={() => runCommand('fileSearch')} title={tip('파일 이름으로 찾아 열기', 'fileSearch')}>
         <span className="tree-search-icon">🔍</span>
         <span className="tree-search-label">파일 검색</span>
@@ -316,12 +371,18 @@ export function FileTree(p: Props) {
         aria-label="파일"
         data-focus-target="tree"
         onKeyDown={onKeyDown}
-        onFocus={() => { if (!cursor && rows.length) setCursor(p.activePath ?? rows[0].entry.path) }}
+        onFocus={() => {
+          if (!cursor && rows.length) setCursor(p.activePath ?? rows[0].entry.path)
+          if (quickLookAsked.current && Date.now() - quickLookAsked.current < 1000) setQuickLook(true)
+          quickLookAsked.current = 0
+        }}
+        onBlur={(ev) => { if (quickLook) onFocusLeave(ev.relatedTarget as Element | null) }}
         onContextMenu={(ev) => { if (ev.target === ev.currentTarget) { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, '', true) } }}
       >
         {p.entries.length === 0 && <div className="tree-empty">{DOC_EXTS_LABEL} 파일이 없습니다</div>}
         {rows.map(renderRow)}
       </div>
+      {quickLook && cursorRow && <QuickLook ref={quickLookBox} entry={cursorRow.entry} anchor={treeBox} onFocusOut={onFocusLeave} />}
       {menu && (() => {
         const { mount, isRoot } = mountOf(menu.path)
         const writable = !mount?.readOnly
@@ -330,6 +391,7 @@ export function FileTree(p: Props) {
         return (
           <div className="ctx-menu" role="menu" ref={menuBox} style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onMenuKeyDown}>
             <div className="ctx-title">{isPrimary ? '(루트)' : isRoot ? mount!.path ?? mount!.folder : menu.path}</div>
+            {!isPrimary && <button onClick={() => { closeMenu(); setQuickLook(true) }}>훑어보기 <kbd>Space</kbd></button>}
             {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
             {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
             {!isRoot && writable && !menu.isDir && <button onClick={() => { closeMenu(); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
