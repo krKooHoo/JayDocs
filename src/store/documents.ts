@@ -175,6 +175,11 @@ class DocumentStore {
   }
 
   get(path: string) { return this.docs.get(path) }
+  /** 저장하면 파일에 써질 글 (저장 전 편집 · BOM · 줄바꿈 포함). 열려 있지 않거나 읽는 중이면 null — "템플릿으로 저장" 이 쓴다 */
+  fileText(path: string): string | null {
+    const d = this.docs.get(path)
+    return d && d.status === 'ready' ? serialize(d) : null
+  }
   all() { return [...this.docs.values()] }
   isDirty(path: string) {
     const d = this.docs.get(path)

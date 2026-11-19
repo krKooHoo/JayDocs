@@ -11,8 +11,9 @@ import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
 import { GrantScreen, StartScreen } from './components/StartScreen'
-import { DOC_EXTS_LABEL } from './lib/filetypes.mjs'
-import { allCommands, commandByCombo, registerCommands, runCommand, tip, useCommandsVersion } from './lib/commands'
+import { NewDocDialog, type NewDocChoice } from './components/NewDocDialog'
+import { fileNameOf, TEMPLATES_DIR, userTemplatePaths } from './lib/templates'
+import { allCommands, commandByCombo, keysOf, registerCommands, runCommand, tip, useCommandsVersion } from './lib/commands'
 import { comboFromEvent } from './lib/keys'
 import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
@@ -156,11 +157,13 @@ type Overlay =
   /** after: 저장하고 이어서 할 일 (상세 경로가 없어 탐색기 열기·경로 복사가 여기로 왔을 때) */
   | { kind: 'rootInfo'; root: RootDetail; guess: string; after?: { action: 'reveal' | 'copyPath'; path: string } }
   | { kind: 'explorer'; path: string | null }
+  /** 새 문서 창 (PLAN-skim SK8). dir: 트리에서 고른 폴더 */
+  | { kind: 'newDoc'; dir: string }
   | null
 
 /** 그 창을 여는 명령 — 떠 있는 동안 같은 키를 다시 누르면 닫는다 (DESIGN §24.7 X5) */
 const OVERLAY_COMMAND: Partial<Record<NonNullable<Overlay>['kind'], string>> = {
-  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder',
+  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder', newDoc: 'newFile',
 }
 /** 찾아보는 창(팔레트 · 파일 검색 · 도움말)끼리는 서로의 키로 바로 넘어간다. 입력을 받는 창(가져오기 · 폴더 정보 · 연결 도우미)에서는 안 넘어간다 */
 const LOOKUP_OVERLAYS = new Set(['palette', 'files', 'help'])
@@ -279,35 +282,77 @@ function Workspace({ layoutId }: { layoutId: string }) {
     return true
   }
 
-  const newFile = useCallback(async (dir: string) => {
+  /** 새 문서 창을 연다 (PLAN-skim SK8). 이름 검사 · 만들기는 창의 Enter 에서 `createDoc` 이 한다 */
+  const newFile = useCallback((dir: string) => {
     if (blockedReadOnly(dir, '파일을 만들')) return
-    const initial = dir ? `${dir}/새 문서.md` : '새 문서.md'
-    const made: { path: string | null } = { path: null }
+    setOverlay({ kind: 'newDoc', dir })
+  }, [])
+
+  /** 새 문서 창의 만들기. 문제가 있으면 그 이유(창은 닫히지 않고 칸 아래에 보인다), 되면 null */
+  const createDoc = useCallback(async (path: string, choice: NewDocChoice): Promise<string | null> => {
+    const problem = checkEntryPath(path, { kind: 'file', exists: pathTaken })
+    if (problem) return problem
+    let text = choice.body ?? ''
+    if (choice.path) {
+      // 내 템플릿은 읽은 글을 그대로 쓴다 — UTF-8 파일은 BOM · 줄바꿈까지 바이트가 같다 (PLAN-skim §5)
+      try {
+        const f = await backend().read(choice.path)
+        if ((f.encoding ?? 'utf-8') !== 'utf-8') return `UTF-8 이 아닌 템플릿은 쓸 수 없습니다: ${choice.path}`
+        text = f.text
+      } catch (e) {
+        return `템플릿을 읽지 못했습니다: ${(e as Error).message}`
+      }
+    }
+    try {
+      await backend().write(path, text, null)
+    } catch (e) {
+      // 트리에 안 보이던 파일과 겹치면 백엔드가 충돌로 막는다 (덮어쓰지 않는다)
+      return e instanceof ConflictError ? `이미 있는 파일입니다: ${path}` : `만들지 못했습니다: ${(e as Error).message}`
+    }
+    setOverlay(null)
+    dismissNotice(FILE_NOTICE)
+    await refreshTree()
+    // 만든 문서의 편집기로 포커스 — 바로 칠 수 있게 (DESIGN §24.7 X4). 창이 돌려준 포커스(트리 등)보다 뒤에 온다
+    bench.current?.openFile(path, true)
+    return null
+  }, [refreshTree])
+
+  /** 지금 문서(저장 전 편집 포함)를 주 폴더의 `_templates/` 에 쓴다 (PLAN-skim SK10). 겹치면 덮어쓰지 않는다 */
+  const saveAsTemplate = useCallback(async () => {
+    const src = bench.current?.activePath()
+    if (!src) return
+    if (store.fileText(src) === null) { notifyError('문서를 아직 읽는 중입니다', { key: FILE_NOTICE }); return }
+    // 이미 있는 폴더는 그 이름(대소문자) 그대로 쓴다
+    const dir = treeRef.current.find((e) => e.type === 'dir' && !e.mount && e.path.toLowerCase() === TEMPLATES_DIR)?.path ?? TEMPLATES_DIR
+    const name = fileNameOf(src)
+    const saved: { path: string | null } = { path: null }
     await askText({
-      title: '새 파일',
-      label: `경로 (${DOC_EXTS_LABEL})`,
-      value: initial,
-      select: nameStemRange(initial),
-      okLabel: '만들기',
+      title: '현재 문서를 템플릿으로 저장',
+      label: `이름 (주 폴더의 ${dir}/ 아래)`,
+      hint: '새 문서 창의 "내 템플릿" 줄에 뜹니다. 저장하지 않은 편집도 들어갑니다',
+      value: name,
+      select: nameStemRange(name),
+      okLabel: '저장',
       submit: async (input) => {
-        const path = cleanEntryPath(input)
+        const n = cleanEntryPath(input)
+        if (n.includes('/')) return `이름에 / 를 쓸 수 없습니다 — ${dir}/ 바로 아래 파일만 템플릿으로 뜹니다`
+        const path = n === '' ? '' : `${dir}/${n}`
         const problem = checkEntryPath(path, { kind: 'file', exists: pathTaken })
         if (problem) return problem
+        const text = store.fileText(src)
+        if (text === null) return '문서가 닫혔습니다'
         try {
-          await backend().write(path, '', null)
+          await backend().write(path, text, null)
         } catch (e) {
-          // 트리에 안 보이던 파일과 겹치면 백엔드가 충돌로 막는다 (덮어쓰지 않는다)
-          return e instanceof ConflictError ? `이미 있는 파일입니다: ${path}` : `만들지 못했습니다: ${(e as Error).message}`
+          return e instanceof ConflictError ? `이미 있는 파일입니다: ${path}` : `저장하지 못했습니다: ${(e as Error).message}`
         }
-        made.path = path
+        saved.path = path
         return null
       },
     })
-    if (!made.path) return
-    dismissNotice(FILE_NOTICE)
+    if (!saved.path) return
     await refreshTree()
-    // 만든 문서의 편집기로 포커스 — 바로 칠 수 있게 (DESIGN §24.7 X4). 대화상자가 돌려준 포커스(트리 등)보다 뒤에 온다
-    bench.current?.openFile(made.path, true)
+    notify(`템플릿으로 저장했습니다: ${saved.path} — 새 문서 창(${keysOf('newFile') ?? '새 파일'})의 "내 템플릿" 에 뜹니다`, { key: FILE_NOTICE })
   }, [refreshTree])
 
   const newFolder = useCallback(async (dir: string) => {
@@ -511,11 +556,12 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'fileSearch', label: '파일 검색', run: () => setOverlay({ kind: 'files' }) },
     { id: 'help', label: '단축키 도움말', run: () => setOverlay({ kind: 'help' }) },
     { id: 'toggleTheme', label: '다크 / 라이트 전환', run: toggleTheme },
-    { id: 'newFile', label: '새 파일', run: () => void newFile(lastDir.current) },
+    { id: 'newFile', label: '새 파일…', run: () => newFile(lastDir.current) },
+    { id: 'saveAsTemplate', label: '현재 문서를 템플릿으로 저장…', run: () => void saveAsTemplate(), enabled: () => !!bench.current?.activePath() },
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
-  ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
+  ]), [newFile, saveAsTemplate, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
 
@@ -612,7 +658,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
             tree={tree}
             onRefresh={() => void refreshTree()}
             onSelectDir={(d) => { lastDir.current = d }}
-            onNewFile={(d) => void newFile(d)}
+            onNewFile={(d) => newFile(d)}
             onNewFolder={(d) => void newFolder(d)}
             onRename={(path, isDir) => void rename(path, isDir)}
             onDelete={(path, isDir) => void remove(path, isDir)}
@@ -647,6 +693,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
         />
       )}
       {overlay?.kind === 'explorer' && <ExplorerHelperDialog path={overlay.path} onOpen={openExplorer} onCopy={copyLocalPath} onClose={closeOverlay} />}
+      {/* 닫으면 창이 스스로 부르던 곳(트리 · 편집기)으로 포커스를 돌려준다 — 이름 입력 대화상자와 같은 규칙 */}
+      {overlay?.kind === 'newDoc' && <NewDocDialog dir={overlay.dir} userTemplates={userTemplatePaths(tree)} onCreate={createDoc} onClose={() => setOverlay(null)} />}
     </div>
   )
 }

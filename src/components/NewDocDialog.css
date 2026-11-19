@@ -1,0 +1,44 @@
+/* 새 문서 창 (components/NewDocDialog.tsx, PLAN-skim SK8). 겉틀은 앱 대화상자(.palette · .dialog-*)를 그대로 쓴다 */
+.palette.newdoc { width: min(760px, 94vw); max-height: 90vh; }
+/* 카드 줄이 길어 다른 창보다 위에서 시작한다 (낮은 창에서 카드가 한 장은 다 보이게) */
+.overlay:has(> .palette.newdoc) { padding-top: 4vh; }
+.newdoc .dialog-hint kbd,
+.newdoc .dialog-hint code { font-family: var(--mono); font-size: 11px; }
+
+/* 이름 칸 + 뒤에 고정으로 보이는 확장자 */
+.newdoc-name {
+  display: flex; align-items: center; min-width: 0;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg);
+}
+.newdoc-name:focus-within { border-color: var(--accent); }
+.newdoc-name.is-invalid { border-color: var(--danger); }
+.dialog-field .newdoc-name input { flex: 1; min-width: 0; border: 0; background: transparent; }
+.newdoc-ext { padding: 0 9px 0 0; font-family: var(--mono); font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+
+/* 세 줄 (빈 문서 · 예시 · 내 템플릿) */
+.newdoc-body { overflow: auto; padding: 4px 14px 0; margin-top: 8px; border-top: 1px solid var(--border); }
+.newdoc-row h3 { margin: 10px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.newdoc-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 0 0 6px; }
+
+.newdoc-card { min-width: 0; padding: 4px; border-radius: 6px; cursor: pointer; }
+.newdoc-card:hover { background: var(--hover); }
+.newdoc-card.is-on { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+.newdoc-card .doc-thumb { border-radius: 3px; }
+.newdoc-card-title { margin-top: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.newdoc-card-desc {
+  margin-top: 2px; font-size: 11px; line-height: 1.4; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* 빈 문서는 썸네일 대신 형식 아이콘 · 확장자가 든 빈 종이 */
+.newdoc-paper {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  height: 64px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg);
+}
+.newdoc-paper-icon { font-size: 20px; line-height: 1; color: var(--muted); }
+.newdoc-paper-ext { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.newdoc-card.is-on .newdoc-paper-icon { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .newdoc-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
