@@ -8,6 +8,7 @@ import { useTheme } from '../lib/theme'
 import { applyTsvView, parseTsvViewSpec, resolveViewPath, rowRecord, type TsvViewResult } from '../lib/md/tsvView'
 import { compileTemplate } from '../lib/md/template'
 import { stripBaked } from '../lib/md/bake'
+import { LINE_ATTR } from '../lib/md/sourceLines'
 import { columnLetter, deriveSchema, type TableSchema } from '../lib/tsv/schema'
 import { issueKey, validateTable } from '../lib/tsv/validate'
 import { setCell } from '../lib/tsv/edits'
@@ -421,6 +422,50 @@ function childClassName(children: ReactNode): string {
   return ''
 }
 
+// ---------------------------------------------------------------- react-markdown 컴포넌트
+/** rich: Mermaid · tsv-view 를 실제로 그린다 · light: 상자로 대신한다 (PLAN-skim SK2 — 썸네일 격자가 표 · 그림을 한꺼번에 불러오지 않게) */
+export type MdWeight = 'rich' | 'light'
+
+/**
+ * react-markdown 의 `components` — 미리보기(`PreviewPane`)와 훑어보기(`DocView`)가 같이 쓴다.
+ * 펜스(```mermaid · ```tsv-view), 문서 링크(누르면 앱에서 연다), 문서 폴더 안 그림을 처리한다.
+ * `mdPath` 는 상대 링크 · 그림 · tsv-view `file` 의 기준이 되는 md 의 앱 경로.
+ * 돌려주는 객체는 호출마다 새것이다 — 쓰는 쪽에서 `useMemo(() => mdComponents(path, weight), [path, weight])` 로 잡아 둔다.
+ */
+export function mdComponents(mdPath: string, weight: MdWeight = 'rich'): Components {
+  return {
+    pre: ({ node, children, ...rest }) => {
+      const cls = childClassName(children)
+      if (/language-(mermaid|tsv-view)\b/.test(cls)) {
+        // 이 펜스들은 <pre> 없이 그린다. 원문 줄 번호(rehypeSourceLines 가 <pre> 에 찍은 것)가 있으면 잃지 않게 상자에 옮긴다
+        const line = (rest as Record<string, unknown>)[LINE_ATTR]
+        return line === undefined ? <>{children}</> : <div {...{ [LINE_ATTR]: line }}>{children}</div>
+      }
+      return <pre {...rest}>{children}</pre>
+    },
+    code: ({ node, className, children, ...rest }) => {
+      const m = /language-([\w-]+)/.exec(className ?? '')
+      const src = String(children ?? '').replace(/\n$/, '')
+      if (m?.[1] === 'mermaid') return weight === 'light' ? <div className="doc-stub">다이어그램</div> : <Mermaid code={src} />
+      if (m?.[1] === 'tsv-view') {
+        if (weight === 'light') return <div className="doc-stub">⊞ {parseTsvViewSpec(src).file ?? 'tsv-view'}</div>
+        return <TsvView body={src} mdPath={mdPath} />
+      }
+      return <code className={className} {...rest}>{children}</code>
+    },
+    a: ({ node, href, children, ...rest }) => {
+      if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('#')) {
+        const target = resolveLink(href.split('#')[0], mdPath)
+        if (isDocName(target)) {
+          return <a href={href} {...rest} onClick={(e) => { e.preventDefault(); openPath(target) }}>{children}</a>
+        }
+      }
+      return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>
+    },
+    img: ({ node, src, alt, ...rest }) => (typeof src === 'string' ? <LocalImage src={src} mdPath={mdPath} alt={alt} {...rest} /> : null),
+  }
+}
+
 // ---------------------------------------------------------------- 미리보기
 export function PreviewPane({ path }: { path: string }) {
   useDocVersion(path)
@@ -431,30 +476,7 @@ export function PreviewPane({ path }: { path: string }) {
   const debounced = useDebounced(text, 150)
   const source = useMemo(() => (debounced ? stripBaked(debounced.toString()) : ''), [debounced])
 
-  const components = useMemo<Components>(() => ({
-    pre: ({ node, children, ...rest }) => {
-      const cls = childClassName(children)
-      if (/language-(mermaid|tsv-view)\b/.test(cls)) return <>{children}</>
-      return <pre {...rest}>{children}</pre>
-    },
-    code: ({ node, className, children, ...rest }) => {
-      const m = /language-([\w-]+)/.exec(className ?? '')
-      const src = String(children ?? '').replace(/\n$/, '')
-      if (m?.[1] === 'mermaid') return <Mermaid code={src} />
-      if (m?.[1] === 'tsv-view') return <TsvView body={src} mdPath={path} />
-      return <code className={className} {...rest}>{children}</code>
-    },
-    a: ({ node, href, children, ...rest }) => {
-      if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('#')) {
-        const target = resolveLink(href.split('#')[0], path)
-        if (isDocName(target)) {
-          return <a href={href} {...rest} onClick={(e) => { e.preventDefault(); openPath(target) }}>{children}</a>
-        }
-      }
-      return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>
-    },
-    img: ({ node, src, alt, ...rest }) => (typeof src === 'string' ? <LocalImage src={src} mdPath={path} alt={alt} {...rest} /> : null),
-  }), [path])
+  const components = useMemo(() => mdComponents(path), [path])
 
   // react-markdown 은 렌더될 때마다 문서 전체를 다시 파싱한다 (내부 memo 없음) → 원문이 바뀔 때만 새 엘리먼트.
   // 안의 TsvView 는 스스로 스토어를 구독하므로 표가 바뀌면 그것만 다시 그린다

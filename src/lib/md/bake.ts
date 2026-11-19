@@ -159,3 +159,39 @@ export function applyChanges(text: string, changes: BakeChange[]): string {
 export function stripBaked(text: string): string {
   return text.replace(/\n?<!-- tsv-view:baked -->[\s\S]*?<!-- \/tsv-view -->/g, '')
 }
+
+export interface StrippedText {
+  /** baked 블록을 걷어 낸 글 — `stripBaked(원문)` 과 같다 */
+  text: string
+  /**
+   * 걷어 낸 글의 줄 → 원문 줄. `lines[i]` 는 걷어 낸 글의 (i + 1)번째 줄이 시작하는 원문 줄 번호(1부터).
+   * 길이는 걷어 낸 글의 줄 수와 같다. 줄은 `\n` 으로 센다 (CRLF 도 `\n` 위치로 세므로 번호는 같다).
+   */
+  lines: number[]
+}
+
+/**
+ * `stripBaked` 와 같은 글을 돌려주면서, 그 글의 줄이 원문의 몇 번째 줄인지도 같이 준다 (PLAN-skim SK5).
+ * 미리보기 · 훑어보기는 걷어 낸 글을 그리므로, 그린 조각의 줄 번호를 편집기(원문)의 줄로 되돌릴 때 쓴다.
+ */
+export function stripBakedWithLines(text: string): StrippedText {
+  const re = /\n?<!-- tsv-view:baked -->[\s\S]*?<!-- \/tsv-view -->/g
+  const lines: number[] = [1]
+  let out = ''
+  let last = 0
+  /** 원문에서 지금 보고 있는 자리의 줄 번호 */
+  let line = 1
+  const keep = (seg: string) => {
+    for (let i = seg.indexOf('\n'); i >= 0; i = seg.indexOf('\n', i + 1)) lines.push(++line)
+    out += seg
+  }
+  for (const m of text.matchAll(re)) {
+    keep(text.slice(last, m.index))
+    for (let i = m[0].indexOf('\n'); i >= 0; i = m[0].indexOf('\n', i + 1)) line++
+    last = m.index + m[0].length
+    // 블록이 줄 맨 앞에서 시작해 앞 줄바꿈 없이 걷혔다(글의 맨 처음) → 이 줄에 남는 것은 닫는 표식 뒤의 글이다
+    if (!m[0].startsWith('\n') && (out === '' || out.endsWith('\n'))) lines[lines.length - 1] = line
+  }
+  keep(text.slice(last))
+  return { text: out, lines }
+}

@@ -315,6 +315,32 @@ button.tree-search {
 .mermaid-box.is-error { color: var(--danger); font-size: 13px; }
 .mermaid-box.is-error pre { color: var(--fg); }
 
+/* ---- 훑어보기 (PLAN-skim) — DocView · DocThumb ---- */
+.doc-view { box-sizing: border-box; min-width: 0; color: var(--fg); }
+/* md 는 미리보기의 글 스타일(.preview-body)을 그대로 쓴다 — 아래 40vh 여백과 너비 제한만 뺀다 */
+.doc-view.preview-body { max-width: none; padding: 18px 28px; }
+.doc-text { padding: 12px 16px; font-family: var(--mono); font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.doc-table { padding: 12px 16px; font-size: 13px; line-height: 1.5; }
+.doc-table table { border-collapse: collapse; }
+.doc-table th, .doc-table td { border: 1px solid var(--border); padding: 3px 9px; text-align: left; vertical-align: top; white-space: pre; font-weight: 400; }
+.doc-table tr.is-types th { background: var(--panel2); color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.doc-table tr.is-head th, .doc-table tr.is-head td { background: var(--panel); font-weight: 600; }
+.doc-table td.is-comment { color: var(--muted); }
+.doc-more { margin-top: 6px; color: var(--muted); font-size: 12px; }
+/* light 무게: Mermaid · tsv-view 자리에 놓는 상자 */
+.doc-stub { margin: 0.8em 0; padding: 14px 12px; border: 1px dashed var(--border); border-radius: 6px; background: var(--panel2); color: var(--muted); font-size: 13px; text-align: center; }
+.doc-note { padding: 12px 14px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.doc-note.is-error { color: var(--danger); }
+/* 틀 썸네일: 세로 A4 비율. 종이 색은 앱 테마를 따른다. 종이 상자의 너비 · transform 은 DocThumb 이 잰 뒤 넣는다 */
+.doc-thumb { position: relative; width: 100%; aspect-ratio: 1 / 1.414; overflow: hidden; contain: layout paint; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.doc-thumb-page { position: absolute; left: 0; top: 0; width: 794px; transform-origin: 0 0; }
+.doc-thumb-page:not([data-fit]) { visibility: hidden; }
+.doc-thumb-page > .doc-view { padding: 32px 40px; }
+/* 썸네일 안에서는 스크롤할 수 없다 — 넘치는 표 · 코드의 스크롤 막대를 숨긴다 */
+.doc-thumb-page * { scrollbar-width: none; }
+.doc-thumb-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 10px; text-align: center; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.doc-thumb-note.is-error { color: var(--danger); }
+
 /* ---- tsv-view ---- */
 .tsv-view { margin: 0.8em 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 13px; }
 .tsv-view.is-error, .tsv-view.is-loading { padding: 8px 12px; color: var(--muted); }

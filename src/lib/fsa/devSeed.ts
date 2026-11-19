@@ -41,6 +41,8 @@ const ITEM_CALC = ['Target\tFormula\t#메모', 'Upkeep\t=max(1, round(BuildCost 
 const SAMPLE: Record<string, string> = {
   'docs/개요.md': '# 개요\n\n본문 **굵게**\n\n```mermaid\ngraph LR\n  A --> B\n```\n',
   'docs/표.tsv': '#string\tstring\tuint\n이름\t값\n가\t1\n나\t2\n',
+  // CSV: 첫 줄이 머리글, 쉼표 · 줄바꿈이 든 칸은 따옴표. Excel 이 한글을 읽게 BOM 을 붙인다
+  'docs/목록.csv': '﻿이름,분류,수량,메모\n사과,과일,10,"쉼표, 가 든 칸"\n당근,채소,4,\n소금,기타,0,"두 줄\n메모"\n',
   'docs/아이템.md': [
     '# 아이템',
     '',

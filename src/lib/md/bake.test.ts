@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyChanges, bakeMarkdown, bakeTargets, findTsvViewFences, renderPipeTable, stripBaked } from './bake'
+import { applyChanges, bakeMarkdown, bakeTargets, findTsvViewFences, renderPipeTable, stripBaked, stripBakedWithLines } from './bake'
 import { parseTsv } from '../tsv/parse'
 import { deriveSchema } from '../tsv/schema'
 import { parseTsvViewSpec } from './tsvView'
@@ -90,5 +90,53 @@ describe('bake', () => {
   it('대상 파일 · 미리보기용 제거', () => {
     expect(bakeTargets('```tsv-view\nfile: ./X_Table.tsv\nbake: true\n```', 'a/doc.md')).toEqual(['a/X_Table.tsv'])
     expect(stripBaked('x\n<!-- tsv-view:baked -->\n| a |\n<!-- /tsv-view -->\ny')).toBe('x\ny')
+  })
+})
+
+describe('걷어 낸 글의 줄 → 원문 줄 (PLAN-skim SK5)', () => {
+  const BAKED = '<!-- tsv-view:baked -->\n| a |\n| - |\n<!-- /tsv-view -->'
+  /** 지도가 맞는지: 걷어 낸 글의 줄마다, 가리키는 원문 줄이 그 줄로 시작해야 한다 */
+  const check = (src: string) => {
+    const r = stripBakedWithLines(src)
+    expect(r.text).toBe(stripBaked(src))
+    const stripped = r.text.split('\n')
+    const original = src.split('\n')
+    expect(r.lines.length).toBe(stripped.length)
+    stripped.forEach((l, i) => {
+      const from = original[r.lines[i] - 1]
+      // 닫는 표식과 같은 줄에 남은 글은 그 줄의 끝부분이다
+      expect(from.startsWith(l) || from.endsWith(l)).toBe(true)
+    })
+    return r
+  }
+
+  it('baked 블록이 없으면 그대로', () => {
+    expect(stripBakedWithLines('')).toEqual({ text: '', lines: [1] })
+    expect(stripBakedWithLines('a\nb\n')).toEqual({ text: 'a\nb\n', lines: [1, 2, 3] })
+  })
+  it('블록 뒤의 줄은 걷어 낸 줄 수만큼 밀린다', () => {
+    const r = check(`x\n${BAKED}\ny\nz`)
+    expect(r.text).toBe('x\ny\nz')
+    expect(r.lines).toEqual([1, 6, 7])
+  })
+  it('펜스 + baked 블록이 둘 — 뒤로 갈수록 더 밀린다', () => {
+    const src = ['# 제목', '', '```tsv-view', 'file: a.tsv', 'bake: true', '```', ...BAKED.split('\n'), '', '가운데', '', '```tsv-view', 'file: b.tsv', 'bake: true', '```', ...BAKED.split('\n'), '', '끝'].join('\n')
+    const r = check(src)
+    // 걷어 낸 글: 1 제목 · 3~6 펜스 · 7 빈 줄 · 8 가운데 · 10~13 펜스 · 14 빈 줄 · 15 끝
+    expect(r.lines[7]).toBe(12) // 가운데
+    expect(r.lines[9]).toBe(14) // 두 번째 펜스의 ```
+    expect(r.lines[14]).toBe(23) // 끝
+  })
+  it('빈 줄 뒤의 블록 · 글의 맨 처음 블록 · CRLF', () => {
+    expect(check(`a\n\n${BAKED}\nb`).lines).toEqual([1, 2, 7])
+    expect(check(`${BAKED}\nb`).lines).toEqual([4, 5])
+    const crlf = `x\r\n${BAKED.replace(/\n/g, '\r\n')}\r\ny`
+    // CRLF 는 `\n` 만 걷혀 `\r` 이 남는다(stripBaked 의 원래 동작) — 줄 수는 `\n` 으로 세어 2줄. 그리는 쪽(DocView)은 먼저 LF 로 맞춘다
+    expect(stripBakedWithLines(crlf).text).toBe(stripBaked(crlf))
+    expect(stripBakedWithLines(crlf).lines).toEqual([1, 6])
+  })
+  it('닫히지 않은 블록은 걷지 않는다', () => {
+    const src = 'a\n<!-- tsv-view:baked -->\n| a |\nb'
+    expect(stripBakedWithLines(src)).toEqual({ text: src, lines: [1, 2, 3, 4] })
   })
 })
