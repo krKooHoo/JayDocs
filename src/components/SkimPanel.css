@@ -1,0 +1,39 @@
+/* 훑어보기 패널 (PLAN-skim Phase C). SkimPanel.tsx 가 불러온다. 색은 앱 테마의 변수를 그대로 쓴다 (SK13) */
+
+/* .md-body(가로 flex)의 오른쪽 띠. 너비는 인라인 스타일(120 ~ 400px) — 창이 좁으면 편집기가 절반은 갖게 한다 */
+.skim-panel { position: relative; flex: 0 0 auto; min-width: 0; max-width: 50%; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg); }
+
+/* 다시 그리는 데 오래 걸리는 문서의 안내 (자동 갱신 멈춤) */
+.skim-paused { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 8px; font-size: 11px; line-height: 1.4; color: var(--muted); background: var(--warn-bg); border-bottom: 1px solid var(--warn-border); }
+.skim-paused button { font-size: 11px; padding: 2px 8px; }
+
+/* 너비 손잡이 — 왼쪽 가장자리에 걸친다 */
+.skim-resizer { position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; z-index: 3; cursor: col-resize; touch-action: none; }
+.skim-resizer:hover, .skim-resizer:active { background: var(--accent-soft); }
+.skim-resizer:focus-visible { background: var(--accent); outline: none; }
+
+/* 패널 안에서 세로로 스크롤한다. 스크롤 막대는 숨긴다 — 좁은 띠에서 글 자리를 먹고, 범위 상자가 위치를 알려 준다 */
+.skim-scroll { flex: 1; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; cursor: pointer; user-select: none; touch-action: pan-y; }
+.skim-scroll::-webkit-scrollbar { display: none; }
+
+/* 축소된 한 장의 자리. 높이는 SkimPanel 이 내용 높이 × 배율로 직접 준다 (transform 은 자리를 줄이지 않는다) */
+.skim-sheet { position: relative; width: 100%; overflow: hidden; }
+.skim-page { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--bg); }
+/* 패널 안에서는 조각을 스크롤할 수 없다 — 넘치는 표 · 코드의 스크롤 막대를 숨긴다 */
+.skim-page * { scrollbar-width: none; }
+
+/* 화면 밖 조각은 브라우저가 건너뛴다 (SK5). 패널 안의 조각에만 건다 — 높이가 어림값이 되므로 DocThumb 의 재기에는 쓰면 안 된다.
+   auto: 한 번 그린 조각은 그 높이를 기억한다. 뒤의 숫자는 아직 안 그린 조각의 어림 높이 */
+.skim-page .doc-view > * { content-visibility: auto; contain-intrinsic-size: auto 40px; }
+/* txt 는 줄마다 한 조각이다 (13.5px × 1.6) */
+.skim-page .doc-text > div { contain-intrinsic-size: auto 21.6px; }
+
+/* 편집기가 지금 보여 주는 범위 */
+.skim-range { position: absolute; left: 0; right: 0; z-index: 2; box-sizing: border-box; background: var(--range); border: 1px solid var(--accent); border-radius: 2px; cursor: grab; }
+.skim-panel.is-dragging .skim-range, .skim-panel.is-dragging .skim-scroll { cursor: grabbing; }
+/* 커서가 든 조각 옆의 얇은 선 */
+.skim-cursor { position: absolute; left: 0; width: 3px; z-index: 1; background: var(--accent); pointer-events: none; }
+.skim-range[hidden], .skim-cursor[hidden] { display: none; }
+
+/* 문서 창 막대의 켬 · 끔 버튼 */
+.pane-bar button.skim-toggle.is-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }

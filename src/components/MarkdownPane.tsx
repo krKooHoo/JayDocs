@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { baseExtensions, isMarkdownPath, remote } from '../lib/cm'
-import { tip } from '../lib/commands'
+import { runCommand, tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
+import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
 import { dismissNotice, notifyError } from '../lib/notices'
 import { store, useDocVersion } from '../store/documents'
 import { PreviewPane } from './PreviewPane'
 import { ReadOnlyBanner } from './ReadOnlyBanner'
+import { SkimPanel } from './SkimPanel'
+import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
 
 type Mode = 'source' | 'hybrid' | 'preview' | 'split'
@@ -31,6 +34,11 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   useDocVersion(path)
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  /** 훑어보기 패널에 넘기는 편집기 — 편집기가 만들어지고 없어질 때 패널이 다시 그려지게 state 로도 둔다 */
+  const [skimView, setSkimView] = useState<EditorView | null>(null)
+  /** 편집기가 바뀌면(글 · 커서 · 줄 높이) 부를 함수 — 훑어보기 패널이 넣는다 */
+  const skimPing = useRef<(() => void) | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const hybridComp = useRef(new Compartment())
   const [mode, setModeState] = useState<Mode>(() => loadMode(path))
   /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
@@ -107,6 +115,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           ...baseExtensions(path, { save: () => void store.save(path), readOnly }),
           hybridComp.current.of(isMd && loadMode(path) === 'hybrid' ? hybrid(path) : []),
           EditorView.updateListener.of((u) => {
+            if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
             if (!u.docChanged) return
             for (const tr of u.transactions) {
               if (tr.docChanged && !tr.annotation(remote)) store.applyChanges(path, tr.changes, source)
@@ -117,6 +126,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       parent: host.current,
     })
     viewRef.current = view
+    setSkimView(view)
     const unsubscribe = store.onChanges(path, (changes, from) => {
       if (from === source) return
       view.dispatch({ changes, annotations: [remote.of(true), Transaction.addToHistory.of(false)] })
@@ -125,6 +135,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       unsubscribe()
       view.destroy()
       viewRef.current = null
+      setSkimView(null)
     }
   }, [ready, path, isMd, readOnly])
 
@@ -138,6 +149,12 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const dirty = store.isDirty(path)
   const status = d?.saving ? '저장 중…' : d?.conflict ? '충돌' : readOnly ? '🔒 읽기 전용' : dirty ? '● 수정됨' : '저장됨'
   const bakeErrors = d?.kind === 'text' ? d.bakeErrors : []
+
+  // 훑어보기 패널 (PLAN-skim SK6): md · txt 에만, 켜져 있고 문서 창이 하나일 때만 보인다
+  const skimmable = isSkimPath(path)
+  const skimOn = useSkimPanelState().on
+  const paneCount = useDocPaneCount()
+  const skimShown = skimmable && skimOn && paneCount === 1 && ready
 
   return (
     <div className="pane" ref={root}>
@@ -157,6 +174,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
             <button onClick={formatActive} disabled={readOnly} title="들여쓰기 2칸으로 정렬 (명령 팔레트: JSON 정렬). Ctrl+Z 로 되돌린다">정렬</button>
           </>
         )}
+        {skimmable && (
+          <button
+            className={'skim-toggle' + (skimOn ? ' is-on' : '')}
+            aria-pressed={skimOn}
+            onClick={() => { runCommand('toggleSkim'); focusPane() }}
+            title={tip('훑어보기 패널 켜기 / 끄기 — 문서 전체를 오른쪽에 축소해 띄운다. 문서 창이 하나일 때만 보인다', 'toggleSkim')}
+          >
+            훑어보기
+          </button>
+        )}
         <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
         <button onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title={tip('저장', 'save')}>저장</button>
         <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
@@ -173,9 +200,11 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       {d?.status === 'ready' && d.error && !d.conflict && <div className="banner is-error">{d.error}</div>}
       {bakeErrors.map((e) => <div key={e} className="banner">{e}</div>)}
       {d?.status === 'loading' && <div className="pane-empty">불러오는 중…</div>}
-      <div className={'md-body is-' + mode}>
+      <div className={'md-body is-' + mode} ref={bodyRef}>
         <div className="editor-host" ref={host} style={{ display: mode === 'preview' ? 'none' : undefined }} />
-        {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} />}
+        {/* lines: 미리보기 전용 모드에서 훑어보기 패널이 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다. 그때만 찍는다 */}
+        {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}
+        {skimShown && <SkimPanel key={path} path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
       </div>
     </div>
   )

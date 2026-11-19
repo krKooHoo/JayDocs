@@ -8,6 +8,9 @@ import { paneAction, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
+import { dismissNotice, notify } from '../lib/notices'
+import { SKIM_WIDTH_BIG_STEP, isSkimPath, nudgeSkimPanelWidth, refreshSkimPanels, skimPanelState, toggleSkimPanel } from '../lib/skim/panel'
+import { DocPaneCountContext } from './docPanes'
 import { FileTree, type RootAction } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
@@ -99,6 +102,13 @@ function findTabs(model: Model, pred: (cfg: Record<string, unknown>, component: 
   return out
 }
 
+/** 문서 창의 수 — 탭이 든 탭 묶음. 가장자리 패널(border)은 탭 묶음이 아니라 세지 않는다 */
+function countDocPanes(model: Model): number {
+  let n = 0
+  model.visitNodes((node: Node) => { if (node.getType() === 'tabset' && (node as TabSetNode).getChildren().length) n++ })
+  return n
+}
+
 /** 가장자리 패널(border)의 탭을 찾는다. visitNodes 는 border 안의 탭도 돈다 */
 function findBorder(model: Model, component: string): { border: BorderNode; tab: TabNode } | null {
   let found: { border: BorderNode; tab: TabNode } | null = null
@@ -156,6 +166,17 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
    * 이제 그 렌더가 없으니 모델이 바뀔 때 활성 문서를 state 로 받아, 그것이 달라질 때만 다시 그린다.
    */
   const [activeDoc, setActiveDoc] = useState<string | null>(() => activePath())
+  /** 문서 창의 수 (훑어보기 패널은 하나일 때만 보인다 — PLAN-skim SK6). 레이아웃이 바뀔 때 세고, 수가 달라질 때만 다시 그린다 */
+  const [paneCount, setPaneCount] = useState(() => countDocPanes(model))
+
+  /** 훑어보기 패널 켜기 / 끄기. 켰는데 지금 화면에는 안 보이는 경우(분할 중 · md · txt 가 아닌 문서)에는 이유를 알린다 */
+  const toggleSkim = useCallback(() => {
+    toggleSkimPanel()
+    const path = activePath()
+    const why = countDocPanes(model) > 1 ? '문서 창이 하나일 때만 보입니다' : !path || !isSkimPath(path) ? '.md · .txt 문서에서 보입니다' : null
+    if (why) notify(skimPanelState().on ? `훑어보기 패널을 켰습니다 — ${why}` : '훑어보기 패널을 껐습니다', { key: 'skim' })
+    else dismissNotice('skim')
+  }, [model, activePath])
 
   const selectTab = useCallback((tab: TabNode) => {
     model.doAction(Actions.selectTab(tab.getId()))
@@ -324,7 +345,11 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 하이브리드 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, cyclePane])
+    { id: 'toggleSkim', label: '훑어보기 패널 켜기 / 끄기', run: toggleSkim },
+    { id: 'skimWider', label: '훑어보기 패널 넓히기', run: () => nudgeSkimPanelWidth(SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
+    { id: 'skimNarrower', label: '훑어보기 패널 좁히기', run: () => nudgeSkimPanelWidth(-SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
+    { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, cyclePane, toggleSkim])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'
@@ -430,6 +455,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   const onModelChange = (m: Model, action: Action) => {
     try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
     setActiveDoc(activePath())
+    setPaneCount(countDocPanes(m))
     // 탭이 닫히며 포커스가 있던 편집기 · 탭 버튼이 사라지면 body 로 빠진다 — 남은 문서 창으로, 없으면 트리로 (DESIGN §24.7 X3)
     if (action.type === Actions.DELETE_TAB) {
       window.setTimeout(() => {
@@ -457,14 +483,16 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   // display: contents — 레이아웃엔 영향이 없고 탭 제목 클릭만 받는다
   return (
     <div style={{ display: 'contents' }} onClick={onLayoutClick}>
-      <Layout
-        model={model}
-        factory={factory}
-        onRenderTab={onRenderTab}
-        onAction={onAction}
-        onModelChange={onModelChange}
-        onTabSetPlaceHolder={emptyPane}
-      />
+      <DocPaneCountContext.Provider value={paneCount}>
+        <Layout
+          model={model}
+          factory={factory}
+          onRenderTab={onRenderTab}
+          onAction={onAction}
+          onModelChange={onModelChange}
+          onTabSetPlaceHolder={emptyPane}
+        />
+      </DocPaneCountContext.Provider>
     </div>
   )
 })

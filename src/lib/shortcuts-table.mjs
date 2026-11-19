@@ -63,6 +63,8 @@ export const SHORTCUTS = [
       { keys: 'F6', label: '다음 영역으로 포커스 — 파일 트리 → 탭 묶음들 (분할한 창 사이를 옮긴다)', command: 'nextPane' },
       { keys: 'Shift+F6', label: '이전 영역으로 포커스', command: 'prevPane' },
       { keys: 'Ctrl+Shift+V', label: '마크다운 보기 모드 순환: 소스 → 하이브리드 → 분할 → 미리보기', command: 'cycleMdMode' },
+      { keys: 'Ctrl+Alt+M', label: '훑어보기 패널 켜기 / 끄기 — .md · .txt 창의 오른쪽에 문서 전체를 축소해 띄운다 (문서 창이 하나일 때만 보인다). 누르면 그 자리로 커서, 상자는 편집기가 보여 주는 범위 — 끌면 스크롤. 다시 그리는 데 오래 걸리는 큰 문서는 자동으로 다시 그리지 않는다 — 패널의 "새로 고침" 또는 팔레트의 "훑어보기 패널 새로 고침"', command: 'toggleSkim' },
+      { keys: '← / → (훑어보기 패널 너비 손잡이)', label: '패널 넓히기 / 좁히기 — 손잡이는 패널 왼쪽 가장자리, Shift 를 누르면 크게, Home / End 는 가장 넓게 / 좁게. 팔레트의 "훑어보기 패널 넓히기 / 좁히기" 도 같다' },
     ],
   },
   {

@@ -7,8 +7,8 @@ import { openPath } from '../lib/nav'
 import { useTheme } from '../lib/theme'
 import { applyTsvView, parseTsvViewSpec, resolveViewPath, rowRecord, type TsvViewResult } from '../lib/md/tsvView'
 import { compileTemplate } from '../lib/md/template'
-import { stripBaked } from '../lib/md/bake'
-import { LINE_ATTR } from '../lib/md/sourceLines'
+import { stripBaked, stripBakedWithLines } from '../lib/md/bake'
+import { LINE_ATTR, rehypeSourceLines } from '../lib/md/sourceLines'
 import { columnLetter, deriveSchema, type TableSchema } from '../lib/tsv/schema'
 import { issueKey, validateTable } from '../lib/tsv/validate'
 import { setCell } from '../lib/tsv/edits'
@@ -467,20 +467,31 @@ export function mdComponents(mdPath: string, weight: MdWeight = 'rich'): Compone
 }
 
 // ---------------------------------------------------------------- 미리보기
-export function PreviewPane({ path }: { path: string }) {
+/**
+ * `lines`: 최상위 조각에 원문 줄(`data-line`)을 찍는다 — 훑어보기 패널이 미리보기 전용 모드에서 스크롤 위치를 줄로 바꾸는 데 쓴다
+ * (PLAN-skim SK7). 켜면 HTML 블록 · Mermaid · tsv-view 펜스가 `<div data-line>` 으로 한 겹 싸인다. 끄면(기본) DOM 은 전과 같다.
+ */
+export function PreviewPane({ path, lines = false }: { path: string; lines?: boolean }) {
   useDocVersion(path)
   const d = store.get(path)
   // 이 문서가 바뀔 때만 다시 그리지만, 내용 말고도(저장 중 · 충돌 등) 바뀐다. 그래서 문자열 변환 · 파싱은 Text 가
   // 바뀌었을 때만 한다 — Text 는 불변이라 편집마다 새 객체다. 디바운스도 Text 객체에 건다
   const text = d?.kind === 'text' && d.status === 'ready' ? d.text : null
   const debounced = useDebounced(text, 150)
-  const source = useMemo(() => (debounced ? stripBaked(debounced.toString()) : ''), [debounced])
+  const stripped = useMemo(() => {
+    const raw = debounced ? debounced.toString() : ''
+    return lines ? stripBakedWithLines(raw) : { text: stripBaked(raw), lines: null }
+  }, [debounced, lines])
 
   const components = useMemo(() => mdComponents(path), [path])
 
   // react-markdown 은 렌더될 때마다 문서 전체를 다시 파싱한다 (내부 memo 없음) → 원문이 바뀔 때만 새 엘리먼트.
   // 안의 TsvView 는 스스로 스토어를 구독하므로 표가 바뀌면 그것만 다시 그린다
-  const body = useMemo(() => <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>{source}</ReactMarkdown>, [source, components])
+  const body = useMemo(() => (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={stripped.lines ? [[rehypeSourceLines, { lines: stripped.lines }]] : undefined} components={components}>
+      {stripped.text}
+    </ReactMarkdown>
+  ), [stripped, components])
 
   // tabIndex: 미리보기 전용 모드에서 포커스를 받는다 (DESIGN §24.7 X2). 미리보기 자체에 포커스가 있을 때만 키로 스크롤한다 —
   // 안의 tsv-view 칸 · 링크에 포커스가 있으면 그쪽 키다. 브라우저 기본 스크롤에 맡기지 않고 직접 옮긴다(부드러운 스크롤 설정과 무관하게 바로 움직인다)
