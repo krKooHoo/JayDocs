@@ -316,7 +316,9 @@ export function SkimPanel({ path, mode, view, ping, body }: SkimPanelProps) {
       }
       // 오래 걸렸으면 자동 갱신을 멈춘다. 새로 고친 뒤 빨라졌으면(글이 줄었다) 다시 따라간다.
       // 처음 그릴 때는 한 번뿐인 일(Mermaid 불러오기 등)이 섞이므로 두 배를 넘을 때만 멈춘다 — 그 사이의 문서는 한 번 다시 그려 보고 정한다
-      setPaused(cost.current > (first ? SKIM_PAUSE_MS * 2 : SKIM_PAUSE_MS))
+      // 한번 멈춘 문서는 새로 고친 렌더가 절반 아래로 내려와야 다시 따라간다 — 경계에 걸친 문서가 켜졌다 꺼졌다 하지 않게
+      const ms = cost.current
+      setPaused((was) => ms > (first ? SKIM_PAUSE_MS * 2 : was ? SKIM_PAUSE_MS / 2 : SKIM_PAUSE_MS))
     }
   }, [shown, width, fit, sync])
 
