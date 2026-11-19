@@ -460,8 +460,29 @@ export function PreviewPane({ path }: { path: string }) {
   // 안의 TsvView 는 스스로 스토어를 구독하므로 표가 바뀌면 그것만 다시 그린다
   const body = useMemo(() => <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>{source}</ReactMarkdown>, [source, components])
 
+  // tabIndex: 미리보기 전용 모드에서 포커스를 받는다 (DESIGN §24.7 X2). 미리보기 자체에 포커스가 있을 때만 키로 스크롤한다 —
+  // 안의 tsv-view 칸 · 링크에 포커스가 있으면 그쪽 키다. 브라우저 기본 스크롤에 맡기지 않고 직접 옮긴다(부드러운 스크롤 설정과 무관하게 바로 움직인다)
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.ctrlKey || e.altKey || e.metaKey) return
+    const el = e.currentTarget
+    const page = Math.max(40, el.clientHeight - 40)
+    let top: number
+    switch (e.key) {
+      case 'ArrowDown': top = el.scrollTop + 40; break
+      case 'ArrowUp': top = el.scrollTop - 40; break
+      case 'PageDown': top = el.scrollTop + page; break
+      case 'PageUp': top = el.scrollTop - page; break
+      case ' ': top = el.scrollTop + (e.shiftKey ? -page : page); break
+      case 'Home': top = 0; break
+      case 'End': top = el.scrollHeight; break
+      default: return
+    }
+    e.preventDefault()
+    el.scrollTop = top
+  }
+
   return (
-    <div className="preview">
+    <div className="preview" tabIndex={0} role="region" aria-label="미리보기" onKeyDown={onKeyDown}>
       <div className="preview-body">{body}</div>
     </div>
   )

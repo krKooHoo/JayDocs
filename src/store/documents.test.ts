@@ -13,6 +13,11 @@ setBackend({
     if (!f) throw new Error('없는 파일')
     return { path, text: f.text, mtime: f.mtime }
   },
+  stat: async (path: string) => {
+    const f = files.get(path)
+    if (!f) throw new Error('없는 파일')
+    return { mtime: f.mtime }
+  },
   write: async (path: string, text: string) => {
     files.set(path, { text, mtime: ++tick })
     return { mtime: tick }
@@ -493,6 +498,78 @@ describe('여러 문서에 걸친 의존 — Field · 보조 표 · 트리', () 
     await flush(); await flush()
     expect(fn).toHaveBeenCalledTimes(2)
     off()
+  })
+
+  it('다시 확인(rescan): 열려 있지 않은 보조 표가 바깥에서 바뀌었으면 다시 읽고, 그대로면 읽지 않는다', async () => {
+    const dir = `t${++n}`
+    const aux = `${dir}/X_Calc.tsv`
+    files.set(aux, { text: 'Target\tFormula\nV\t=1\n', mtime: 1 })
+    store.setTree(fileEntries([aux]))
+    store.auxTable(aux)
+    await flush()
+    const w = watch(aux)
+    const cached = store.auxTable(aux)
+    expect(cached?.rows[1].cells[1]).toBe('=1')
+    // 그대로 — 깨우지 않고 표 객체도 그대로다 (다시 계산하지 않는다)
+    await store.recheckOpen()
+    await flush()
+    expect(w.fn).not.toHaveBeenCalled()
+    expect(store.auxTable(aux)).toBe(cached)
+    // 바깥에서 바뀜 (감시가 없어 알림은 오지 않았다)
+    files.set(aux, { text: 'Target\tFormula\nV\t=2\n', mtime: 2 })
+    await store.recheckOpen()
+    await flush()
+    expect(w.fn).toHaveBeenCalledTimes(1)
+    expect(store.auxTable(aux)?.rows[1].cells[1]).toBe('=2')
+    w.off()
+  })
+
+  it('다시 확인(rescan): 열려 있지 않은 Field 파일이 바뀌면 Field 구독자가 불리고 내용이 바뀐다', async () => {
+    const dir = `t${++n}`
+    const field = `${dir}/Z_Field.tsv`
+    files.set(field, { text: 'ZDef\t설명\nKey\t키\n', mtime: 1 })
+    store.setTree(fileEntries([field]))
+    await flush()
+    const before = store.fieldFiles()
+    expect(before.length).toBe(1)
+    const fn = vi.fn()
+    const off = store.subscribeFields(fn)
+    await store.recheckOpen()
+    await flush()
+    expect(fn).not.toHaveBeenCalled()
+    expect(store.fieldFiles()).toBe(before)
+    files.set(field, { text: 'ZDef\t설명\nKey\t고친 설명\n', mtime: 2 })
+    await store.recheckOpen()
+    await flush()
+    expect(fn).toHaveBeenCalled()
+    expect(store.fieldFiles()).not.toBe(before)
+    off()
+  })
+
+  it('다시 확인(rescan): 지워진 보조 표는 캐시를 버리고 한 번 깨운다. 열린 문서는 문서 쪽 규칙을 따른다', async () => {
+    const dir = `t${++n}`
+    const aux = `${dir}/Gone2.tsv`
+    const opened = `${dir}/Open.tsv`
+    files.set(aux, { text: 'Key\tV\nA\t1\n', mtime: 1 })
+    files.set(opened, { text: 'Key\tV\nA\t1\n', mtime: 1 })
+    store.setTree(fileEntries([aux, opened]))
+    store.auxTable(aux)
+    await flush()
+    await open(opened)
+    const w = watch(aux)
+    files.delete(aux)
+    files.set(opened, { text: 'Key\tV\nA\t7\n', mtime: 5 })
+    await store.recheckOpen()
+    await flush(); await flush(); await flush()
+    expect(w.fn).toHaveBeenCalledTimes(1)
+    expect(store.auxTable(aux)).toBeNull()
+    await flush(); await flush()
+    expect(w.fn).toHaveBeenCalledTimes(1) // 읽기 실패가 다시 알림을 부르지 않는다
+    const d = store.get(opened)
+    expect(d?.kind === 'tsv' && d.table.rows[1].cells[1]).toBe('7') // 깨끗한 열린 문서는 디스크 내용을 받는다
+    w.off()
+    store.release(opened)
+    await flush()
   })
 
   it('트리: 경로 집합이 바뀔 때만 불린다', () => {

@@ -1,8 +1,9 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
 import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
-import { registerCommands } from '../lib/commands'
-import { askConfirm } from '../lib/dialogs'
+import { keysOf, registerCommands, runCommand } from '../lib/commands'
+import { askConfirm, dialogOpen } from '../lib/dialogs'
+import { recordRecentFile } from '../lib/recents'
 import { paneAction, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
@@ -12,8 +13,8 @@ import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
 
 export interface WorkbenchHandle {
-  openFile(path: string): void
-  splitActive(): void
+  /** focus: 열고 그 문서 창(편집기 · 그리드)으로 포커스 — 새 파일, 파일 검색 */
+  openFile(path: string, focus?: boolean): void
   saveActive(): void
   activePath(): string | null
   /** 파일·폴더 이름이 바뀌면 열린 탭의 경로를 따라 바꾼다 */
@@ -114,17 +115,25 @@ function focusLater(selector: string) {
   window.setTimeout(() => document.querySelector<HTMLElement>(selector)?.focus(), 60)
 }
 
-/** 탭 하나의 문서 창 안에서 포커스를 받는 곳 — 에디터 본문 또는 그리드의 입력 칸 */
-const PANE_FOCUS = '.cm-content, textarea.grid-input'
+/**
+ * 탭 하나의 문서 창 안에서 포커스를 받는 곳 — 에디터 본문, 그리드의 입력 칸, 미리보기(미리보기 전용 모드).
+ * 문서 순서대로 보이는 첫 번째 것이 받는다: 분할 모드는 에디터, 미리보기 전용은 (에디터가 숨겨져) 미리보기.
+ */
+const PANE_FOCUS = '.cm-content, textarea.grid-input, .preview'
 
 /**
  * 그 탭(탭 id)의 창에 포커스. 같은 문서가 두 창에 열려 있어도 이 탭의 창만 받는다 (경로로 부르면 마지막 창이 가져간다).
- * 막 선택한 탭은 다음 프레임에야 그려질 수 있어 몇 번 다시 시도한다. 미리보기 전용 모드처럼 줄 곳이 없으면 그만둔다.
+ * 막 선택한 탭은 다음 프레임에야 그려질 수 있어 몇 번 다시 시도한다 (막 만든 파일은 읽히는 데 더 걸려 tries 를 늘려 부른다).
  */
 function focusTabPane(tabId: string, tries = 6) {
-  const el = document.querySelector<HTMLElement>(`[data-tab-id="${tabId}"] :is(${PANE_FOCUS})`)
-  if (el && el.offsetParent !== null) { el.focus(); return }
+  const els = document.querySelectorAll<HTMLElement>(`[data-tab-id="${tabId}"] :is(${PANE_FOCUS})`)
+  for (const el of els) if (el.offsetParent !== null) { el.focus(); return }
   if (tries > 0) window.setTimeout(() => focusTabPane(tabId, tries - 1), 40)
+}
+
+/** 탭 제목 버튼(flexlayout 이 그리는 `role="tab"`)의 id — 앞머리 뒤가 탭 id (공백은 `_`) */
+function tabButtonId(tabId: string) {
+  return 'flexlayout-tabbutton-' + tabId.replace(/\s/g, '_')
 }
 
 const DOC_COMPONENTS = new Set(['md', 'tsv'])
@@ -154,17 +163,22 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (parent && parent.getType() === 'tabset') model.doAction(Actions.setActiveTabset(parent.getId()))
   }, [model])
 
-  const addTab = useCallback((json: Record<string, unknown>) => {
+  /** 탭을 붙이고 그 탭을 돌려준다 */
+  const addTab = useCallback((json: Record<string, unknown>): TabNode | undefined => {
     const ts = activeTabSet()
-    if (!ts) return
-    model.doAction(Actions.addNode(json, ts.getId(), DockLocation.CENTER, -1, true))
+    if (!ts) return undefined
+    return model.doAction(Actions.addNode(json, ts.getId(), DockLocation.CENTER, -1, true)) as TabNode | undefined
   }, [model, activeTabSet])
 
-  const openFile = useCallback((path: string) => {
+  const openFile = useCallback((path: string, focus = false) => {
+    recordRecentFile(p.layoutId, path)
     const existing = findTabs(model, (cfg, comp) => DOC_COMPONENTS.has(comp) && cfg.path === path)
-    if (existing.length) { selectTab(existing[0]); return }
-    addTab(tabJson(path))
-  }, [model, selectTab, addTab])
+    let tab: TabNode | undefined = existing[0]
+    if (tab) selectTab(tab)
+    else tab = addTab(tabJson(path))
+    // 막 만든 파일은 읽힌 뒤에야 편집기가 생긴다 — 넉넉히 기다린다 (약 1초)
+    if (focus && tab) focusTabPane(tab.getId(), 25)
+  }, [model, selectTab, addTab, p.layoutId])
 
   useEffect(() => {
     setOpener(openFile)
@@ -252,10 +266,25 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     else focusLater(selector)
   }, [toggleBorder])
   const focusTree = useCallback(() => focusPanel('tree', '[data-focus-target="tree"]'), [focusPanel])
+  /**
+   * 문서 창으로 포커스. 활성 탭 묶음이 비었으면 문서가 있는 다른 묶음으로 간다.
+   * 문서 탭이 하나도 없으면 포커스가 body 에 남지 않게 트리로 (접혀 있으면 억지로 펴지 않고 빈 화면 안내로) — DESIGN §24.7 X3
+   */
   const focusEditor = useCallback(() => {
-    const tab = activeTab()
-    if (tab && DOC_COMPONENTS.has(tab.getComponent() ?? '')) focusTabPane(tab.getId())
-  }, [activeTab])
+    const docTab = (t: Node | undefined) => (t && DOC_COMPONENTS.has((t as TabNode).getComponent() ?? '') ? (t as TabNode) : undefined)
+    const tab = docTab(activeTab())
+    if (tab) { focusTabPane(tab.getId()); return }
+    let other: TabSetNode | undefined
+    model.visitNodes((n: Node) => { if (!other && n.getType() === 'tabset' && docTab((n as TabSetNode).getSelectedNode())) other = n as TabSetNode })
+    const otherTab = docTab(other?.getSelectedNode())
+    if (other && otherTab) {
+      model.doAction(Actions.setActiveTabset(other.getId()))
+      focusTabPane(otherTab.getId())
+      return
+    }
+    const treeOpen = (findBorder(model, 'tree')?.border.getSelected() ?? -1) >= 0
+    focusLater(treeOpen ? '[data-focus-target="tree"]' : '[data-focus-target="empty"]')
+  }, [activeTab, model])
 
   /** F6 / Shift+F6 — 파일 트리(펴져 있을 때) → 문서가 있는 탭 묶음들 순서로 포커스를 돌린다 */
   const cyclePane = useCallback((delta: number) => {
@@ -286,7 +315,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'prevTab', label: '이전 탭', run: () => cycleTab(-1) },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `tab${i + 1}`, label: `${i + 1}번째 탭`, hidden: true, run: () => selectTabIndex(i) })),
     { id: 'closeTab', label: '탭 닫기', run: closeActive },
-    { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => toggleBorder('tree') },
+    // 트리에 포커스가 있을 때 접으면 포커스가 body 로 빠진다 — 문서 창(없으면 빈 화면 안내)으로 보낸다
+    { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
@@ -323,7 +353,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     return [...out]
   }, [model])
 
-  useImperativeHandle(ref, () => ({ openFile, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, splitActive, saveActive, activePath, renamePaths, closePaths, openPaths])
+  useImperativeHandle(ref, () => ({ openFile, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, saveActive, activePath, renamePaths, closePaths, openPaths])
 
   const factory = (node: TabNode) => {
     const cfg = (node.getConfig() ?? {}) as Record<string, unknown>
@@ -331,6 +361,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       case 'tree':
         return (
           <FileTree
+            stateKey={p.layoutId}
             entries={p.tree}
             activePath={activeDoc}
             dirtyPaths={dirtyPaths}
@@ -367,27 +398,73 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (dirtyPaths.has(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
   }
 
-  // 탭의 × (Layout 이 내는 동작). 물어야 하면 이 동작은 막고, 답을 받은 뒤 closeTab 이 직접 닫는다
+  const docTabs = () => findTabs(model, (_cfg, comp) => DOC_COMPONENTS.has(comp))
+
+  // Layout 이 내는 동작 (마우스 · 탭 줄의 키보드). model.doAction 으로 부른 것은 여기를 거치지 않는다
   const onAction = (action: Action): Action | undefined => {
+    // 탭의 ×. 물어야 하면 이 동작은 막고, 답을 받은 뒤 closeTab 이 직접 닫는다
     if (action.type === Actions.DELETE_TAB) {
       const id = action.data.node as string
       if (unsavedOnClose(id)) { void closeTab(id); return undefined }
     }
+    // 탭을 골랐으면 (제목 클릭 · 넘친 탭 목록 · 탭 줄에서 Enter) 그 창으로 포커스 — 탭 이동 명령과 같은 결과 (DESIGN §24.7 X1)
+    if (action.type === Actions.SELECT_TAB) {
+      const id = action.data.tabNode as string
+      if (docTabs().some((t) => t.getId() === id)) focusTabPane(id)
+    }
     return action
   }
 
-  const onModelChange = (m: Model) => {
-    try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
-    setActiveDoc(activePath())
+  /**
+   * 이미 골라져 있는 탭의 제목을 누르면 Layout 은 아무 동작도 내지 않는다 — 클릭을 직접 받아 그 창으로 포커스를 준다.
+   * 끌어 옮기기는 click 을 내지 않으므로 건드리지 않는다. × 는 닫기라 뺀다.
+   */
+  const onLayoutClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    const button = target.closest<HTMLElement>('[id^="flexlayout-tabbutton-"]')
+    if (!button || target.closest('.flexlayout__tab_button_trailing')) return
+    const tab = docTabs().find((t) => tabButtonId(t.getId()) === button.id)
+    if (tab) focusTabPane(tab.getId())
   }
 
+  const onModelChange = (m: Model, action: Action) => {
+    try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
+    setActiveDoc(activePath())
+    // 탭이 닫히며 포커스가 있던 편집기 · 탭 버튼이 사라지면 body 로 빠진다 — 남은 문서 창으로, 없으면 트리로 (DESIGN §24.7 X3)
+    if (action.type === Actions.DELETE_TAB) {
+      window.setTimeout(() => {
+        if (dialogOpen()) return // 대화상자가 닫히며 제 규칙대로 돌려준다
+        const ae = document.activeElement
+        if (!ae || ae === document.body || !ae.isConnected) runCommand('focusEditor')
+      }, 60)
+    }
+  }
+
+  /** 문서 탭이 하나도 없는 탭 묶음에 보이는 안내. 단축키는 표에서 가져온다 (하드코딩하지 않는다) */
+  const emptyPane = () => (
+    <div className="empty-pane" tabIndex={0} data-focus-target="empty" aria-label="열린 문서 없음">
+      <p className="empty-pane-title">열린 문서가 없습니다</p>
+      <ul>
+        <li><button onClick={() => runCommand('focusTree')}>파일 트리</button><kbd>{keysOf('focusTree')}</kbd><span>에서 파일을 골라 <kbd>Enter</kbd></span></li>
+        <li><button onClick={() => runCommand('fileSearch')}>파일 검색</button><kbd>{keysOf('fileSearch')}</kbd></li>
+        <li><button onClick={() => runCommand('palette')}>명령 팔레트</button><kbd>{keysOf('palette')}</kbd></li>
+        <li><button onClick={() => runCommand('newFile')}>새 파일</button><kbd>{keysOf('newFile')}</kbd></li>
+        <li><button onClick={() => runCommand('help')}>단축키 도움말</button><kbd>{keysOf('help')}</kbd></li>
+      </ul>
+    </div>
+  )
+
+  // display: contents — 레이아웃엔 영향이 없고 탭 제목 클릭만 받는다
   return (
-    <Layout
-      model={model}
-      factory={factory}
-      onRenderTab={onRenderTab}
-      onAction={onAction}
-      onModelChange={onModelChange}
-    />
+    <div style={{ display: 'contents' }} onClick={onLayoutClick}>
+      <Layout
+        model={model}
+        factory={factory}
+        onRenderTab={onRenderTab}
+        onAction={onAction}
+        onModelChange={onModelChange}
+        onTabSetPlaceHolder={emptyPane}
+      />
+    </div>
   )
 })

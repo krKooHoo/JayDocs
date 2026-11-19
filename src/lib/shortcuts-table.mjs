@@ -49,7 +49,7 @@ export const SHORTCUTS = [
       { keys: 'Alt+W', label: '탭 닫기', command: 'closeTab' },
       { keys: 'Ctrl+B', label: '파일 트리 접기 / 펴기', command: 'toggleTree' },
       { keys: 'Ctrl+Shift+E', label: '파일 트리로 포커스', command: 'focusTree' },
-      { keys: 'Ctrl+Shift+M', label: '문서 창(편집기 · 그리드)으로 포커스', command: 'focusEditor' },
+      { keys: 'Ctrl+Shift+M', label: '문서 창(편집기 · 그리드 · 미리보기 전용 모드면 미리보기)으로 포커스 — 열린 문서가 없으면 파일 트리로', command: 'focusEditor' },
       { keys: 'F6', label: '다음 영역으로 포커스 — 파일 트리 → 탭 묶음들 (분할한 창 사이를 옮긴다)', command: 'nextPane' },
       { keys: 'Shift+F6', label: '이전 영역으로 포커스', command: 'prevPane' },
       { keys: 'Ctrl+Shift+V', label: '마크다운 보기 모드 순환: 소스 → 하이브리드 → 분할 → 미리보기', command: 'cycleMdMode' },
@@ -74,6 +74,7 @@ export const SHORTCUTS = [
     intro: '표준 편집 키 외에 자주 쓰는 것만. 전체는 CodeMirror 기본 키맵. 보기 모드는 소스 → 하이브리드(커서 줄만 원문) → 분할 → 미리보기 순으로 Ctrl+Shift+V.',
     items: [
       { keys: 'Ctrl+Enter (tsv-view 셀)', label: '미리보기·하이브리드의 tsv-view 에서 선택한 셀을 그리드로 연다. 셀은 더블클릭·Enter·F2 로 그 자리에서 편집, Tab/Enter 로 이동, Delete 로 비움' },
+      { keys: '↑ / ↓ · PageUp / PageDown · Home / End · Space (미리보기 전용 모드)', label: '미리보기 스크롤 — 미리보기 전용 모드에서는 미리보기가 포커스를 받는다 (F6 · 탭 이동 · Ctrl+Shift+M 도 미리보기로). Ctrl+Shift+V 로 소스로 돌면 편집기로 돌아온다' },
       { keys: 'Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z', label: '되돌리기 / 다시 실행 (다시 실행은 둘 중 아무거나)' },
       { keys: 'Ctrl+F', label: '찾기 — 편집기 위에 찾기 패널 (바꾸기도)' },
       { keys: 'Ctrl+D', label: '같은 단어를 하나 더 선택 (여러 커서)' },
@@ -129,11 +130,13 @@ export const SHORTCUTS = [
   },
   {
     scope: '팔레트 · 파일 검색',
+    intro: '검색어가 없으면 최근에 팔레트로 실행한 명령 · 최근에 연 파일이 위에 온다("최근" 표시). 팔레트 · 파일 검색 · 도움말 · 폴더 가져오기 같은 창이 떠 있는 동안에는 대화상자와 같이 전역 단축키(저장 · 창 이동 · 탭 닫기 …)가 동작하지 않는다.',
     items: [
-      { keys: '글자 입력', label: '필터 (띄어쓰기 없이 글자 순서만 맞아도 찾는다)' },
+      { keys: '글자 입력', label: '필터 (띄어쓰기 없이 글자 순서만 맞아도 찾는다). 순위가 같으면 최근 것이 먼저' },
       { keys: '↑ / ↓', label: '항목 이동' },
       { keys: 'Enter', label: '실행 / 열기' },
       { keys: 'Esc', label: '닫기' },
+      { keys: 'Ctrl+Shift+P / Ctrl+P / F1 (창이 떠 있을 때)', label: '그 창을 연 키를 다시 누르면 닫는다. 팔레트 · 파일 검색 · 도움말끼리는 서로의 키로 바로 넘어간다 (폴더 가져오기는 Ctrl+Shift+O 로 닫는다)' },
     ],
   },
 ]

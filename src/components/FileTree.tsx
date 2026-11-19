@@ -4,11 +4,15 @@ import { keysOf, runCommand, tip } from '../lib/commands'
 import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
+import { onTreeCursor } from '../lib/nav'
+import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
 
 /** 트리 오른쪽 클릭의 폴더·경로 동작 */
 export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'reveal' | 'copyPath' | 'editRoot'
 
 interface Props {
+  /** 펼친 폴더를 기억하는 열쇠 (작업 공간 id) */
+  stateKey: string
   entries: TreeEntry[]
   activePath: string | null
   dirtyPaths: ReadonlySet<string>
@@ -100,10 +104,25 @@ export function FileTree(p: Props) {
     }
   }
 
-  // 처음 트리가 오면 전부 펼친다. 그 뒤로는 사용자가 접은 상태를 유지.
+  // 처음 트리가 오면 지난번에 펼쳐 둔 대로 (저장분이 없으면 전부) 펼친다. 그 뒤로는 사용자가 접고 편 상태를 유지하고 저장한다.
+  // 트리에서 없어진 폴더는 펼침 목록 · 저장분에서 뺀다 (DESIGN §24.7 X7)
+  const dirs = useMemo(() => allDirs(p.entries), [p.entries])
   useEffect(() => {
-    if (!initialized && p.entries.length) { setExpanded(new Set(allDirs(p.entries))); setInitialized(true) }
-  }, [p.entries, initialized])
+    if (!p.entries.length) return
+    if (!initialized) {
+      const saved = loadExpanded(p.stateKey)
+      setExpanded(new Set(saved === null ? dirs : pruneExpanded(saved, dirs)))
+      setInitialized(true)
+      return
+    }
+    setExpanded((s) => {
+      const kept = pruneExpanded(s, dirs)
+      return kept.length === s.size ? s : new Set(kept)
+    })
+  }, [p.entries, dirs, initialized, p.stateKey])
+  useEffect(() => {
+    if (initialized) saveExpanded(p.stateKey, pruneExpanded(expanded, dirs))
+  }, [expanded, dirs, initialized, p.stateKey])
 
   // 가져온 폴더 (트리 맨 위 단계의 `@별칭` 노드). 새로 가져온 폴더는 그 루트를 펼쳐 보여 준다
   const mounts = useMemo(() => new Map(p.entries.filter((e) => e.mount).map((e) => [e.mount!.alias, e.mount!])), [p.entries])
@@ -134,12 +153,38 @@ export function FileTree(p: Props) {
   const rows = useMemo(() => flatten(p.entries, expanded), [p.entries, expanded])
   const cursorRow = rows.find((r) => r.entry.path === cursor) ?? null
 
-  // 커서가 보이게
+  /** 앱이 커서를 옮기라고 한 경로 (이름을 바꾼 파일) — 트리를 다시 읽기 전이면 아직 행이 없다. 행이 생기면 보이게 스크롤하고 비운다 */
+  const awaited = useRef<string | null>(null)
+  /** 커서가 마지막으로 있던 줄 번호 — 그 항목이 사라지면(삭제) 같은 자리의 항목으로 옮긴다 */
+  const lastIndex = useRef(0)
+  /** 마지막으로 보이게 스크롤해 준 커서 */
+  const shown = useRef<string | null>(null)
+
+  // 앱이 시키는 커서 이동 (lib/nav 의 setTreeCursor): 접힌 상위 폴더를 펴고 커서와 "고른 폴더" 를 옮긴다
+  useEffect(() => onTreeCursor((path) => {
+    awaited.current = path
+    setCursor(path)
+    setSelectedDir(parentOf(path))
+    const up = ancestorDirs(path)
+    setExpanded((s) => (up.every((d) => s.has(d)) ? s : new Set([...s, ...up])))
+  }), [])
+
+  // 커서가 보이게. 커서의 항목이 사라졌으면(지워짐 · 바깥에서 없어짐) 같은 자리의 항목으로 — ↓ 가 맨 위부터 다시 가지 않게 (TC-807)
   useEffect(() => {
     if (!cursor || !body.current) return
+    const i = rows.findIndex((r) => r.entry.path === cursor)
+    if (i < 0) {
+      if (awaited.current !== cursor && initialized && rows.length) setCursor(rows[Math.min(lastIndex.current, rows.length - 1)].entry.path)
+      return
+    }
+    lastIndex.current = i
+    if (awaited.current === cursor) awaited.current = null
+    // 스크롤은 커서가 옮겨졌을 때만 — 트리를 다시 읽을 때마다 끌어오면 휠로 넘겨 보던 자리를 잃는다
+    if (shown.current === cursor) return
+    shown.current = cursor
     const el = body.current.querySelector<HTMLElement>(`[data-path="${CSS.escape(cursor)}"]`)
     el?.scrollIntoView({ block: 'nearest' })
-  }, [cursor])
+  }, [cursor, rows, initialized])
 
   const toggle = (path: string) =>
     setExpanded((s) => { const n = new Set(s); if (n.has(path)) n.delete(path); else n.add(path); return n })

@@ -42,6 +42,7 @@
 npm run dev     # Vite 5173. http://127.0.0.1:5173 을 Edge/Chrome 에서 연다 (포트를 바꾸려면 `-- --port 5177 --strictPort`)
 npm run build   # 타입 검사 + dist/ + sw.js
 npm test        # vitest — 파일 처리(메모리 파일 시스템)·TSV 왕복·편집·스키마·검증·tsv-view·계산식
+npm run lint    # oxlint (기본 규칙). 경고만 낸다 — 지금 25건, 버그는 없다(DESIGN §24.7 X12). 배포 워크플로에는 없다
 ```
 
 - 폴더 선택 창은 자동화가 못 누른다. 화면 시험은 `http://127.0.0.1:5173/?opfs` (개발 전용) — 브라우저 안 저장소를 문서 폴더로 쓴다. 변경 감지도 실제로 돈다. 샘플 문서는 `src/lib/fsa/devSeed.ts` 에 있다: 타입 행 · enum · bool · Key 검증 오류가 든 `data/Item/Item_Table.tsv` + `Item_Field.tsv` + `Item_Calc.tsv`, 그 표를 `tsv-view` 로 임베드한 `docs/아이템.md`. 샘플은 **파일이 비어 있을 때만** 쓴다 — 샘플을 고친 뒤에는 브라우저 저장소(OPFS)를 지우고 다시 연다.

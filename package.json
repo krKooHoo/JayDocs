@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/gen-sw.mjs",
     "test": "vitest run --exclude \".claude/**\"",
-    "shortcuts": "node scripts/gen-shortcuts.mjs"
+    "shortcuts": "node scripts/gen-shortcuts.mjs",
+    "lint": "oxlint src scripts vite.config.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -32,6 +33,7 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.94.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"

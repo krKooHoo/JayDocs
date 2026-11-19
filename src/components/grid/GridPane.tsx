@@ -1,5 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
+import { tip } from '../../lib/commands'
 import { backend } from '../../lib/backend'
 import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
@@ -376,8 +377,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       <div className="pane-bar">
         <span className="pane-path" title={path}>{path}</span>
         <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
-        <button onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title="Ctrl+S">저장</button>
-        <button onClick={onSplit} title="이 문서를 오른쪽 창에도 연다 (Ctrl+\)">오른쪽에 분할</button>
+        <button onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title={tip('저장', 'save')}>저장</button>
+        <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
       {doc?.conflict && (
         <div className="banner">

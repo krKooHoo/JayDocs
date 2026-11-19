@@ -567,9 +567,27 @@ class DocumentStore {
     else { d.conflict = { text: f.text, mtime: f.mtime, encoding }; this.touch(e.path) }
   }
 
-  /** 무엇이 바뀌었는지 모를 때 (창에 돌아옴, 감시 끊김) 열린 문서를 디스크와 맞춰 본다 */
+  /**
+   * 무엇이 바뀌었는지 모를 때 (창에 돌아옴, 감시 끊김, 감시가 없는 브라우저의 주기 확인) 디스크와 맞춰 본다.
+   * 열린 문서와, 열려 있지 않은 보조 표(계산식 · lookup 대상 · Field)의 캐시 둘 다 — 캐시를 빼면 감시가 없는 브라우저에서
+   * 바깥에서 고친 계산식 · Field 가 반영되지 않는다 (DESIGN §24.7 X11).
+   */
   async recheckOpen() {
-    await Promise.all(this.all().map((d) => this.handleExternal({ type: 'change', event: 'change', path: d.path })))
+    await Promise.all([
+      ...this.all().map((d) => this.handleExternal({ type: 'change', event: 'change', path: d.path })),
+      ...[...this.auxCache.keys()].map((p) => this.recheckAux(p)),
+    ])
+  }
+
+  /** 보조 표 캐시 하나를 수정 시각으로 다시 본다 (내용은 읽지 않는다). 달라졌거나 지워졌으면 바깥 변경과 같은 길로 다시 읽는다 */
+  private async recheckAux(path: string) {
+    const c = this.auxCache.get(path)
+    if (!c || this.docs.has(path)) return // 열린 문서는 문서 쪽에서 본다
+    let mtime: number | null
+    try { mtime = (await backend().stat(path)).mtime } catch { mtime = null } // 지워짐 등
+    if (this.auxCache.get(path) !== c) return // 그 사이 다시 읽혔다
+    if (mtime !== null && Math.abs(mtime - c.mtime) < 1) return
+    await this.handleExternal({ type: 'change', event: 'change', path })
   }
 }
 

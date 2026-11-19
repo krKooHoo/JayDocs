@@ -29,6 +29,7 @@ npm ci          # 새 워크트리라면 먼저
 npm test        # vitest. SagaDocs 항목은 그 리포를 찾을 때만 돈다(없으면 skip)
 npm run build   # tsc -b + vite build + sw.js 생성
 npm run dev     # Vite 5173 (다른 세션과 겹치면 --port 로 바꾼다)
+npm run lint    # oxlint. 경고만 낸다 — 명백한 버그만 고친다(DESIGN §24.7 X12)
 ```
 
 - 화면 확인: `http://127.0.0.1:<포트>/?opfs` — 폴더 선택 창 없이 브라우저 안 저장소를 문서 폴더로 쓴다(개발 전용, 샘플은 `src/lib/fsa/devSeed.ts`). 빌드본 · 서비스 워커는 `npx vite preview`.

@@ -36,10 +36,27 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
   const modeRef = useRef<Mode>(mode)
   modeRef.current = mode
+  const root = useRef<HTMLDivElement>(null)
+  /** 이 창에서 포커스를 받는 곳 — 편집기. 미리보기 전용 모드는 편집기가 숨겨지므로 미리보기 영역 (DESIGN §24.7 X2) */
+  const focusPane = () => {
+    if (modeRef.current === 'preview') root.current?.querySelector<HTMLElement>('.preview')?.focus()
+    else viewRef.current?.focus()
+  }
+  /** 모드를 바꾼 뒤 포커스를 줄 것 — 바뀐 화면이 그려진 다음(아래 effect)에 준다 */
+  const wantFocus = useRef(false)
+  /** 보기 모드를 바꾸고 (버튼 · Ctrl+Shift+V) 포커스를 그 모드의 자리로 옮긴다. 버튼에 포커스가 남으면 바로 친 글자 · 방향키가 문서로 가지 않는다 */
   const setMode = (m: Mode) => {
+    if (m === modeRef.current) { focusPane(); return }
+    wantFocus.current = true
+    modeRef.current = m
     setModeState(m)
     try { localStorage.setItem(modeKey(path), m) } catch { /* 무시 */ }
   }
+  useEffect(() => {
+    if (!wantFocus.current) return
+    wantFocus.current = false
+    focusPane()
+  }, [mode])
 
   useEffect(() => {
     store.retain(path)
@@ -49,16 +66,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
 
   // 전역 명령(보기 모드 순환 · 포커스)
   useEffect(() => onPaneAction(path, (a) => {
-    if (a === 'cycleMdMode' && isMarkdownPath(path)) {
-      const next = MODES[(MODES.indexOf(modeRef.current) + 1) % MODES.length]
-      modeRef.current = next
-      setModeState(next)
-      try { localStorage.setItem(modeKey(path), next) } catch { /* 무시 */ }
-      // 편집기가 보이는 모드면 포커스를 지킨다 (미리보기 전용 → 소스로 돌아올 때 body 로 빠지지 않게).
-      // 미리보기 전용에서는 편집기가 숨겨지므로 포커스를 줄 곳이 없다
-      if (next !== 'preview') window.setTimeout(() => viewRef.current?.focus(), 0)
-    }
-    if (a === 'focus') window.setTimeout(() => viewRef.current?.focus(), 0)
+    if (a === 'cycleMdMode' && isMarkdownPath(path)) setMode(MODES[(MODES.indexOf(modeRef.current) + 1) % MODES.length])
+    if (a === 'focus') window.setTimeout(focusPane, 0)
     if (a === 'formatJson') formatActive()
   }), [path])
 
@@ -131,7 +140,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const bakeErrors = d?.kind === 'text' ? d.bakeErrors : []
 
   return (
-    <div className="pane">
+    <div className="pane" ref={root}>
       <div className="pane-bar">
         <span className="pane-path" title={path}>{path}</span>
         {isMd && (

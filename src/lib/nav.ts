@@ -47,6 +47,20 @@ export function paneAction(path: string, action: PaneAction) {
   for (const l of actionListeners.get(path) ?? []) l(action)
 }
 
+// ---- 파일 트리의 커서. 이름을 바꾼 뒤처럼 앱이 "이 항목에 커서를" 시킬 때 — 트리의 커서는 트리 안의 state 라 이 길로 보낸다
+type TreeCursorListener = (path: string) => void
+const treeCursorListeners = new Set<TreeCursorListener>()
+
+/** 트리 커서를 그 경로로 옮긴다 (접힌 상위 폴더는 편다). 트리가 그 경로를 아직 모르면 다음에 트리를 읽을 때 보인다 */
+export function setTreeCursor(path: string) {
+  for (const l of treeCursorListeners) l(path)
+}
+
+export function onTreeCursor(l: TreeCursorListener): () => void {
+  treeCursorListeners.add(l)
+  return () => { treeCursorListeners.delete(l) }
+}
+
 export function onPaneAction(path: string, l: ActionListener): () => void {
   let set = actionListeners.get(path)
   if (!set) actionListeners.set(path, (set = new Set()))

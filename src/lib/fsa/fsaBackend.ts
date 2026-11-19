@@ -370,6 +370,15 @@ export class FsaBackend implements Backend {
     }
   }
 
+  async stat(path: string): Promise<{ mtime: number }> {
+    const l = await this.locate(path)
+    try {
+      return { mtime: (await (await this.fileOf(l)).getFile()).lastModified }
+    } catch (e) {
+      throw fsFail(e, '읽지 못했습니다')
+    }
+  }
+
   async write(path: string, text: string, baseMtime: number | null, opts: { convert?: boolean } = {}) {
     if (typeof text !== 'string') throw new Error('text 가 필요합니다')
     const l = await this.locateWritable(path)

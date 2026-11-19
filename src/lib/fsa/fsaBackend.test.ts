@@ -44,6 +44,14 @@ describe('읽기 · 인코딩', () => {
     const { b } = setup()
     await expect(b.read('없음.md')).rejects.toThrow('경로가 없습니다')
   })
+  it('stat 은 내용을 읽지 않고 수정 시각만 준다 — 5 MB 를 넘는 파일도, 없는 파일은 거부', async () => {
+    const { root, b } = setup()
+    const f = root.put('a.md', 'A')
+    expect((await b.stat('a.md')).mtime).toBe(f.lastModified)
+    const big = root.put('big.tsv', new Uint8Array(5 * 1024 * 1024 + 1).fill(0x61))
+    expect((await b.stat('big.tsv')).mtime).toBe(big.lastModified)
+    await expect(b.stat('없음.md')).rejects.toThrow()
+  })
 })
 
 describe('경로 검사', () => {

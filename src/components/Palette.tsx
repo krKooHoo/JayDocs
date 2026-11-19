@@ -9,6 +9,8 @@ export interface PaletteItem {
   /** 오른쪽에 작게 (경로, 단축키) */
   hint?: string
   disabled?: boolean
+  /** 최근에 쓴 순위 (0 이 가장 최근). 없으면 최근에 쓴 적 없는 것 */
+  recent?: number
 }
 
 interface Props {
@@ -47,7 +49,9 @@ export function Palette({ title, placeholder, items, onPick, onClose }: Props) {
     const scored = items
       .map((it) => ({ it, s: score(query, it.label + ' ' + (it.hint ?? '')) }))
       .filter((x): x is { it: PaletteItem; s: number } => x.s !== null)
-    scored.sort((a, b) => a.s - b.s || a.it.label.localeCompare(b.it.label, 'ko'))
+    // 검색어가 없으면 점수가 모두 0 이라 최근 것이 위로 온다. 검색어가 있으면 점수가 먼저고, 같은 점수 안에서만 최근 것이 먼저
+    const NOT_RECENT = Number.MAX_SAFE_INTEGER
+    scored.sort((a, b) => a.s - b.s || (a.it.recent ?? NOT_RECENT) - (b.it.recent ?? NOT_RECENT) || a.it.label.localeCompare(b.it.label, 'ko'))
     return scored.map((x) => x.it).slice(0, 60)
   }, [items, query])
 
@@ -106,6 +110,7 @@ export function Palette({ title, placeholder, items, onPick, onClose }: Props) {
               onClick={() => pick(i)}
             >
               <span className="palette-label">{it.label}</span>
+              {it.recent !== undefined && query === '' && <span className="palette-recent">최근</span>}
               {it.hint && <span className="palette-hint">{it.hint}</span>}
             </div>
           ))}

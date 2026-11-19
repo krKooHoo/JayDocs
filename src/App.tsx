@@ -25,6 +25,8 @@ import { NoticeHost } from './components/NoticeHost'
 import { askConfirm, askText, dialogOpen } from './lib/dialogs'
 import { dismissAllNotices, dismissNotice, noticeList, notify, notifyError } from './lib/notices'
 import { checkEntryPath, cleanEntryPath, nameStemRange } from './lib/names'
+import { setTreeCursor } from './lib/nav'
+import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
 
 type Phase =
   | { kind: 'loading' }
@@ -151,6 +153,19 @@ type Overlay =
   | { kind: 'explorer'; path: string | null }
   | null
 
+/** 그 창을 여는 명령 — 떠 있는 동안 같은 키를 다시 누르면 닫는다 (DESIGN §24.7 X5) */
+const OVERLAY_COMMAND: Partial<Record<NonNullable<Overlay>['kind'], string>> = {
+  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder',
+}
+/** 찾아보는 창(팔레트 · 파일 검색 · 도움말)끼리는 서로의 키로 바로 넘어간다. 입력을 받는 창(가져오기 · 폴더 정보 · 연결 도우미)에서는 안 넘어간다 */
+const LOOKUP_OVERLAYS = new Set(['palette', 'files', 'help'])
+const LOOKUP_COMMANDS = new Set(['palette', 'fileSearch', 'help'])
+
+/** 가져온 폴더 목록에서 화면이 쓰는 값만 — 같은지 볼 때 (안의 파일 목록은 뺀다) */
+function mountsKey(mounts: readonly (MountInfo & { error?: string | null })[]) {
+  return JSON.stringify(mounts.map((m) => [m.alias, m.folder, m.readOnly, m.truncated, m.path, m.error ?? null]))
+}
+
 function Workspace({ layoutId }: { layoutId: string }) {
   useCommandsVersion()
   const theme = useTheme()
@@ -170,6 +185,9 @@ function Workspace({ layoutId }: { layoutId: string }) {
   /** 지금 트리 — 이름 입력 창이 떠 있는 동안에도 최신 것으로 "이미 있는 이름" 을 본다 */
   const treeRef = useRef<TreeEntry[]>(tree)
   treeRef.current = tree
+  /** 마지막으로 state 에 넣은 트리 · 가져온 폴더 목록 (JSON) — 내용이 같으면 state 를 바꾸지 않는다 */
+  const lastTree = useRef<string | null>(null)
+  const lastMounts = useRef<string | null>(null)
 
   const refreshTree = useCallback(async () => {
     try {
@@ -182,10 +200,14 @@ function Workspace({ layoutId }: { layoutId: string }) {
           mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated, path: m.path },
         })),
       ]
-      setTree(all)
+      // 창에 포커스가 돌아올 때마다 여기로 온다. 새 배열을 그대로 넣으면 바뀐 것이 없어도 Workspace 아래가 통째로 다시 그려진다 —
+      // 내용이 같으면 state 를 그대로 둔다 (DESIGN §24.7 X8). 스토어는 스스로 달라진 것만 알린다
+      const treeJson = JSON.stringify(all)
+      if (treeJson !== lastTree.current) { lastTree.current = treeJson; setTree(all) }
       store.setTree(all)
       store.setMounts(t.mounts)
-      setMounts(t.mounts)
+      const mountsJson = mountsKey(t.mounts)
+      if (mountsJson !== lastMounts.current) { lastMounts.current = mountsJson; setMounts(t.mounts) }
       const problems = t.mounts.filter((m) => m.error).map((m) => `@${m.alias}: ${m.error}`)
       if (t.truncated) problems.unshift('항목이 너무 많아 트리에 일부만 보입니다')
       setError(problems.length ? problems.join(' · ') : null)
@@ -241,7 +263,19 @@ function Workspace({ layoutId }: { layoutId: string }) {
   // 창이 떠 있는 동안 트리 · 문서 상태가 바뀔 수 있어 submit 안에서 (ref 와 스토어로) 다시 읽는다.
   const pathTaken = (lower: string) => lowerPaths(treeRef.current).has(lower)
 
+  /**
+   * 읽기 전용으로 가져온 폴더 안이면 알림 줄로 알리고 true — 대화상자를 띄우기 **전에** 막는다 (DESIGN §24.7 X9).
+   * 예전에는 이름을 다 치고 확인을 누른 뒤에야 백엔드가 거부했다. 마지막 판단은 여전히 백엔드가 한다.
+   */
+  const blockedReadOnly = (path: string, what: string) => {
+    if (store.readOnlyReason(path) !== 'mount') return false
+    const { alias } = splitRootPath(path)
+    notifyError(`읽기 전용으로 가져온 폴더(@${alias})에서는 ${what} 수 없습니다. 고치려면 트리에서 그 폴더를 오른쪽 클릭 → 읽기 전용 끄기`, { key: FILE_NOTICE })
+    return true
+  }
+
   const newFile = useCallback(async (dir: string) => {
+    if (blockedReadOnly(dir, '파일을 만들')) return
     const initial = dir ? `${dir}/새 문서.md` : '새 문서.md'
     const made: { path: string | null } = { path: null }
     await askText({
@@ -265,11 +299,14 @@ function Workspace({ layoutId }: { layoutId: string }) {
       },
     })
     if (!made.path) return
+    dismissNotice(FILE_NOTICE)
     await refreshTree()
-    bench.current?.openFile(made.path)
+    // 만든 문서의 편집기로 포커스 — 바로 칠 수 있게 (DESIGN §24.7 X4). 대화상자가 돌려준 포커스(트리 등)보다 뒤에 온다
+    bench.current?.openFile(made.path, true)
   }, [refreshTree])
 
   const newFolder = useCallback(async (dir: string) => {
+    if (blockedReadOnly(dir, '폴더를 만들')) return
     const initial = dir ? `${dir}/새 폴더` : '새 폴더'
     const made: { path: string | null } = { path: null }
     await askText({
@@ -300,6 +337,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
 
   const rename = useCallback(async (path: string, isDir: boolean) => {
     if (isDir) { notifyError('폴더 이름은 탐색기에서 바꾸세요. 트리는 자동으로 따라옵니다.', { key: FILE_NOTICE }); return }
+    if (blockedReadOnly(path, '이름을 바꿀')) return
     const dirty = dirtyUnder(path, false)
     if (dirty.length) { notifyError('이름을 바꾸기 전에 먼저 저장하세요', { items: dirty, key: FILE_NOTICE }); return }
     const moved: { to: string | null } = { to: null }
@@ -330,6 +368,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
     dismissNotice(FILE_NOTICE)
     bench.current?.renamePaths(path, moved.to, false)
     await refreshTree()
+    // 트리 커서를 바뀐 파일에 둔다 — 안 그러면 커서가 사라져 ↓ 가 맨 위부터 간다 (TC-807)
+    setTreeCursor(moved.to)
   }, [refreshTree])
 
   const remove = useCallback(async (path: string, isDir: boolean) => {
@@ -338,7 +378,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       if (dirty.length) notifyError('저장하지 않은 문서가 있습니다. 먼저 저장하거나 닫으세요', { items: dirty, key: FILE_NOTICE })
       return dirty.length > 0
     }
-    if (blocked()) return
+    if (blockedReadOnly(path, '지울') || blocked()) return
     const inside = isDir ? filesUnder(treeRef.current, path) : []
     const ok = await askConfirm({
       title: isDir ? '폴더 지우기' : '파일 지우기',
@@ -472,6 +512,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
   ]), [newFile, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
 
+  const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
+
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -483,6 +525,15 @@ function Workspace({ layoutId }: { layoutId: string }) {
       // 앱 대화상자가 떠 있으면 명령을 돌리지 않는다 (뒤에서 저장 · 창 이동이 일어나지 않게).
       // 키는 삼킨다 — 안 그러면 Ctrl+S · Ctrl+P 가 브라우저의 저장 · 인쇄 창을 띄운다
       if (dialogOpen()) { e.preventDefault(); return }
+      // 팔레트 · 도움말 · 가져오기 같은 창이 떠 있을 때도 같은 규칙이다 (DESIGN §24.7 X5).
+      // 예외는 창을 여닫는 키뿐: 그 창을 연 키를 다시 누르면 닫고, 찾아보는 창끼리는 서로의 키로 넘어간다. Esc 는 창이 직접 받는다
+      const ov = overlayRef.current
+      if (ov) {
+        e.preventDefault()
+        if (id === OVERLAY_COMMAND[ov.kind]) closeOverlay()
+        else if (LOOKUP_OVERLAYS.has(ov.kind) && LOOKUP_COMMANDS.has(id)) runCommand(id)
+        return
+      }
       if (runCommand(id)) e.preventDefault()
     }
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -494,7 +545,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('beforeunload', onBeforeUnload)
     }
-  }, [])
+  }, [closeOverlay])
 
   // 글자를 칠 때마다가 아니라 저장 안 한 문서의 구성이 바뀔 때만 다시 그린다
   const dirtyCount = useDirtyPaths().size
@@ -502,22 +553,26 @@ function Workspace({ layoutId }: { layoutId: string }) {
   const primary = backend().rootDetail(null)
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
+    // 최근 순 (DESIGN §24.7 X6): 팔레트로 실행한 명령 · 연 파일이 위에 온다. 지금 못 쓰는 명령은 올리지 않고, 없어진 파일은 목록에 없으니 저절로 빠진다
     if (overlay?.kind === 'palette') {
-      return allCommands().map((c) => ({ id: c.id, label: c.label, hint: c.keys, disabled: c.enabled ? !c.enabled() : false }))
+      const ranks = recentRanks(recentCommands())
+      return allCommands().map((c) => {
+        const disabled = c.enabled ? !c.enabled() : false
+        return { id: c.id, label: c.label, hint: c.keys, disabled, recent: disabled ? undefined : ranks.get(c.id) }
+      })
     }
     if (overlay?.kind === 'files') {
-      return allFiles(tree).map((path) => ({ id: path, label: path.split('/').pop() ?? path, hint: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '' }))
+      const ranks = recentRanks(recentFiles(layoutId))
+      return allFiles(tree).map((path) => ({ id: path, label: path.split('/').pop() ?? path, hint: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', recent: ranks.get(path) }))
     }
     return []
-  }, [overlay, tree])
-
-  const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
+  }, [overlay, tree, layoutId])
 
   /** 팔레트에서 명령을 실행한 뒤: 팔레트가 사라지며 포커스가 body 로 빠졌으면 문서 창으로 돌린다.
    *  다른 창을 연 명령(가져오기 · 도움말 …)이나 스스로 포커스를 옮긴 명령(트리로 포커스 …)은 건드리지 않는다. */
   const pickCommand = useCallback((id: string) => {
     setOverlay(null)
-    runCommand(id)
+    if (runCommand(id)) recordRecentCommand(id)
     window.setTimeout(() => {
       if (overlayRef.current) return
       const ae = document.activeElement
@@ -536,12 +591,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
         {app.canInstall && <button onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
         <button onClick={() => setOverlay({ kind: 'import' })} title={tip('폴더 가져오기 — 다른 폴더를 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
         <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>
-        <button onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령 ⌘</button>
-        <button onClick={() => bench.current?.saveActive()} title={tip('저장', 'save')}>저장</button>
+        {/* 상단의 "저장" · "오른쪽에 분할" 은 뺐다 — 창마다 같은 버튼이 있고(어느 문서인지 분명하다) Ctrl+S · Ctrl+\ · 팔레트로도 된다 (DESIGN §24.7 X10) */}
+        <button onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령</button>
         <button onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title={tip('모두 저장', 'saveAll')}>
           모두 저장{dirtyCount ? ` (${dirtyCount})` : ''}
         </button>
-        <button onClick={() => bench.current?.splitActive()} title={tip('현재 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
         <button onClick={toggleTheme} title={tip('다크 / 라이트', 'toggleTheme')}>{theme === 'dark' ? '☀' : '☾'}</button>
         <button onClick={() => setOverlay({ kind: 'help' })} title={tip('단축키', 'help')}>?</button>
       </header>
@@ -565,7 +619,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={pickCommand} />
       )}
       {overlay?.kind === 'files' && (
-        <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id); window.setTimeout(() => runCommand('focusEditor'), 80) }} />
+        <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id, true) }} />
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
       {overlay?.kind === 'import' && <ImportDialog onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
