@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } fro
 import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
 import { registerCommands } from '../lib/commands'
+import { askConfirm } from '../lib/dialogs'
 import { paneAction, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
@@ -202,21 +203,38 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     focusTabPane(tab.getId())
   }, [model, activeTabSet])
 
-  /** 같은 문서를 보는 마지막 탭을 닫을 때만 저장 여부를 묻는다. 닫아도 되면 true */
-  const confirmCloseTab = useCallback((id: string): boolean => {
+  /** 이 탭을 닫으면 버려지는 저장 안 한 문서의 경로. 같은 문서를 보는 마지막 탭일 때만 — 그냥 닫아도 되면 null */
+  const unsavedOnClose = useCallback((id: string): string | null => {
     const node = model.getNodeById(id) as TabNode | undefined
     const comp = node?.getComponent() ?? ''
     const path = node?.getConfig()?.path as string | undefined
-    if (!path || !DOC_COMPONENTS.has(comp) || !store.isDirty(path)) return true
+    if (!path || !DOC_COMPONENTS.has(comp) || !store.isDirty(path)) return null
     const others = findTabs(model, (cfg, c) => DOC_COMPONENTS.has(c) && cfg.path === path).length
-    return others > 1 || window.confirm(`"${path}" 에 저장하지 않은 변경이 있습니다. 버리고 닫을까요?`)
+    return others > 1 ? null : path
   }, [model])
+
+  /**
+   * 탭 닫기. 저장 안 한 변경을 버리게 되면 먼저 묻는다 (앱 대화상자 — 답을 기다리는 동안 탭이 없어졌을 수 있어 다시 찾는다).
+   * model.doAction 은 Layout 의 onAction 을 거치지 않으므로 Alt+W · 팔레트 · 탭의 × 모두 여기로 온다 (TC-904)
+   */
+  const closeTab = useCallback(async (id: string) => {
+    const path = unsavedOnClose(id)
+    if (path) {
+      const ok = await askConfirm({
+        title: '저장하지 않은 변경',
+        message: `"${path}" 에 저장하지 않은 변경이 있습니다. 버리고 닫을까요?`,
+        okLabel: '버리고 닫기',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    if (model.getNodeById(id)) model.doAction(Actions.deleteTab(id))
+  }, [model, unsavedOnClose])
 
   const closeActive = useCallback(() => {
     const tab = activeTab()
-    // model.doAction 은 Layout 의 onAction 을 거치지 않으므로 저장 확인을 여기서 한다 (TC-904)
-    if (tab && confirmCloseTab(tab.getId())) model.doAction(Actions.deleteTab(tab.getId()))
-  }, [model, activeTab, confirmCloseTab])
+    if (tab) void closeTab(tab.getId())
+  }, [activeTab, closeTab])
 
   /** 패널을 접거나 편다. show=true 면 펴기만. 이미 열려 있었으면 true */
   const toggleBorder = useCallback((component: string, show = false): boolean => {
@@ -349,9 +367,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (dirtyPaths.has(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
   }
 
-  // 탭의 × (Layout 이 내는 동작)
+  // 탭의 × (Layout 이 내는 동작). 물어야 하면 이 동작은 막고, 답을 받은 뒤 closeTab 이 직접 닫는다
   const onAction = (action: Action): Action | undefined => {
-    if (action.type === Actions.DELETE_TAB && !confirmCloseTab(action.data.node as string)) return undefined
+    if (action.type === Actions.DELETE_TAB) {
+      const id = action.data.node as string
+      if (unsavedOnClose(id)) { void closeTab(id); return undefined }
+    }
     return action
   }
 

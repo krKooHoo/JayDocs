@@ -52,11 +52,12 @@ export interface GridProps {
   onEdit: (fn: (t: TsvTable) => TsvTable) => void
   onUndo: () => void
   onRedo: () => void
-  onNotice: (msg: string) => void
+  /** 알림 줄에 알린다. undo: 방금 한 편집을 되돌리는 버튼을 단다 (onEdit 바로 뒤에 불러야 한다) */
+  onNotice: (msg: string, opts?: { undo?: boolean }) => void
   /** 행/열 조작 (단축키에서). 범위를 함께 보낸다 */
   onRowOp: (kind: RowOp, range: CellRange) => void
   onColOp: (kind: ColOp, range: CellRange) => void
-  /** 열 글자를 끌어 옮기기. to 는 옮긴 뒤 첫 열의 자리. 실제로 옮겼으면(확인을 받았으면) true */
+  /** 열 글자를 끌어 옮기기. to 는 옮긴 뒤 첫 열의 자리. 실제로 옮겼으면(읽기 전용이 아니면) true */
   onMoveColumns: (from: number, count: number, to: number) => boolean
   /** Ctrl+F / Ctrl+H — 찾기 막대 열기 (withReplace 면 바꾸기 칸으로) */
   onFind: (withReplace: boolean) => void
@@ -736,18 +737,15 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       const c = range.c1
       const opts = { headerRow: schema.headerRows - 1, typeRow: schema.typed ? 0 : -1, expand: true }
       const w = Math.max(b.header.length, ...b.rows.map((l) => l.length))
-      const more = c + w - table.width
-      // 열 삽입과 같은 확인 — 취소하면 넘치는 열은 예전처럼 잘라 낸다
-      if (more > 0 && table.rows.length > 0) {
-        opts.expand = window.confirm(`붙일 표가 ${more}열 더 넓습니다. 열을 늘리면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 늘릴까요?\n(취소하면 넘치는 열은 잘라 냅니다)`)
-      }
+      // 붙일 표가 더 넓으면 열을 늘린다. 열 삽입처럼 묻지 않고(Ctrl+Z 로 돌아온다) 알림에 되돌리기를 단다 (DESIGN §24.6 N6)
       const preview = pasteHeadedBlock(table, r, c, b, opts)
       onEdit((t) => pasteHeadedBlock(t, r, c, b, opts).table)
       const notes = [`표 붙여넣음: 머리글 + ${b.rows.length}행 × ${w}열`]
-      if (preview.addedCols) notes.push(`열 ${preview.addedCols}개 추가`)
+      // 행이 있는 표에 열이 늘면 모든 행이 다시 조립된다
+      if (preview.addedCols) notes.push(table.rows.length > 0 ? `열 ${preview.addedCols}개 추가 (모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다)` : `열 ${preview.addedCols}개 추가`)
       if (preview.addedRows) notes.push(`행 ${preview.addedRows}개 추가`)
       if (preview.clippedCols) notes.push(`열 ${preview.clippedCols}개는 표 너비를 넘어 잘림`)
-      onNotice([...notes, ...cleanNote()].join(' · '))
+      onNotice([...notes, ...cleanNote()].join(' · '), { undo: preview.addedCols > 0 })
       setAnchor({ r: preview.range.r1, c: preview.range.c1 })
       onActiveChange({ r: preview.range.r2, c: preview.range.c2 })
       return

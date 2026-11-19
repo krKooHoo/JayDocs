@@ -34,6 +34,7 @@ JayDocs 리포를 이어서 개발한다. 먼저 HANDOFF.md 를 읽고, 거기 �
   - **2026-11-01 앱에서 업데이트 확인(DESIGN §22)**: 켤 때 · 창으로 돌아올 때 · 1시간마다 확인하고, `UpdateButton.tsx` 가 확인 → 받는 중 → 적용(실패하면 다시 받기)을 보여 준다.
   - **2026-11-17 최적화 · 키보드 흐름(DESIGN §24, §22 U8~U10)**: tsv-view 편집 소실 수정(`store.release(path, { keepDirty: true })`), 미리보기 재파싱 · 하이브리드 표 렌더 줄임, 그리드 · 계산식 성능(lookup 색인 · `stabilizeSchema` · 찾기 지연), `F6` 창 이동 · 트리 메뉴 키보드 · 마크다운 찾기 패널 한글화 · 도움말 검색, 서비스 워커 증분 업데이트(바뀐 파일만 받기) + `vendor` 청크 분리, 루트의 테스트 파일 삭제 · `CLAUDE.md` 신설. 하위 세션 다섯 개가 워크트리에서 나눠 작업해 `main` 에 선형으로 합쳤다.
   - **2026-11-17 스토어 경로별 구독(DESIGN §24.5)**: 전역 버전 구독을 경로 · dirty 집합 · Field · 트리 구독으로 나눴다. 글자 하나에 앱 전체가 다시 그려지던 것이 그 문서의 창만 그려진다.
+  - **2026-11-17 대화상자 · 알림(DESIGN §24.6)**: `window.prompt` / `alert` / `confirm` 26곳을 없앴다. 이름 입력 · 확인은 앱 대화상자(`lib/dialogs.ts` `askText` · `askConfirm`, `DialogHost.tsx`), 결과와 실패는 알림 줄(`lib/notices.ts` `notify` · `notifyError`, `NoticeHost.tsx`) 하나로. 그리드의 열 조작 확인 창은 "바로 실행 + 되돌리기 알림" 으로 바꿨다. 새 단축키 `Ctrl+Alt+X`(알림 모두 닫기).
 - **SagaDocs** (별도 리포, 이 PC는 `C:\Users\user\SagaDocs`, 원래 PC는 `C:\Users\gaber\Documents\GitHub\SagaDocs`): 기획 원본. TSV 7개(LF · BOM 없음 · 끝 개행 있음 — cbfa1ad 에서 넣음). 원격 `github.com/krKooHoo/SagaDocs`.
 - 커밋·푸시 여부: 이 문서가 포함된 커밋의 로그를 본다. Phase 1~3·TC 문서·이미지/push-pull·계산식(`7e35ce5` → `6b60870`), 형식 확장·독립 실행(`215f069`), 폴더 가져오기(`1cc6d76`), CSV(`249f306`), TC 결과 기록(`786e4b2`) 까지 커밋됨. 그 뒤의 버그 수정·마크다운 표 붙여넣기는 커밋 전일 수 있다. (해시는 분리 뒤 이 리포 기준 — JayTools 시절 해시와 다르다. 메모리·옛 문서에 남은 해시는 커밋 제목으로 찾는다.) push 는 Jay 지시 전일 수 있다 — `git status -sb` 로 확인.
 
@@ -96,8 +97,8 @@ TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재�
 2. **하이브리드 다듬기 2차** — 제목 크기 단계, 코드 펜스(일반 언어) 꾸밈, 각주, 표 안 편집. 지금은 표식 숨김 · 목록/인용 · 할 일 체크박스 · 이미지 · GFM 표/펜스 블록 위젯까지.
 3. 번들 — 2026-11-17 에 `index` 183 kB + `vendor` 1,068 kB(gz 340 KB)로 나눴다(§22 U8). 합계는 그대로. 필요하면 mermaid 처럼 react-markdown 도 지연 로드.
 4. `npm audit` 가 mermaid 의존성 경고를 낸다(로컬 도구라 보류).
-5. **다음 묶음(DESIGN §24.4)** — ~~① 스토어 경로별 구독~~(끝, §24.5 — 한 문서의 변경은 그 문서를 보는 창만 다시 그린다. `useStoreVersion()` 은 없어졌고 `useDocVersion(path)` · `useDirtyPaths()` · `useFieldsVersion()` · `useTreeVersion()` 을 쓴다) ② 대화상자 · 알림 통일 ③ 남은 UX(미리보기 전용 모드 포커스 · 탭 클릭 포커스 · 빈 화면 안내 · 증분 검증 · oxlint).
-6. Jay 가 손으로 볼 것(TESTCASES §18): 하이브리드 표 칸 · 본문과 tsv-view 의 한글 조합, Edge 설치 앱에서 `F6`, 두 번째 배포 때 받는 파일 수, 실제 폴더에서 분할 창 · tsv-view 가 따라오는지(TC-1813~1816).
+5. **다음 묶음(DESIGN §24.4)** — ~~① 스토어 경로별 구독~~(끝, §24.5 — 한 문서의 변경은 그 문서를 보는 창만 다시 그린다. `useStoreVersion()` 은 없어졌고 `useDocVersion(path)` · `useDirtyPaths()` · `useFieldsVersion()` · `useTreeVersion()` 을 쓴다) ~~② 대화상자 · 알림 통일~~(끝, §24.6 — 묻거나 알릴 때 `window.prompt` / `alert` / `confirm` 을 쓰지 않는다. 답이 필요하면 `await askText()` · `askConfirm()`, 알리기만 하면 `notify()` · `notifyError()`) ③ 남은 UX(미리보기 전용 모드 포커스 · 탭 클릭 포커스 · 빈 화면 안내 · 증분 검증 · oxlint).
+6. Jay 가 손으로 볼 것(TESTCASES §18): 하이브리드 표 칸 · 본문과 tsv-view 의 한글 조합, Edge 설치 앱에서 `F6`, 두 번째 배포 때 받는 파일 수, 실제 폴더에서 분할 창 · tsv-view 가 따라오는지(TC-1813~1816), 대화상자 · 알림 쪽은 열 글자 끌어 옮기기 · 대화상자 안 한글 조합 · Edge 앱에서 `Ctrl+Alt+X` 와 대화상자 뒤 단축키 · 실제 폴더의 읽기 전용 끄기(TC-1827~1830).
 
 
 ## 6. 알려진 상태·주의
@@ -110,7 +111,8 @@ TC 에서 나온 문제(2026-10-25, 모두 따로 재현·소스 확인함. 재�
 - enum 열에 Field 블록이 없으면(예: District `AllowedTerrain`) **열에 이미 있는 값**을 후보로 보여 주고 검증은 하지 않는다. 툴팁에 "(열에 있는 값)" 으로 표시.
 - `Building_Table` 의 열 설명은 다른 폴더의 `District_Field.tsv` 안 `BuildingDef` 블록에서 온다(리포 전체의 `_Field` 를 훑는다). 열린 Field 문서는 저장 전 편집 내용이 바로 스키마에 반영된다.
 - 한글 IME 는 composition 이벤트를 흉내 낸 자동 테스트로 확인했다. 실제 키보드로도 한 번 쳐 보는 것이 좋다(브라우저 자동화는 IME 를 거치지 않는다).
-- 새 파일/새 폴더/이름 바꾸기는 `window.prompt`. 저장 전 문서는 이름 바꾸기·삭제를 거부한다.
+- 새 파일/새 폴더/이름 바꾸기는 앱 대화상자(§24.6) — 틀린 이름은 닫지 않고 칸 아래에 이유를 보인다. 저장 전 문서는 이름 바꾸기·삭제를 거부한다(남는 알림). 대화상자가 떠 있는 동안 전역 단축키는 돌지 않는다. 창을 닫을 때의 `beforeunload` 경고만 브라우저 기본 창이다.
+- 자동화로 대화상자를 시험할 때: 답은 키로 한다(`Enter` · `Esc` · `Tab` · `→`). 예전처럼 `window.confirm` 을 JS 로 바꿔 끼워 답할 수 없다. 내장 브라우저의 키 입력은 `Ctrl+Alt+Shift+-` · `Ctrl+Alt+D` 같은 조합을 그대로 못 보내는 일이 있어 그때는 `KeyboardEvent` 를 dispatch 한다.
 - 레이아웃·열 너비·md 보기 모드는 `localStorage`. 레이아웃은 작업 공간 id 별, 열 너비·보기 모드는 경로별.
 - 자동화 테스트에서 flexlayout 의 숨은 탭은 높이 0 이라 그리드 행이 안 그려진다 → 보이는 창만 고르고, 탭을 바꾼 뒤 행이 그려질 때까지 기다릴 것.
 - Phase 0에서 설계와 달라진 점은 DESIGN §11. 2026-10-31 전환으로 사이드카·SSE·`fs.watch` 는 없어졌다(DESIGN §20).

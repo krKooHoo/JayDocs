@@ -13,6 +13,7 @@ import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './G
 import { ReadOnlyBanner } from '../ReadOnlyBanner'
 import { PaneErrorBoundary } from '../PaneErrorBoundary'
 import { inRootOf } from '../../lib/roots.mjs'
+import { dismissNotice, notify, notifyError } from '../../lib/notices'
 
 const NO_HITS: FindHit[] = []
 const NO_KEYS: ReadonlySet<number> = new Set()
@@ -35,6 +36,11 @@ function lookupSchema(t: TsvTable, p: string, fields: FieldList): TableSchema {
   lookupSchemas.set(t, { path: p, fields, schema })
   return schema
 }
+/** 지금 스토어에 있는 그 경로의 표 (다 읽힌 표 문서일 때만) */
+function tableOf(path: string): TsvTable | null {
+  const d = store.get(path)
+  return d?.kind === 'tsv' && d.status === 'ready' ? d.table : null
+}
 /** Ctrl+F 때 활성 셀 값을 찾을 말로 미리 채우는 최대 길이 */
 const PREFILL_MAX = 40
 
@@ -46,8 +52,10 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   useTreeVersion()
   const grid = useRef<GridHandle>(null)
   const [active, setActive] = useState<CellPos>({ r: 0, c: 0 })
-  const [notice, setNotice] = useState<string | null>(null)
-  const noticeTimer = useRef<number | undefined>(undefined)
+  /** "되돌리기" 버튼이 달린 알림과 그때의 표 — 표가 다시 바뀌면(Ctrl+Z · 다른 편집) 버튼이 엉뚱한 것을 되돌리지 않게 알림을 내린다 */
+  const undoNotice = useRef<{ id: number; after: TsvTable } | null>(null)
+  /** 이 창이 마지막으로 고친 결과 (고쳐지지 않았으면 null) */
+  const lastEdited = useRef<TsvTable | null>(null)
 
   useEffect(() => {
     store.retain(path)
@@ -57,15 +65,38 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   // 탭이 바뀌는 중이면 포커스가 날아가므로 한 프레임 뒤에 준다
   useEffect(() => onSelectRequest(path, (pos) => { setActive(pos); window.setTimeout(() => grid.current?.focus(), 50) }), [path])
 
-  const showNotice = useCallback((msg: string) => {
-    setNotice(msg)
-    window.clearTimeout(noticeTimer.current)
-    noticeTimer.current = window.setTimeout(() => setNotice(null), 4000)
-  }, [])
-  useEffect(() => () => window.clearTimeout(noticeTimer.current), [])
+  /**
+   * 방금 한 동작의 결과를 알림 줄에 (DESIGN §24.6). 이 표에서 온 알림은 하나만 남는다.
+   * undo: 방금 한 편집을 되돌리는 버튼을 단다 — 묻지 않고 실행한 큰 조작(열 넣기 · 지우기 · 옮기기, 행 지우기)에 쓴다. 편집 직후에 불러야 한다
+   */
+  const showNotice = useCallback((msg: string, opts?: { undo?: boolean }) => {
+    const key = `grid:${path}`
+    undoNotice.current = null
+    // 방금 이 창이 고친 표가 그대로일 때만 버튼을 단다 (읽기 전용이라 안 고쳐졌으면 앞의 편집을 되돌리게 된다)
+    const after = opts?.undo && lastEdited.current && lastEdited.current === tableOf(path) ? lastEdited.current : null
+    if (!after) { notify(msg, { key }); return }
+    const id = notify(msg, {
+      key,
+      action: {
+        label: '되돌리기',
+        hint: 'Ctrl+Z',
+        run: () => {
+          undoNotice.current = null
+          // 알림이 내려가기 전에 표가 또 바뀌었으면 되돌리지 않는다 (아래 effect 가 먼저 내리지만 한 번 더 본다)
+          if (tableOf(path) === after) store.undo(path)
+          window.setTimeout(() => grid.current?.focus(), 0)
+        },
+      },
+    })
+    undoNotice.current = { id, after }
+  }, [path])
   const d = store.get(path)
   const doc = d?.kind === 'tsv' && d.status === 'ready' ? d : null
   const table = doc?.table ?? null
+  useEffect(() => {
+    const u = undoNotice.current
+    if (u && table !== u.after) { undoNotice.current = null; dismissNotice(u.id) }
+  }, [table])
   const fields = store.fieldFiles()
   // 셀을 확정할 때마다 스키마를 다시 유도하지만, 내용이 같은 열 객체는 이전 것을 쓴다 (Grid 의 Cell memo 가 col 참조로 비교한다)
   const prevSchema = useRef<{ path: string; schema: TableSchema } | null>(null)
@@ -106,12 +137,15 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const runCalc = useCallback(() => {
     if (!schema || !calcRules) { showNotice(hasCalc ? '계산식을 아직 읽는 중입니다' : `계산식 파일이 없습니다: ${calcPath}`); return }
     let count = 0
+    const before = tableOf(path)
     store.editTable(path, (t) => {
       const r = applyCalc(t, computeCalc(t, schema, calcRules.rules, lookupSource))
       count = r.count
       return r.table
     })
-    showNotice(count ? `계산식 적용: ${count}개 셀 갱신 (Ctrl+Z 로 되돌림)` : '계산식 적용: 바뀐 셀 없음')
+    const after = tableOf(path)
+    lastEdited.current = after && after !== before ? after : null
+    showNotice(count ? `계산식 적용: ${count}개 셀 갱신` : '계산식 적용: 바뀐 셀 없음', { undo: count > 0 })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, schema, calcRules, lookupSource, hasCalc, calcPath])
 
@@ -123,7 +157,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       await backend().write(calcPath, calcTemplate(example), null)
       window.setTimeout(() => openPath(calcPath), 400) // 트리가 갱신될 시간
     } catch (e) {
-      showNotice(`만들지 못했습니다: ${(e as Error).message}`)
+      notifyError(`만들지 못했습니다: ${(e as Error).message}`, { key: `grid:${path}` })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calcPath, schema])
@@ -141,9 +175,16 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     if (r !== active.r || c !== active.c) setActive({ r, c })
   }, [table, active])
 
-  const edit = useCallback((fn: (t: TsvTable) => TsvTable) => {
-    if (store.isReadOnly(path)) { showNotice('읽기 전용입니다 — 위의 안내 막대를 보세요'); return }
+  /** 표를 고친다. 실제로 바뀌었으면 true (읽기 전용이거나 바뀐 것이 없으면 false) */
+  const edit = useCallback((fn: (t: TsvTable) => TsvTable): boolean => {
+    lastEdited.current = null
+    if (store.isReadOnly(path)) { showNotice('읽기 전용입니다 — 위의 안내 막대를 보세요'); return false }
+    const before = tableOf(path)
     store.editTable(path, fn)
+    const after = tableOf(path)
+    if (!after || after === before) return false
+    lastEdited.current = after
+    return true
   }, [path, showNotice])
   const undo = useCallback(() => store.undo(path), [path])
   const redo = useCallback(() => store.redo(path), [path])
@@ -160,42 +201,48 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'append': edit((t) => insertRows(t, t.rows.length, 1)); grid.current?.clearRange(); setActive({ r: table.rows.length, c: active.c }); break
       case 'dup': edit((t) => duplicateRows(t, g.r1, n)); grid.current?.clearRange(); setActive({ r: g.r2 + 1, c: active.c }); break
       case 'del': {
-        if (n >= table.rows.length && !window.confirm('모든 행을 지웁니다. 계속할까요?')) return
-        edit((t) => deleteRows(t, g.r1, n))
+        // 모든 행을 지워도 묻지 않는다 — Ctrl+Z 로 돌아온다. 알림에 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
+        if (edit((t) => deleteRows(t, g.r1, n))) showNotice(n >= table.rows.length ? `모든 행(${n}개)을 지웠습니다` : `행 ${n}개를 지웠습니다`, { undo: true })
         grid.current?.clearRange()
-        showNotice(`행 ${n}개 삭제 (Ctrl+Z 로 되돌림)`)
         break
       }
     }
     refocus()
   }, [table, edit, active.c, showNotice])
 
+  // 열을 넣고 · 지우고 · 옮기면 모든 행이 다시 조립된다. 예전에는 그때마다 확인 창으로 물었지만
+  // Ctrl+Z 로 돌아오는 조작이라 묻지 않고 실행한 뒤, 같은 사실을 알림에 적고 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
   const colOp = useCallback((kind: ColOp, g: CellRange) => {
     if (!table) return
     const n = g.c2 - g.c1 + 1
-    const msg = kind === 'del'
-      ? `${n}개 열을 지웁니다. 열을 바꾸면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 계속할까요?`
-      : `열 ${n}개를 넣으면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 계속할까요?`
-    if (!window.confirm(msg)) { refocus(); return }
+    const note = '모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다'
     switch (kind) {
-      case 'left': edit((t) => insertColumns(t, g.c1, n)); break
-      case 'right': edit((t) => insertColumns(t, g.c2 + 1, n)); grid.current?.clearRange(); setActive({ r: active.r, c: g.c2 + 1 }); break
+      case 'left':
+        if (edit((t) => insertColumns(t, g.c1, n))) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
+        break
+      case 'right':
+        if (edit((t) => insertColumns(t, g.c2 + 1, n))) {
+          showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
+          grid.current?.clearRange()
+          setActive({ r: active.r, c: g.c2 + 1 })
+        }
+        break
       case 'del':
         if (n >= table.width) { showNotice('열을 전부 지울 수는 없습니다'); break }
-        edit((t) => deleteColumns(t, g.c1, n))
+        if (edit((t) => deleteColumns(t, g.c1, n))) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
         grid.current?.clearRange()
         break
     }
     refocus()
   }, [table, edit, active.r, showNotice])
 
-  /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입·삭제처럼 확인을 묻는다 */
+  /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입 · 삭제처럼 묻지 않고 옮긴 뒤 알림에 되돌리기를 단다. 옮겼으면 true */
   const moveCols = useCallback((from: number, count: number, to: number): boolean => {
-    if (!window.confirm(`열 ${count}개를 옮기면 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다. 계속할까요?`)) { refocus(); return false }
-    edit((t) => moveColumns(t, from, count, to))
+    const moved = edit((t) => moveColumns(t, from, count, to))
+    if (moved) showNotice(`열 ${count}개를 옮겼습니다 — 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다`, { undo: true })
     refocus()
-    return true
-  }, [edit])
+    return moved
+  }, [edit, showNotice])
 
   // ---- 찾기 / 바꾸기 (툴바와 그리드 사이의 막대)
   const [findOpen, setFindOpen] = useState(false)
@@ -290,8 +337,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     const rep = cleanReplacement()
     const { count } = replaceAll(table, query, rep, findOpts)
     if (count === 0) { showNotice('바꿀 셀이 없습니다'); return }
-    edit((t) => replaceAll(t, query, rep, findOpts).table)
-    showNotice(`${count}개 셀 바꿈`)
+    if (edit((t) => replaceAll(t, query, rep, findOpts).table)) showNotice(`${count}개 셀 바꿈`, { undo: true })
   }
 
   const onFindKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -391,8 +437,6 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
                   : <button onClick={() => { edit(seedTypedTable); refocus() }}>타입 행·헤더 행 만들기</button>}
               </>
             )}
-            <span className="spacer" />
-            {notice && <span className="grid-notice">{notice}</span>}
           </div>
           {calcErrors.length > 0 && (
             <div className="banner is-error">

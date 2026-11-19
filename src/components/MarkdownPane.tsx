@@ -6,6 +6,7 @@ import { tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
+import { dismissNotice, notifyError } from '../lib/notices'
 import { store, useDocVersion } from '../store/documents'
 import { PreviewPane } from './PreviewPane'
 import { ReadOnlyBanner } from './ReadOnlyBanner'
@@ -32,7 +33,6 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const viewRef = useRef<EditorView | null>(null)
   const hybridComp = useRef(new Compartment())
   const [mode, setModeState] = useState<Mode>(() => loadMode(path))
-  const [notice, setNotice] = useState<string | null>(null)
   /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
   const modeRef = useRef<Mode>(mode)
   modeRef.current = mode
@@ -74,8 +74,10 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     if (!view || fileTypeOf(path)?.lang !== 'json' || store.isReadOnly(path)) return
     const before = view.state.doc.toString()
     const r = formatJson(before)
-    if (!r.ok) { setNotice(r.error); return }
-    setNotice(null)
+    // 정렬 실패(문법 오류)는 알림 줄에 남는다. 다음에 성공하면 내린다
+    const key = `json:${path}`
+    if (!r.ok) { notifyError(r.error, { key }); view.focus(); return }
+    dismissNotice(key)
     if (r.text !== before) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: r.text } })
     // 정렬 버튼을 누르면 포커스가 버튼에 남아 바로 누른 Ctrl+Z 가 이 편집기로 오지 않는다 (TC-1108)
     view.focus()
@@ -160,7 +162,6 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       {readOnly && <ReadOnlyBanner path={path} />}
       {d?.status === 'error' && <div className="banner is-error">{d.error}</div>}
       {d?.status === 'ready' && d.error && !d.conflict && <div className="banner is-error">{d.error}</div>}
-      {notice && <div className="banner">{notice}<button onClick={() => setNotice(null)}>닫기</button></div>}
       {bakeErrors.map((e) => <div key={e} className="banner">{e}</div>)}
       {d?.status === 'loading' && <div className="pane-empty">불러오는 중…</div>}
       <div className={'md-body is-' + mode}>

@@ -67,6 +67,9 @@ src/
   lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험 (스키마 · 계산식 · tsv-view 샘플 포함)
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
   lib/nav.ts          창 사이 이동 — 문서 열기 · 그리드 셀 선택 요청
+  lib/dialogs.ts      앱 대화상자 — `await askText()` · `askConfirm()` (줄 세우기). 그리는 것은 components/DialogHost.tsx (DESIGN §24.6)
+  lib/notices.ts      알림 줄 — `notify()` · `notifyError()` (실패는 남고 안내는 사라진다, 되돌리기 버튼). 그리는 것은 components/NoticeHost.tsx
+  lib/names.ts        새 파일 · 새 폴더 · 이름 바꾸기에서 입력한 경로 검사 · 처음 선택할 범위(확장자 앞)
   lib/filetypes.mjs   여는 파일 형식 표 (확장자 → md / table / text, 아이콘)
   lib/roots.mjs       가져온 폴더 경로 규칙 (`@별칭/…` 나누기·합치기, 같은 루트 안 경로, 별칭 규칙, 기본 무시 폴더)
   lib/jsonText.ts     JSON 문법 확인 · 정렬 (내용이 바뀌는 정렬은 거부)

@@ -167,11 +167,21 @@ kbd {
 .root { color: var(--muted); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border-color: transparent; }
 .root:hover { color: var(--fg); border-color: var(--border); }
 .topbar-error { color: var(--danger); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toast {
-  position: fixed; right: 16px; bottom: 16px; z-index: 300; max-width: min(520px, 90vw);
-  padding: 8px 12px; border-radius: 6px; background: var(--elev); color: var(--fg);
-  border: 1px solid var(--border); border-left: 3px solid var(--ok); box-shadow: var(--shadow); font-size: 12.5px; cursor: pointer;
+/* 알림 줄 — 방금 한 동작의 결과와 실패 (components/NoticeHost.tsx). 대화상자(.overlay.is-dialog)보다 아래 */
+.notices {
+  position: fixed; right: 16px; bottom: 32px; z-index: 300; max-width: min(520px, 90vw); /* 그리드 아래 상태 줄을 가리지 않는 높이 */
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
 }
+.toast {
+  display: flex; align-items: flex-start; gap: 8px; max-width: 100%;
+  padding: 8px 8px 8px 12px; border-radius: 6px; background: var(--elev); color: var(--fg);
+  border: 1px solid var(--border); border-left: 3px solid var(--ok); box-shadow: var(--shadow); font-size: 12.5px;
+}
+.toast.is-error { border-left-color: var(--danger); }
+.toast-text { flex: 1; min-width: 0; padding-top: 2px; overflow-wrap: anywhere; }
+.toast-items { margin: 4px 0 0; padding-left: 16px; font-family: var(--mono); font-size: 12px; }
+.toast-action { flex-shrink: 0; padding: 1px 8px; color: var(--accent); border-color: var(--accent); white-space: nowrap; }
+.toast-close { flex-shrink: 0; padding: 0 6px; border-color: transparent; background: none; color: var(--muted); }
 .conn { color: var(--border); font-size: 10px; }
 .conn.is-on { color: var(--ok); }
 .workbench { flex: 1; position: relative; min-height: 0; }
@@ -398,7 +408,6 @@ button.tree-search {
 .grid-toolbar button { padding: 2px 7px; }
 .grid-toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
 .grid-toolbar-label { color: var(--muted); font-size: 12px; }
-.grid-notice { color: var(--accent); font-size: 12px; white-space: nowrap; }
 .grid-foot {
   display: flex; gap: 14px; align-items: center;
   padding: 3px 8px; border-top: 1px solid var(--border); background: var(--panel);
@@ -450,6 +459,25 @@ button.tree-search {
 .helper-steps li div { margin-top: 4px; font-size: 12px; color: var(--muted); }
 .helper-download { display: inline-block; padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; }
 button.is-primary { background: var(--accent); color: var(--badge-fg); border-color: var(--accent); }
+/* 앱 대화상자 — 이름 입력 · 확인 (components/DialogHost.tsx). 다른 창(팔레트 · 가져오기) 위에 뜬다 */
+.overlay.is-dialog { z-index: 400; }
+.palette.dialog { width: min(480px, 92vw); max-height: 80vh; }
+.dialog-title { padding: 10px 14px 0; font-weight: 600; }
+.dialog-field { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px 0; font-size: 12px; color: var(--muted); }
+.dialog-field input {
+  padding: 6px 9px; font-size: 13.5px; font-family: var(--mono);
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); outline: none;
+}
+.dialog-field input:focus { border-color: var(--accent); }
+.dialog-field input[aria-invalid='true'] { border-color: var(--danger); }
+.dialog-error { padding: 4px 14px 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
+.dialog-hint { padding: 4px 14px 0; font-size: 12px; color: var(--muted); }
+.dialog-body { padding: 8px 14px 0; overflow: auto; overflow-wrap: anywhere; line-height: 1.55; }
+.dialog-body p { margin: 0 0 6px; }
+.dialog-items { margin: 0 0 6px; padding-left: 18px; max-height: 30vh; overflow: auto; font-family: var(--mono); font-size: 12px; }
+.palette.dialog .info-actions { padding-top: 12px; }
+.palette.dialog button.is-danger { background: var(--danger); color: var(--badge-fg); border-color: var(--danger); }
+.palette.dialog.is-danger { border-top: 3px solid var(--danger); }
 .help {
   width: min(820px, 94vw); max-height: 84vh; display: flex; flex-direction: column;
   background: var(--elev); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); outline: none;

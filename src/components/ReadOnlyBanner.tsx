@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { backend } from '../lib/backend'
+import { runCommand } from '../lib/commands'
+import { askConfirm } from '../lib/dialogs'
+import { notifyError } from '../lib/notices'
 import { splitRootPath } from '../lib/roots.mjs'
 import { store, useDocVersion } from '../store/documents'
 
@@ -17,9 +20,10 @@ export function ReadOnlyBanner({ path }: { path: string }) {
 
   if (reason === 'mount') {
     const alias = splitRootPath(path).alias ?? ''
+    // 브라우저에 쓰기 권한을 묻는다 — 클릭 직후여야 하므로 앞에 대화상자를 끼우지 않는다 (실패만 알림 줄로)
     const unlock = async () => {
       setBusy(true)
-      try { await backend().setRootReadOnly(alias, false) } catch (e) { window.alert(`바꾸지 못했습니다: ${(e as Error).message}`) } finally { setBusy(false) }
+      try { await backend().setRootReadOnly(alias, false) } catch (e) { notifyError(`바꾸지 못했습니다: ${(e as Error).message}`, { key: `readonly:${alias}` }) } finally { setBusy(false) }
     }
     return (
       <div className="banner">
@@ -31,9 +35,20 @@ export function ReadOnlyBanner({ path }: { path: string }) {
 
   const encoding = (store.get(path)?.encoding ?? '').toUpperCase()
   const convert = async () => {
-    if (!window.confirm(`${path}\n\n지금 보이는 내용 그대로 UTF-8 로 다시 저장합니다.\n이 파일을 ${encoding} 로만 읽는 프로그램이 있다면 한글이 깨져 보일 수 있습니다. 계속할까요?`)) return
+    // 디스크의 파일을 다른 인코딩으로 덮어쓴다 — 앱에서 되돌릴 수 없으니 취소가 기본이다.
+    // 답을 기다리는 동안 탭이 닫혔거나 이미 바뀌었으면 convertToUtf8 이 아무 일도 하지 않는다
+    const ok = await askConfirm({
+      title: 'UTF-8 로 바꿔 저장',
+      message: `지금 보이는 내용 그대로 UTF-8 로 다시 저장합니다. 이 파일을 ${encoding} 로만 읽는 프로그램이 있다면 한글이 깨져 보일 수 있습니다. 계속할까요?`,
+      items: [path],
+      okLabel: 'UTF-8 로 저장',
+      danger: true,
+    })
+    if (!ok) return
     setBusy(true)
     try { await store.convertToUtf8(path) } finally { setBusy(false) }
+    // 바뀌면 이 안내 막대(와 포커스가 돌아와 있던 버튼)가 사라진다 — 포커스가 body 로 빠지면 문서 창으로
+    window.setTimeout(() => { if (document.activeElement === document.body) runCommand('focusEditor') }, 0)
   }
   return (
     <div className="banner">
