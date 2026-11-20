@@ -30,6 +30,7 @@
 
 - 여는 파일 형식은 `src/lib/filetypes.mjs` 한 곳에 적는다.
 - 가져온 폴더의 경로 규칙(`@별칭/…`)은 `src/lib/roots.mjs` 한 곳에 적는다.
+- 코드 블록에 색을 넣는 언어는 `src/lib/code/langs.ts` 한 곳에 적는다. 문법 파일이 언어마다 청크로 나와 서비스 워커가 미리 받으므로 쓰는 언어만 넣는다(DESIGN §27 CC3). 테스트가 표의 언어가 전부 실리는지 본다.
 - 단축키는 `src/lib/shortcuts-table.mjs` 한 곳에 적는다. `npm run shortcuts` 가 SHORTCUTS.md 를 다시 만들고, 테스트가 둘이 같은지 본다. 브라우저가 먼저 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)은 쓰지 않는다. 새 기능을 넣을 때는 단축키 표와 팔레트 명령을 같이 넣는다.
 
 ## 사용 가이드 스크린샷
@@ -64,6 +65,7 @@ src/
   lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더 · 별칭 · 상세 경로) · IndexedDB 저장 · 최근 10개 · 권한 묻기
   lib/localPath.ts    상세 경로 다듬기 · 검사 · 앱 경로와 합치기 · 미리 채울 값
   lib/explorer.ts     파일 탐색기 열기 (jaydocs-open: → 연결 도우미)
+  lib/folderDrop.ts   파일 탐색기에서 폴더를 창에 끌어다 놓기 — 폴더가 든 drop 만 가로챈다 (`useFolderDrop`, DESIGN §28)
   lib/fsa/fake.ts     시험용 메모리 파일 시스템
   lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험 (스키마 · 계산식 · tsv-view 샘플 포함)
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
@@ -104,6 +106,10 @@ src/
   lib/calc/
     expr.ts           계산식 토크나이저 · 파서 · 평가기 (함수 · lookup)
     calc.ts           X_Calc.tsv 규칙 읽기 · 계산 · 적용 (stale 판정)
+  lib/code/           마크다운 코드 블록의 색 (DESIGN §27) — Shiki 를 코드 블록을 처음 그릴 때 받는다
+    langs.ts          색을 넣는 언어 표 (id · 별칭 · 문법 받기) · 펜스의 언어 표기 읽기(`codeLangOf`)
+    highlight.ts      Shiki 지연 로드 · 줄/토큰으로 나누기(`tokenizeCode`, 밝은 · 어두운 색을 같이) · 기억 · 400줄 상한
+    cmColors.ts       편집기 확장(`codeColors`) — 보이는 블록에 mark 장식, 입력이 멈추면 다시 나눈다
   lib/codegen/        표 → C# DTO (DESIGN §26). 파일 쓰기는 `App.tsx` 의 `exportDto`
     csharpDto.ts      머리글 · 타입 읽기(`analyzeDto`) · C# 소스(`renderDto`) · 기본 클래스 이름 · 경로 검사
     dtoPrefs.ts       표마다 내보낸 `.cs` 경로 기억 (localStorage)
@@ -112,7 +118,8 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
     FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
-    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
+    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 끌어다 놓은 폴더 · 문서 목록 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
+    FolderPreviewList.tsx  고른 폴더(아직 열지 않음)에 든 문서의 수 · 목록 (DESIGN §28)
     StartScreen.tsx   시작 화면 (문서 폴더 열기 · 최근 폴더) · 권한 다시 허용 화면
     UpdateButton.tsx  업데이트 확인 → 받는 중 → 적용 버튼
     FolderInfoDialog.tsx  문서 별칭 · 상세 경로 입력 창
@@ -120,6 +127,7 @@ src/
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
     ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
+    CodeBlock.tsx     미리보기의 코드 블록 — 언어에 맞춰 색을 넣는다 (lib/code/)
     DocView.tsx       훑어보기 공통 렌더러 — `DocView`(md · 표 · 평문) · `DocFileView`(읽어서 그림) · `DocThumb`(A4 틀 썸네일)
     NewDocDialog.tsx  새 문서 창 — 빈 문서 · 예시 · 내 템플릿 카드, 이름 칸
     SkimPanel.tsx     훑어보기 패널 — 문서 창 오른쪽의 축소된 문서, 클릭 → 커서, 범위 상자

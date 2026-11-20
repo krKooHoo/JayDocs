@@ -34,7 +34,7 @@ Mermaid 다이어그램, 체크박스, 링크가 오른쪽에 바로 그려져�
 
 - `Tab` / `Shift+Tab` 옆 칸 (마지막 칸에서 `Tab` 은 새 행), `Enter` · `↑↓` 위아래 칸, `Esc` 로 끝.
 - 바뀌는 건 그 칸의 글자뿐이라 다른 칸의 정렬 공백은 그대로예요.
-- 그 밖의 ```` ``` ```` 코드 블록은 코드 상자로 보이고 그 자리에서 고쳐요.
+- 그 밖의 ```` ``` ```` 코드 블록은 코드 상자로 보이고 그 자리에서 고쳐요. 언어를 적으면 색도 들어가요([코드 블록](#코드-블록)).
 
 ### 미리보기
 
@@ -46,6 +46,22 @@ Mermaid 다이어그램, 체크박스, 링크가 오른쪽에 바로 그려져�
   - 경로는 그 md 파일 위치 기준이에요. `/` 로 시작하면 폴더 맨 위 기준.
   - 예: `[건물 시스템](건물_시스템.md)`, `[건물 표](../data/Building/Building_Table.tsv)`
 - 그림은 `![설명](_assets/map.png)` 처럼 폴더 안 경로를 쓰면 보여요(png · jpg · gif · webp · svg · bmp · avif). 인터넷 주소도 돼요.
+
+## 코드 블록
+
+````markdown
+```csharp
+private async UniTaskVoid ResolveTurnAsync(string playerId, int d1)
+{
+    await Turn.ShowDiceResultAsync(d1);   // 주사위 결과 연출
+}
+```
+````
+
+- 펜스 뒤에 언어를 적으면 Visual Studio 처럼 색이 들어가요 — 키워드 · 타입 · 메서드 · 변수 · 주석 · 문자열이 서로 다른 색이에요. 소스 · 하이브리드 · 미리보기 어디서나 같은 색이고, 밝은 · 어두운 테마를 따라가요.
+- 되는 언어: `csharp`(`cs` · `c#`) · `hlsl` · `shaderlab` · `json` · `jsonc` · `yaml` · `xml` · `html` · `css` · `javascript`(`js`) · `typescript`(`ts`) · `python`(`py`) · `lua` · `bash`(`sh`) · `powershell` · `bat` · `ini` · `sql` · `diff`. 그 밖의 언어는 색 없이 보여요.
+- 그 언어의 블록을 처음 볼 때 한 번은 색 없이 보이다가 곧 칠해져요.
+- 400줄이 넘는 블록은 색을 넣지 않아요(입력이 느려지지 않게).
 
 ## Mermaid 다이어그램
 

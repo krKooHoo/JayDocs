@@ -3,6 +3,8 @@ import { APP_VERSION, usePwa } from '../lib/pwa'
 import { guessPath } from '../lib/localPath'
 import { forgetWorkspace, listWorkspaces, queryRoot, requestRoot, setWorkspaceInfo, workspaceFor, workspaceLabel, type StoredRoot, type Workspace } from '../lib/fsa/workspace'
 import { FolderInfoDialog } from './FolderInfoDialog'
+import { FolderPreviewList } from './FolderPreviewList'
+import { useFolderDrop } from '../lib/folderDrop'
 import { UpdateButton } from './UpdateButton'
 
 /** 앱 설치 안내 · 버전과 업데이트 */
@@ -93,10 +95,11 @@ export function StartScreen({ onOpen }: { onOpen: (w: Workspace) => void }) {
   /** 상세 경로가 없는 폴더를 골랐다 — 저장하거나 건너뛰면 연다 */
   const [fresh, setFresh] = useState<{ ws: Workspace; guess: string } | null>(null)
 
-  const pick = async () => {
+  /** 고르거나 끌어다 놓은 폴더를 연다. 처음 여는 폴더면 안의 문서를 보여 주고 상세 경로를 묻는다 */
+  const openHandle = async (pick: () => Promise<FileSystemDirectoryHandle>) => {
     setError(null)
     try {
-      const handle = await window.showDirectoryPicker({ id: 'jaydocs-primary', mode: 'readwrite', startIn: 'documents' })
+      const handle = await pick()
       const ws = await workspaceFor(handle)
       if (ws.path) { onOpen(ws); return }
       const known = (await listWorkspaces()).find((w) => w.path)?.path
@@ -105,17 +108,23 @@ export function StartScreen({ onOpen }: { onOpen: (w: Workspace) => void }) {
       if ((e as Error).name !== 'AbortError') setError(`폴더를 열지 못했습니다: ${(e as Error).message}`)
     }
   }
+  const pick = () => openHandle(() => window.showDirectoryPicker({ id: 'jaydocs-primary', mode: 'readwrite', startIn: fresh?.ws.primary ?? 'documents' }))
+  // 파일 탐색기에서 폴더를 끌어다 놓아도 연다 (DESIGN §28) — 선택 창과 달리 탐색기에서는 안의 파일이 보인다
+  const dropping = useFolderDrop((dirs) => void openHandle(async () => dirs[0]))
 
   return (
     <div className="app-message">
       <h1>JayDocs</h1>
       <p>Markdown 과 TSV 를 나란히 편집합니다. 문서는 이 PC 의 폴더에 그대로 있고, 어디에도 올라가지 않습니다.</p>
       <p><button className="is-primary" onClick={() => void pick()}>문서 폴더 열기</button></p>
+      <p className="start-hint">폴더 선택 창에는 폴더만 보입니다. 안의 파일을 보면서 고르려면 파일 탐색기에서 폴더를 이 창에 끌어다 놓으세요.</p>
+      {dropping && <div className="drop-hint">폴더를 놓으면 문서 폴더로 엽니다</div>}
       {error && <div className="banner is-error">{error}</div>}
       <RecentFolders title="최근 폴더" onOpen={onOpen} onError={setError} />
       <AppFooter />
       {fresh && (
         <FolderInfoDialog
+          key={fresh.ws.id}
           title="새 문서 폴더"
           folder={fresh.ws.primary.name}
           label={fresh.ws.label ?? ''}
@@ -123,11 +132,14 @@ export function StartScreen({ onOpen }: { onOpen: (w: Workspace) => void }) {
           guess={fresh.guess}
           closeLabel="나중에"
           onClose={() => onOpen(fresh.ws)}
+          onPickAgain={() => void pick()}
           onSave={async (label, path) => {
             await setWorkspaceInfo(fresh.ws, label, path)
             onOpen(fresh.ws)
           }}
-        />
+        >
+          <FolderPreviewList handle={fresh.ws.primary} asMount={false} />
+        </FolderInfoDialog>
       )}
     </div>
   )

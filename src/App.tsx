@@ -9,6 +9,7 @@ import { checkForUpdate, UpdateButton } from './components/UpdateButton'
 import { ExplorerHelperDialog } from './components/ExplorerHelperDialog'
 import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
+import { useFolderDrop } from './lib/folderDrop'
 import type { RootAction } from './components/FileTree'
 import { GrantScreen, StartScreen } from './components/StartScreen'
 import { NewDocDialog, type NewDocChoice } from './components/NewDocDialog'
@@ -152,7 +153,8 @@ type Overlay =
   | { kind: 'palette' }
   | { kind: 'files' }
   | { kind: 'help' }
-  | { kind: 'import' }
+  /** handle: 파일 탐색기에서 끌어다 놓은 폴더 (DESIGN §28) */
+  | { kind: 'import'; handle?: FileSystemDirectoryHandle }
   /** after: 저장하고 이어서 할 일 (상세 경로가 없어 탐색기 열기·경로 복사가 여기로 왔을 때) */
   | { kind: 'rootInfo'; root: RootDetail; guess: string; after?: { action: 'reveal' | 'copyPath'; path: string } }
   | { kind: 'explorer'; path: string | null }
@@ -609,6 +611,13 @@ function Workspace({ layoutId }: { layoutId: string }) {
     runCommand('focusTree')
   }, [refreshTree])
 
+  // 파일 탐색기에서 폴더를 창에 끌어다 놓으면 가져오기 창을 그 폴더로 연다 — 이름을 묻는 대화상자가 떠 있을 때는 받지 않는다
+  const dropping = useFolderDrop((dirs) => {
+    if (dialogOpen()) return
+    if (dirs.length > 1) notify(`폴더는 하나씩 가져옵니다 — ${dirs[0].name} 만 골랐습니다`, { key: FILE_NOTICE })
+    setOverlay({ kind: 'import', handle: dirs[0] })
+  })
+
   const switchFolder = useCallback(async () => {
     if (store.anyDirty()) { notifyError('저장하지 않은 문서가 있습니다. 먼저 저장하세요.', { items: [...store.dirtyPaths()], key: FILE_NOTICE }); return }
     await setCurrentWorkspace(null)
@@ -762,7 +771,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id, true) }} />
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
-      {overlay?.kind === 'import' && <ImportDialog onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
+      {overlay?.kind === 'import' && <ImportDialog initial={overlay.handle} onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
+      {dropping && <div className="drop-hint">폴더를 놓으면 가져오기 창이 열립니다</div>}
       {overlay?.kind === 'rootInfo' && (
         <FolderInfoDialog
           title={overlay.root.alias === null ? '문서 폴더 정보' : `가져온 폴더 정보 — ${overlay.root.label}`}

@@ -15,6 +15,8 @@ import { setCell } from '../lib/tsv/edits'
 import { sanitizeFor, tableFormatOf } from '../lib/tsv/table'
 import type { TsvTable } from '../lib/tsv/model'
 import { isDocName } from '../lib/filetypes.mjs'
+import { codeLangOf } from '../lib/code/langs'
+import { CodeBlock } from './CodeBlock'
 
 /**
  * 마크다운 미리보기 (DESIGN D2 v1). 스토어의 텍스트를 react-markdown 으로 그린다.
@@ -447,6 +449,10 @@ export function mdComponents(mdPath: string, weight: MdWeight = 'rich'): Compone
         if (weight === 'light') return <div className="doc-stub">⊞ {parseTsvViewSpec(src).file ?? 'tsv-view'}</div>
         return <TsvView body={src} mdPath={mdPath} />
       }
+      // 그 밖의 언어 — 표(lib/code/langs.ts)에 있으면 색을 넣는다. 썸네일(light)은 넣지 않는다: 격자가 문법을 받고 나누느라 느려지지 않게
+      // (`[\w-]+` 는 `c#` 을 `c` 로 읽으므로 언어 표기는 따로 끝까지 읽는다)
+      const lang = weight === 'rich' ? codeLangOf(/language-(\S+)/.exec(className ?? '')?.[1]) : null
+      if (lang) return <CodeBlock lang={lang} code={src} className={className} {...rest} />
       return <code className={className} {...rest}>{children}</code>
     },
     a: ({ node, href, children, ...rest }) => {

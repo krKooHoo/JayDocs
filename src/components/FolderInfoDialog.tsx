@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { explorerSupported } from '../lib/explorer'
 import { checkPath, cleanPath } from '../lib/localPath'
 
@@ -12,6 +12,10 @@ interface Props {
   /** 입력한 적이 없어 미리 채운 경로 */
   guess?: string
   closeLabel?: string
+  /** 제목 아래에 더 보일 것 (새 문서 폴더의 문서 목록 등) */
+  children?: ReactNode
+  /** 있으면 "다른 폴더…" 버튼을 보인다 — 고른 폴더가 아니었을 때 선택 창을 다시 연다 */
+  onPickAgain?: () => void
   onSave: (label: string, path: string) => void | Promise<void>
   onClose: () => void
 }
@@ -49,6 +53,7 @@ export function FolderInfoDialog(p: Props) {
     <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) p.onClose() }}>
       <div className="palette import" role="dialog" aria-label={p.title} onKeyDown={onKeyDown}>
         <div className="palette-title">{p.title} — 📁 {p.folder}</div>
+        {p.children}
         {p.label !== undefined && (
           <label className="info-field">
             문서 별칭
@@ -66,6 +71,7 @@ export function FolderInfoDialog(p: Props) {
         </div>
         {error && <div className="banner is-error">{error}</div>}
         <div className="info-actions">
+          {p.onPickAgain && <><button onClick={p.onPickAgain}>다른 폴더…</button><span className="spacer" /></>}
           <button onClick={p.onClose}>{p.closeLabel ?? '취소'}</button>
           <button className="is-primary" onClick={() => void submit()}>저장</button>
         </div>

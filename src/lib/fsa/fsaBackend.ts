@@ -84,6 +84,68 @@ async function writeAll(h: FileSystemFileHandle, data: string | Uint8Array<Array
   }
 }
 
+/**
+ * 폴더를 훑어 문서 트리를 만든다. `alias` 는 경로 접두(`@별칭/`, null 이면 없음), `asMount` 는 가져온 폴더의 규칙
+ * (Unity 폴더를 더 빼고 문서 없는 폴더를 접는다). 항목은 MOUNT_SCAN_LIMIT 개까지만 훑는다.
+ */
+async function scanFolder(handle: Dir, alias: string | null, asMount: boolean): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+  const ignore = asMount ? new Set([...IGNORE_DIRS, ...MOUNT_IGNORE_DIRS]) : IGNORE_DIRS
+  const ctx = { budget: MOUNT_SCAN_LIMIT, truncated: false }
+  const walk = async (dir: Dir, rel: string): Promise<TreeEntry[]> => {
+    const entries: TreeEntry[] = []
+    try {
+      for await (const [name, h] of dir.entries()) {
+        if (name.startsWith('.') || ignore.has(name)) continue
+        if (--ctx.budget < 0) { ctx.truncated = true; break }
+        const inner = rel ? `${rel}/${name}` : name
+        const appPath = joinRootPath(alias, inner)
+        if (h.kind === 'directory') {
+          const children = await walk(h as Dir, inner)
+          if (asMount && children.length === 0) continue
+          entries.push({ type: 'dir', name, path: appPath, children })
+        } else if (EXTS.has(extOf(name))) {
+          entries.push({ type: 'file', name, path: appPath })
+        }
+      }
+    } catch (e) {
+      if (rel === '') throw e // 폴더 자체를 못 읽으면 위에서 알린다. 안쪽 폴더면 건너뛴다
+    }
+    entries.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, 'ko') : a.type === 'dir' ? -1 : 1))
+    return entries
+  }
+  return { entries: await walk(handle, ''), truncated: ctx.truncated }
+}
+
+/** 아직 열지 않은 폴더에 든 문서 — 가져오기 전에 "맞는 폴더인가" 를 보여 준다 (DESIGN §28) */
+export interface FolderPreview {
+  /** 문서의 경로(그 폴더 기준), 트리에 보일 순서대로 */
+  files: string[]
+  /** 확장자(`.md` …)별 수 */
+  byExt: Record<string, number>
+  /** 항목이 너무 많아 다 훑지 못했다 — 수는 "적어도" 다 */
+  truncated: boolean
+}
+
+/**
+ * 고른 폴더를 가져오면 트리에 보일 문서를 미리 훑는다 (읽기 권한만 쓴다, 아무것도 저장하지 않는다).
+ * `asMount`: 가져온 폴더의 규칙으로(기본). 주 폴더로 열 폴더면 false.
+ */
+export async function previewFolder(handle: Dir, asMount = true): Promise<FolderPreview> {
+  const { entries, truncated } = await scanFolder(handle, null, asMount).catch((e) => { throw fsFail(e, '폴더를 읽지 못했습니다') })
+  const files: string[] = []
+  const byExt: Record<string, number> = {}
+  const collect = (list: TreeEntry[]) => {
+    for (const e of list) {
+      if (e.type === 'dir') { collect(e.children ?? []); continue }
+      files.push(e.path)
+      const ext = extOf(e.name)
+      byExt[ext] = (byExt[ext] ?? 0) + 1
+    }
+  }
+  collect(entries)
+  return { files, byExt, truncated }
+}
+
 interface Located {
   root: Root
   /** 정규화한 앱 경로 */
@@ -255,33 +317,8 @@ export class FsaBackend implements Backend {
    * 가져온 폴더는 Unity 같은 큰 폴더를 생각해 — 기본 무시 폴더를 더 빼고, 문서가 없는 폴더는 접어 버린다.
    * 항목은 MOUNT_SCAN_LIMIT 개까지만 훑는다 (넘으면 truncated). 읽을 수 없는 하위 폴더는 건너뛴다.
    */
-  private async scan(root: Root): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
-    const isMount = root.alias !== null
-    const ignore = isMount ? new Set([...IGNORE_DIRS, ...MOUNT_IGNORE_DIRS]) : IGNORE_DIRS
-    const ctx = { budget: MOUNT_SCAN_LIMIT, truncated: false }
-    const walk = async (dir: Dir, rel: string): Promise<TreeEntry[]> => {
-      const entries: TreeEntry[] = []
-      try {
-        for await (const [name, h] of dir.entries()) {
-          if (name.startsWith('.') || ignore.has(name)) continue
-          if (--ctx.budget < 0) { ctx.truncated = true; break }
-          const inner = rel ? `${rel}/${name}` : name
-          const appPath = joinRootPath(root.alias, inner)
-          if (h.kind === 'directory') {
-            const children = await walk(h as Dir, inner)
-            if (isMount && children.length === 0) continue
-            entries.push({ type: 'dir', name, path: appPath, children })
-          } else if (EXTS.has(extOf(name))) {
-            entries.push({ type: 'file', name, path: appPath })
-          }
-        }
-      } catch (e) {
-        if (rel === '') throw e // 폴더 자체를 못 읽으면 위에서 알린다. 안쪽 폴더면 건너뛴다
-      }
-      entries.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, 'ko') : a.type === 'dir' ? -1 : 1))
-      return entries
-    }
-    return { entries: await walk(root.handle, ''), truncated: ctx.truncated }
+  private scan(root: Root): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+    return scanFolder(root.handle, root.alias, root.alias !== null)
   }
 
   private async mountTree(m: StoredRoot): Promise<MountTree> {

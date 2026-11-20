@@ -1082,10 +1082,85 @@ X13 측정 — Node 22.18 · Ryzen 7 2700X, vitest 안에서 `setCell` → `deri
 | JSON → C# DTO | 샘플 하나로는 타입을 정할 수 없는 곳이 많고(`1` 과 `1.0`, `null`, 빈 배열), IDE 가 이미 한다 |
 | C# DTO → JSON | 기본값 뼈대만 나온다. Unity 의 `JsonUtility.ToJson(new T(), true)` 가 직렬화 규칙까지 맞게 낸다 |
 
+## 27. 코드 블록의 색 (2026-11-21)
+
+마크다운의 ```` ``` ```` 코드 블록에 언어별 색을 넣는다(Jay 요청 — "Visual Studio 기준의 색과 스타일", 하이브리드와 미리보기에). 그전에는 코드 상자 배경만 있었다.
+
+후보 다섯을 Jay 가 준 C# 조각(14줄)으로 재고 골랐다(Node 에서 잼, 크기는 esbuild 로 묶어 gzip):
+
+| 후보 | 타입 · 메서드 · 변수 구분 | 더 실리는 크기(gz) | 조각 하나 | 2천 줄 블록 |
+|---|---|---|---|---|
+| **Shiki** (VS Code 의 TextMate 문법 · 테마) | 셋 다 | 약 67 kB | 2.5 ms | 205 ms |
+| Prism | 타입 · 메서드만(변수 · 매개변수는 평문) | 9.5 kB | 0.2 ms | 6.5 ms |
+| CodeMirror legacy 모드(clike) | 키워드 · 내장 타입 · 주석 · 문자열만 | 7.6 kB | 0.6 ms | 12 ms |
+| highlight.js | 메서드 호출을 못 잡는다 | 9.8 kB | — | — |
+| `@replit/codemirror-lang-csharp` | 거의 모든 이름을 타입으로 칠한다 | 48 kB | — | — |
+
+| # | 결정 | 근거 |
+|---|---|---|
+| CC1 | **Shiki** 를 쓴다(`shiki` 4.6, 새 의존성). 정규식 엔진은 JS 엔진(`shiki/engine/javascript`) — wasm 을 싣지 않는다 | Jay 의 스크린샷과 같은 색이 나온 것은 Shiki 뿐이다(키워드 `#569CD6` · 타입 `#4EC9B0` · 메서드 `#DCDCAA` · 변수 `#9CDCFE` · 주석 `#6A9955`). 표의 언어 19개가 JS 엔진에서 전부 돈다(테스트가 검사) |
+| CC2 | **테마는 앱 테마를 따른다** — 밝으면 `light-plus`, 어두우면 `dark-plus`. 토큰마다 두 색을 다 들고(`--tk-l` · `--tk-d`) `styles.css` 의 `.tk` 가 고른다. 코드 상자의 배경(`--code-bg`)과 기본 글자색은 그대로 두고, 테마의 기본 글자색인 토큰에는 색을 넣지 않는다 | 테마를 바꿀 때 다시 나누거나 다시 그리지 않는다. 한 번에 두 테마로 나누므로 나누는 시간은 두 배다(조각 하나 5 ms) |
+| CC3 | **색을 넣는 언어는 표 하나(`src/lib/code/langs.ts`)에 적는다** — C# · HLSL · ShaderLab · JSON · JSONC · YAML · XML · HTML · CSS · JS · TS · Python · Lua · 셸 · PowerShell · 배치 · INI · SQL · Diff. 별칭(```` ```cs ```` ```` ```c# ```` ```` ```bash ````)도 거기에. 표에 없는 언어는 전처럼 색 없이 보인다 | 서비스 워커가 `dist` 의 파일을 전부 미리 받는다 — Shiki 의 문법 200여 개를 다 넣으면 설치 · 업데이트가 무거워진다. C++ 문법은 혼자 530 kB 라 뺐다(한 줄이면 넣는다) |
+| CC4 | **넣는 곳** — 미리보기 · 훑어보기 창과 패널(`components/CodeBlock.tsx`), 편집기의 소스 · 하이브리드(`lib/code/cmColors.ts`). **썸네일(폴더 훑어보기 · 새 문서 창)에는 넣지 않는다.** `.json` 파일 창의 강조(lezer)는 그대로다 | 썸네일 격자가 문법을 받고 나누느라 느려지지 않게(§25 SK2 의 `light`) |
+| CC5 | **편집기는 글자를 치는 동안 있던 색의 위치만 옮기고, 입력이 90 ms 멈추면 다시 나눈다.** 보이는 범위에 걸친 블록만 나눈다. 한글 조합 중에는 장식을 바꾸지 않는다. 결과는 (언어, 글) 로 300개까지 기억한다. **400줄 또는 4만 자를 넘는 블록은 색을 넣지 않는다** | 하이브리드는 글자 · 커서가 바뀔 때마다 장식을 통째로 다시 만든다 — 거기서 나누면 긴 블록의 입력이 밀린다. 그래서 `hybrid.ts` 와 따로 도는 `ViewPlugin` 으로 뒀다(줄 장식 = 상자 모양은 `hybrid.ts`, 글자 색은 `cmColors.ts`) |
+| CC6 | **Shiki 본체 · 테마 · 문법은 코드 블록을 처음 그릴 때 받는다**(mermaid 와 같은 방식, 언어마다 청크 하나). 받는 동안은 색 없이 보이다가 칠해진다. 받지 못하거나 나누다 실패하면 색 없이 보이고 콘솔에만 남긴다 | 앱 시작에 실리는 것이 없다 — `vendor` 는 gz 340 kB 그대로다 |
+| CC7 | 인용 · 목록 안의 펜스는 줄 앞 표식(`>` · 들여쓰기)을 빼고 나누고 색의 위치는 문서 기준으로 되돌린다 | lezer 의 `CodeText` 가 줄마다 표식 뒤부터다 |
+| CC8 | 단축키 · 팔레트 명령은 없다 | 켜고 끄는 동작이 없는 표시다 |
+
+코드: `lib/code/langs.ts`(언어 표 · `codeLangOf`), `lib/code/highlight.ts`(Shiki 지연 로드 · `tokenizeCode` · 기억 · 상한), `lib/code/cmColors.ts`(편집기 확장 `codeColors` — `lib/cm.ts` 의 `baseExtensions` 가 마크다운 창에 넣는다), `components/CodeBlock.tsx`(미리보기 — `PreviewPane.tsx` 의 `mdComponents` 가 쓴다), `styles.css` 의 `.tk`.
+
+### 27.1 확인한 것
+
+`npm test` 447(새 13건 — 언어 표 · 표의 언어가 전부 실리는지 · C# 조각의 색 · 상한 · 편집기 위치) · `npm run build` · `npm run lint`(새 경고 없음). 빌드: Shiki `core` 95 kB(gz 30) · `engine-javascript` 58 kB(gz 20) · 테마 둘 19 kB(gz 4) · `csharp` 91 kB(gz 11) 가 따로 떨어진 청크로 나오고 `vendor` 는 gz 339.97 kB 그대로. `dist` 는 파일 102 → 128개, 6.6 → 7.7 MB.
+
+dev `?opfs` + 내장 브라우저(`docs/코드.md` 샘플): 소스 · 하이브리드 · 분할의 미리보기 · 훑어보기 창에서 C# 조각이 같은 색(어두운 테마 `private` `#569CD6` · `UniTaskVoid` `#4EC9B0` · `ResolveTurnAsync` `#DCDCAA` · `playerId` `#9CDCFE`, 밝은 테마 `#0000FF` · `#267F99` · `#795E26`), 테마를 바꾸면 다시 그리지 않고 색만 바뀜, 인용 안의 ```` ```json ```` 도 칠해짐, 표에 없는 ```` ```cobol ```` 은 색 없음, 블록 안에 줄을 넣으면 바로는 색이 없다가 멈춘 뒤 칠해지고 미리보기도 따라옴. 콘솔 오류 없음.
+
+입력 지연(개발 빌드, 분할 모드, 390줄 C# 블록): 글자 하나의 처리 시간 중앙값이 색 있는 블록 0.9 ms · 색 없는 블록 0.7 ms. 입력이 멈춘 뒤 다시 나누는 긴 작업이 113 ms 한 번(미리보기 다시 그리기 포함).
+
+### 27.2 확인하지 못한 것 (TESTCASES §21)
+
+- 실제 한글 IME 로 코드 블록 안에서 조합하는 동안 색 · 조합이 온전한지(자동화는 조합을 못 흉내 낸다).
+- 빌드본의 화면 — `?opfs` 가 개발 전용이라 빌드본은 청크가 나뉘는 것까지만 봤다. 설치한 앱이 업데이트 때 받는 파일 수.
+- 썸네일에 색이 없는 것은 코드로만(`weight === 'rich'`).
+- 실제 수업 자료(긴 C# · ShaderLab)에서 색이 맞는지.
+
+## 28. 폴더를 고를 때 안의 문서 보기 (2026-11-21)
+
+Jay 요청 — 폴더를 고르는 창에서 그 폴더에 무엇이 있는지 미리 보고 싶다. 스크린샷의 창은 Windows 의 폴더 선택 창이고 폴더만 보여 준다.
+
+**선택 창 자체는 바꿀 수 없다.** `showDirectoryPicker` 에는 파일을 보이게 하는 옵션이 없고, `<input webkitdirectory>` 도 같은 창이다. 파일 선택 창(`showOpenFilePicker`)은 파일을 보여 주지만 고른 파일에서 그 폴더로 올라갈 수 없다(브라우저가 막는다) — 파일 하나 가져오기는 옆 파일(그림 · `tsv-view` · `_Field`)을 못 읽어 주된 요구가 아니다(Jay). 그래서 선택 창 밖에서 푼다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| FP1 | **파일 탐색기에서 폴더를 앱 창에 끌어다 놓으면 연다** — 열려 있는 문서 폴더에서는 가져오기 창이 그 폴더로 뜨고, 시작 화면에서는 문서 폴더로 연다(`lib/folderDrop.ts`, `DataTransferItem.getAsFileSystemHandle()`) | 탐색기는 안의 파일을 전부 보여 준다 — "찾는 동안 본다" 가 된다. 마우스 전용이라 키보드 길(FP2)을 같이 둔다 |
+| FP2 | **고른 바로 뒤에 그 폴더의 문서를 보여 준다** — 가져오기 창과 시작 화면의 "새 문서 폴더" 창에 "문서 n개 — 마크다운 a · TSV 표 b …" 와 경로 목록(200개까지). 문서가 없으면 "여는 문서가 없습니다" 경고. 버튼 **다른 폴더…** 로 선택 창을 다시 연다(`components/FolderPreviewList.tsx`, `previewFolder`) | 선택 창을 지나는 동안에는 못 보지만 한 단계 뒤에 본다. 훑는 일은 가져올 때 어차피 하는 것과 같은 함수(`scanFolder`)라 더 드는 것이 없다. 2만 항목에서 멈춘다 |
+| FP3 | 미리 훑는 규칙은 그 폴더를 열었을 때와 같다 — 가져오기는 Unity 폴더(`Library` 등)를 빼고, 주 폴더로 열 때는 빼지 않는다 | 목록이 트리에 보일 것과 같아야 한다 |
+| FP4 | **폴더가 든 drop 만 가로챈다.** 파일만 든 drop 은 건드리지 않는다. 창 전체에서 캡처 단계로 듣는다 | 편집기(CodeMirror)에 글 파일을 놓는 동작을 바꾸지 않는다. 캡처로 듣지 않으면 편집기가 폴더를 글로 읽으려 든다. 전에는 폴더를 편집기 밖에 놓으면 브라우저가 그 폴더를 열어 앱을 떠났다 |
+| FP5 | 끌고 있는 동안 창 아래에 안내("폴더를 놓으면 가져오기 창이 열립니다")를 띄운다. 파일을 끌 때도 뜬다 | 브라우저는 놓기 전에는 그것이 폴더인지 알려 주지 않는다 |
+| FP6 | 가져오기 창의 **읽기 전용을 바꿔도 고른 폴더를 버리지 않는다.** 권한은 가져올 때 그 모드로 묻는다(`addRoot` 의 `requestRoot`). 폴더가 정해지면 포커스가 **가져오기** 로 간다 | 전에는 선택 창을 그 모드로 열어야 해서 체크를 바꾸면 다시 골라야 했다. 포커스가 고르기 버튼에 남으면 `Enter` 가 선택 창을 또 연다 |
+| FP7 | 폴더를 여럿 놓으면 첫 폴더만 고르고 알린다. 이름을 묻는 대화상자가 떠 있으면 받지 않는다 | 가져오기 창은 폴더 하나씩이다 |
+| FP8 | 새 단축키 · 팔레트 명령은 없다 | 가져오기(`Ctrl+Shift+O`)의 창이 달라진 것이고, 끌어다 놓기는 마우스 동작이다 |
+
+같이 찾았지만 넣지 않은 길 — **넓은 폴더를 한 번 허용해 두고 앱 안의 탐색 창에서 하위 폴더를 문서와 함께 훑어 고르기.** 찾는 동안 앱 안에서 키보드로 볼 수 있는 유일한 길이지만, 넓은 폴더에 쓰기 권한을 줘야 하고 재시작 뒤 하위 폴더의 권한이 어떻게 되는지 실제 폴더로 확인해야 한다. FP1 · FP2 를 써 보고도 불편하면 넣는다.
+
+### 28.1 확인한 것
+
+`npm test` 456(새 9건 — `previewFolder` 3 · 끌어다 놓은 것에서 폴더 고르기 3 · 요약 3) · `npm run build` · `npm run lint`(새 경고 없음).
+
+dev `?opfs` + 내장 브라우저(브라우저 안 저장소에 시험 폴더를 만들고, 그 핸들을 든 `dragover` · `drop` 이벤트를 dispatch): 끄는 동안 안내가 뜨고 멈추면 사라짐 → 폴더를 놓으면 가져오기 창이 그 폴더로 뜨고 "문서 5개 — 마크다운 3 · TSV 표 1 · JSON 1" 과 목록(`Library` 안의 문서는 빠짐), 포커스는 **가져오기** → 문서 없는 폴더를 놓으면 경고 → 읽기 전용을 켜도 고른 폴더와 목록이 남음 → `Enter` 로 가져와 트리에 `🔒 @별칭`. 폴더 둘을 놓으면 첫 폴더만 고르고 알림. 파일만 놓으면 아무것도 하지 않음(가로채지 않음). 편집기 위에 폴더를 놓아도 글이 바뀌지 않고 가져오기 창이 뜸. 시작 화면에서 놓으면 "새 문서 폴더" 창에 목록(여기서는 `Library` 포함)과 **다른 폴더…** 버튼.
+
+### 28.2 확인하지 못한 것 (TESTCASES §22)
+
+- **실제 파일 탐색기에서 끌어다 놓기** — 자동화는 OS 의 끌기를 못 한다. 실제 폴더 핸들의 권한 흐름(놓은 폴더는 읽기만 허용된 상태라 가져올 때 쓰기를 묻는다)도 같이.
+- 실제 폴더 선택 창 — **다른 폴더…** 가 방금 고른 자리에서 열리는지(`startIn` 에 핸들을 넘긴다. 브라우저가 `id` 로 기억한 자리를 먼저 쓸 수 있다).
+- 큰 폴더(Unity 프로젝트 전체)를 미리 훑는 시간.
+- 설치한 Edge 앱 창에 놓기.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
 - 마크다운: CodeMirror changelog https://codemirror.net/docs/changelog/ · composition 이슈 https://github.com/codemirror/dev/issues?q=is%3Aissue+composition · @atomic-editor/editor https://github.com/kenforthewin/atomic-editor · codemirror-markdown-hybrid https://github.com/tiagosimoes/codemirror-markdown-hybrid · ProseMirror changelog https://prosemirror.net/docs/changelog/ · TipTap markdown https://tiptap.dev/blog/release-notes/introducing-bidirectional-markdown-support-in-tiptap · Milkdown https://github.com/Milkdown/milkdown · MDXEditor code blocks https://mdxeditor.dev/editor/docs/code-blocks · mdast-util-to-markdown https://github.com/syntax-tree/mdast-util-to-markdown
+- 코드 색(§27): Shiki https://shiki.style/ · JS 정규식 엔진 https://shiki.style/guide/regex-engines
 - Mermaid: usage https://mermaid.js.org/config/usage.html · 크기 https://bundlephobia.com/api/size?package=mermaid
 - 그리드: Glide https://github.com/glideapps/glide-data-grid (IME #1175) · RevoGrid https://github.com/revolist/revogrid · react-datasheet-grid https://github.com/nick-keller/react-datasheet-grid (#340, #387) · react-data-grid #1702 · Handsontable 라이선스 https://handsontable.com/licensing · AG Grid clipboard https://www.ag-grid.com/react-data-grid/clipboard/ · MUI X clipboard https://mui.com/x/react-data-grid/clipboard/ · jspreadsheet CE #1724 · PapaParse https://www.papaparse.com/docs · csv-parse raw https://csv.js.org/parse/options/raw/
 - 전환(§20): 파일 이동 https://groups.google.com/a/chromium.org/g/blink-dev/c/ogS8CeyZ3n8/m/UyYqFPZVAAAJ · Pages 요금제 https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits · 파일 연결 https://learn.microsoft.com/microsoft-edge/progressive-web-apps-chromium/how-to/handle-files

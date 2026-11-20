@@ -8,6 +8,7 @@ import { tags as t } from '@lezer/highlight'
 import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { linter, lintGutter } from '@codemirror/lint'
 import { fileTypeOf } from './filetypes.mjs'
+import { codeColors } from './code/cmColors'
 
 /** CodeMirror 공통 설정 — 마크다운 창과 평문/JSON 창이 같이 쓴다. */
 
@@ -129,7 +130,7 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
     highlightSelectionMatches(),
     bracketMatching(),
     commonTheme,
-    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), EditorView.lineWrapping, proseTheme] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
+    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), codeColors(), EditorView.lineWrapping, proseTheme] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
     EditorState.phrases.of(KO_PHRASES),
     search({ top: true }),
   ]

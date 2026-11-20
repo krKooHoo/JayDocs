@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConflictError, type ChangeEvent, type TreeEntry } from '../backend'
 import { MOUNT_SCAN_LIMIT } from '../roots.mjs'
 import { FakeDir, FakeFile, asDir } from './fake'
-import { FsaBackend, decodeText } from './fsaBackend'
+import { FsaBackend, decodeText, previewFolder } from './fsaBackend'
 import type { Workspace } from './workspace'
 
 function setup(Observer: typeof FileSystemObserver | null = null) {
@@ -243,6 +243,27 @@ describe('트리', () => {
     const dir = root
     for (let i = 0; i <= MOUNT_SCAN_LIMIT; i++) dir.children.push(new FakeFile(`f${i}.md`, dir))
     expect((await b.tree()).truncated).toBe(true)
+  })
+  it('미리 훑기 — 가져오면 보일 문서를 그 폴더 기준 경로로, 확장자별 수와 함께', async () => {
+    const m = new FakeDir('Unity')
+    for (const p of ['Library/a.md', 'Assets/b.TSV', 'Assets/Art/x.png', 'README.md', '.git/x.md', 'Docs/기획/c.md', 'Docs/d.json']) m.put(p, 'x')
+    const p = await previewFolder(asDir(m))
+    expect(p.files).toEqual(['Assets/b.TSV', 'Docs/기획/c.md', 'Docs/d.json', 'README.md'])
+    expect(p.byExt).toEqual({ '.tsv': 1, '.md': 2, '.json': 1 })
+    expect(p.truncated).toBe(false)
+  })
+  it('미리 훑기 — 주 폴더로 열 폴더면 Unity 폴더를 빼지 않는다. 문서가 없으면 빈 목록', async () => {
+    const m = new FakeDir('P')
+    for (const p of ['Library/a.md', 'x.png']) m.put(p, 'x')
+    expect((await previewFolder(asDir(m), false)).files).toEqual(['Library/a.md'])
+    expect(await previewFolder(asDir(m))).toEqual({ files: [], byExt: {}, truncated: false })
+  })
+  it('미리 훑기 — 항목이 많으면 잘린 것을 알린다', async () => {
+    const m = new FakeDir('Big')
+    for (let i = 0; i <= MOUNT_SCAN_LIMIT; i++) m.children.push(new FakeFile(`f${i}.md`, m))
+    const p = await previewFolder(asDir(m))
+    expect(p.truncated).toBe(true)
+    expect(p.files).toHaveLength(MOUNT_SCAN_LIMIT)
   })
   it('가져온 폴더가 사라져도 나머지는 보인다', async () => {
     const { root, b, ws } = setup()
