@@ -186,7 +186,6 @@ kbd {
 .conn.is-on { color: var(--ok); }
 .workbench { flex: 1; position: relative; min-height: 0; }
 .app-message { max-width: 760px; margin: 80px auto; padding: 0 16px; line-height: 1.7; }
-.start-hint { font-size: 12px; color: var(--muted); }
 .start-list { margin: 16px 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .start-list-title { padding: 6px 10px; color: var(--muted); font-size: 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .start-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
@@ -495,17 +494,6 @@ button.tree-search {
 .import-hint { padding: 8px 12px; font-size: 12px; color: var(--muted); }
 .import-recent { border-top: 1px solid var(--border); overflow: auto; padding-bottom: 6px; }
 .import-forget { margin-left: auto; padding: 0 6px; }
-/* 고른 폴더에 든 문서 (DESIGN §28) — 가져오기 창 · 새 문서 폴더 창 */
-.folder-preview { margin: 6px 10px; font-size: 12px; }
-.folder-preview.is-note { color: var(--muted); }
-.folder-preview-summary { font-weight: 600; margin-bottom: 4px; }
-.folder-preview-list { list-style: none; margin: 0; padding: 4px 0; max-height: 168px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); font-family: var(--mono); }
-.folder-preview-list:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.folder-preview-list li { padding: 1px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.folder-preview-list li.is-more { color: var(--muted); font-family: var(--font); }
-.folder-preview-icon { display: inline-block; width: 1.6em; color: var(--muted); }
-/* 파일 · 폴더를 창 위로 끌고 있을 때의 안내 — 놓는 것을 가리지 않게 눌리지 않는다 */
-.drop-hint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1000; padding: 8px 16px; border-radius: 6px; background: var(--elev); color: var(--fg); border: 1px solid var(--accent); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); font-size: 13px; pointer-events: none; }
 .info-field { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; padding: 6px 12px 0; }
 .info-field input { min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font-weight: 400; }
 .info-field input.is-path { font-family: var(--mono); font-size: 12px; }

@@ -65,7 +65,6 @@ src/
   lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더 · 별칭 · 상세 경로) · IndexedDB 저장 · 최근 10개 · 권한 묻기
   lib/localPath.ts    상세 경로 다듬기 · 검사 · 앱 경로와 합치기 · 미리 채울 값
   lib/explorer.ts     파일 탐색기 열기 (jaydocs-open: → 연결 도우미)
-  lib/folderDrop.ts   파일 탐색기에서 폴더를 창에 끌어다 놓기 — 폴더가 든 drop 만 가로챈다 (`useFolderDrop`, DESIGN §28)
   lib/fsa/fake.ts     시험용 메모리 파일 시스템
   lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험 (스키마 · 계산식 · tsv-view 샘플 포함)
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
@@ -118,8 +117,7 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
     FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
-    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 끌어다 놓은 폴더 · 문서 목록 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
-    FolderPreviewList.tsx  고른 폴더(아직 열지 않음)에 든 문서의 수 · 목록 (DESIGN §28)
+    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
     StartScreen.tsx   시작 화면 (문서 폴더 열기 · 최근 폴더) · 권한 다시 허용 화면
     UpdateButton.tsx  업데이트 확인 → 받는 중 → 적용 버튼
     FolderInfoDialog.tsx  문서 별칭 · 상세 경로 입력 창

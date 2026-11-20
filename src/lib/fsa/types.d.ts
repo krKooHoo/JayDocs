@@ -32,11 +32,6 @@ declare class FileSystemObserver {
   disconnect(): void
 }
 
-interface DataTransferItem {
-  /** 끌어다 놓은 파일 · 폴더의 핸들. drop 처리 안에서 바로(await 전에) 불러야 한다 */
-  getAsFileSystemHandle?(): Promise<FileSystemHandle | null>
-}
-
 interface Window {
   showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>
 }
