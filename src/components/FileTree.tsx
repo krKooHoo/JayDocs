@@ -289,6 +289,13 @@ export function FileTree(p: Props) {
     const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
     const idx = cursorRow ? rows.indexOf(cursorRow) : -1
     const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setLookRoot(false); setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
+    // 훑어보기 창이 떠 있으면 Ctrl+↑ · Ctrl+↓ 는 커서를 두고 창 안을 조금씩 스크롤한다 (누르고 있으면 이어진다).
+    // 창이 없을 때는 지금처럼 커서를 옮긴다
+    if (quickLook && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault()
+      quickLookBox.current?.scrollStep(e.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); go(idx + 1); return
       case 'ArrowUp': e.preventDefault(); go(idx <= 0 ? 0 : idx - 1); return

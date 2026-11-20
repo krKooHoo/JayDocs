@@ -19,10 +19,14 @@ import './QuickLook.css'
 
 /** 커서가 빠르게 움직일 때(↓ 를 누르고 있을 때) 파일마다 읽고 그리지 않게 이만큼 늦춘다 */
 export const QUICKLOOK_DELAY = 100
+/** `Ctrl+↑` `Ctrl+↓` 한 번에 움직이는 높이(px) — 글 서너 줄. 누르고 있으면 키 반복으로 이어진다 */
+export const QUICKLOOK_STEP = 60
 
 export interface QuickLookHandle {
   /** 창 안을 한 화면 위(-1) · 아래(1)로 */
   scrollPage(dir: 1 | -1): void
+  /** 창 안을 조금(`QUICKLOOK_STEP`) 위(-1) · 아래(1)로 — 트리의 `Ctrl+↑` `Ctrl+↓` */
+  scrollStep(dir: 1 | -1): void
   /** 그 노드가 창 안에 있는가 — 트리가 포커스를 잃을 때 "창으로 간 것"인지 가린다 */
   contains(node: Node | null): boolean
   /**
@@ -129,6 +133,9 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
     scrollPage(dir) {
       const s = scroller.current
       if (s) s.scrollBy({ top: dir * Math.max(40, s.clientHeight - 40) })
+    },
+    scrollStep(dir) {
+      scroller.current?.scrollBy({ top: dir * QUICKLOOK_STEP })
     },
     contains(node) {
       return !!node && !!frame.current?.contains(node)
