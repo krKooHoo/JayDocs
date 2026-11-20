@@ -15,6 +15,18 @@
 .quicklook-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .quicklook-kind, .quicklook-enc { flex: none; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; }
 .quicklook-enc { color: var(--accent); border-color: var(--accent); }
+/* 확대 · 축소 (머리 오른쪽) — 포커스는 받지 않는다 */
+.quicklook-zoom { flex: none; display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.quicklook-zoom button { border: 0; border-radius: 0; background: transparent; color: var(--fg); font: inherit; font-size: 12px; line-height: 18px; padding: 0 6px; cursor: pointer; }
+.quicklook-zoom button:hover:not(:disabled) { background: var(--panel2); }
+.quicklook-zoom button:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
+.quicklook-zoom-value { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; border-left: 1px solid var(--border) !important; border-right: 1px solid var(--border) !important; }
+/* 크기 손잡이 — 오른쪽 · 아래 가장자리와 오른쪽 아래 모서리. 스크롤 막대를 가리지 않게 가늘게 */
+.quicklook-resize { position: absolute; z-index: 2; touch-action: none; }
+.quicklook-resize.is-e { top: 0; right: 0; bottom: 12px; width: 4px; cursor: ew-resize; }
+.quicklook-resize.is-s { left: 0; right: 12px; bottom: 0; height: 4px; cursor: ns-resize; }
+.quicklook-resize.is-se { right: 0; bottom: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.quicklook-resize:hover, .quicklook-resize:active { background: var(--accent); opacity: 0.5; }
 .quicklook-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .quicklook-file > .doc-view.preview-body { padding: 16px 24px 40px; }
 .quicklook-file > .doc-note { margin: 16px; }

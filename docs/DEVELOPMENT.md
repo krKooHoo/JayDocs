@@ -88,6 +88,7 @@ src/
     lineMap.ts        패널의 줄 ↔ 위치 지도
     panel.ts          패널 켬 · 끔 · 너비 (localStorage)
     grid.ts           폴더 격자의 열 수 · 방향키 이동
+    look.ts           훑어보기 창의 크기 · 배율 (localStorage) · 확대 / 크기 키
   lib/tsv/
     model.ts          TsvTable / TsvRow (불변, raw 행 보관)
     parse.ts          텍스트 → 표 (탭 split 만, 따옴표 해석 없음) · 열 때 경고

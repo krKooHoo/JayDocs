@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type { TreeEntry } from '../lib/backend'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { PAGE_RATIO, useSkimText } from '../lib/skim'
-import { CARD_GAP, folderCounts, gridColumns, gridMove, isGridKey, pageRowsOf } from '../lib/skim/grid'
+import { CARD_GAP, CARD_MIN_WIDTH, folderCounts, gridColumns, gridMove, isGridKey, pageRowsOf } from '../lib/skim/grid'
+import { LOOK_MIN_HEIGHT, LOOK_MIN_WIDTH, LOOK_ZOOM_MAX, LOOK_ZOOM_MIN, fitLookSize, lookPrefs, lookResizeKey, lookZoomKey, setLookPrefs, stepLookZoom, useLookPrefs, type LookPrefs } from '../lib/skim/look'
 import { DocFileView, DocThumb } from './DocView'
 import './QuickLook.css'
 
@@ -27,6 +28,10 @@ export interface QuickLookHandle {
   scrollPage(dir: 1 | -1): void
   /** 창 안을 조금(`QUICKLOOK_STEP`) 위(-1) · 아래(1)로 — 트리의 `Ctrl+↑` `Ctrl+↓` */
   scrollStep(dir: 1 | -1): void
+  /** 한 단계 확대(1) · 축소(-1) — 파일은 글자 크기, 폴더 격자는 카드 크기. 이 브라우저에 남는다 (`lib/skim/look.ts`) */
+  zoomBy(dir: 1 | -1): void
+  /** 창 크기를 `dw` · `dh` px 만큼 (화면 안에서). 이 브라우저에 남는다 */
+  resizeBy(dw: number, dh: number): void
   /** 그 노드가 창 안에 있는가 — 트리가 포커스를 잃을 때 "창으로 간 것"인지 가린다 */
   contains(node: Node | null): boolean
   /**
@@ -55,48 +60,56 @@ export interface QuickLookProps {
 const INERT = { inert: '' } as HTMLAttributes<HTMLDivElement>
 
 const GAP = 8
-const MIN_WIDTH = 280
+const MIN_WIDTH = LOOK_MIN_WIDTH
 /** 폴더 격자일 때의 너비 상한 — 남은 너비가 이만큼 되면 이 너비 (Phase E). 파일일 때의 창은 그대로 */
 const FOLDER_MAX_WIDTH = 900
 
-interface Box { left: number; top: number; width: number; height: number }
+/** roomW · roomH = 지금 화면에서 창이 가질 수 있는 가장 큰 너비 · 높이 (크기를 바꿀 때의 상한) */
+interface Box { left: number; top: number; width: number; height: number; roomW: number; roomH: number }
 
 /**
  * 트리 오른쪽 · 화면 높이의 대부분 · 너비는 세로 A4 비율(높이 ÷ 1.414). 좁으면 남은 너비로 줄인다.
- * 폴더(wide)는 격자가 읽기 좋게 남은 너비 안에서 `FOLDER_MAX_WIDTH` 까지 넓힌다
+ * 폴더(wide)는 격자가 읽기 좋게 남은 너비 안에서 `FOLDER_MAX_WIDTH` 까지 넓힌다.
+ * 사용자가 크기를 정해 두었으면(`size`) 화면 안에서 그 크기를 쓴다
  */
-function placeBox(anchor: HTMLElement | null, wide = false): Box {
+function placeBox(anchor: HTMLElement | null, wide: boolean, size: { width: number | null; height: number | null }): Box {
   const vw = window.innerWidth
   const vh = window.innerHeight
   const r = anchor?.getBoundingClientRect()
   const top = Math.max(GAP, r ? r.top : GAP)
-  const height = Math.max(160, vh - top - GAP * 2)
+  const roomH = Math.max(LOOK_MIN_HEIGHT, vh - top - GAP * 2)
+  const height = fitLookSize(size.height, roomH, LOOK_MIN_HEIGHT, roomH)
   let left = (r ? r.right : 0) + GAP
-  const room = vw - left - GAP * 2
-  let width = Math.min(Math.max(MIN_WIDTH, Math.round(height / PAGE_RATIO), wide ? FOLDER_MAX_WIDTH : 0), room)
+  let roomW = vw - left - GAP * 2
+  // 정해 둔 너비가 없으면 화면 높이에 맞춘 세로 A4 폭 (창 높이를 줄여도 너비는 그대로)
+  const auto = Math.max(MIN_WIDTH, Math.round(roomH / PAGE_RATIO), wide ? FOLDER_MAX_WIDTH : 0)
+  let width = fitLookSize(size.width, auto, MIN_WIDTH, roomW)
   // 트리가 넓어 오른쪽에 자리가 없으면 화면 안으로 당긴다 (트리를 일부 가린다)
-  if (room < MIN_WIDTH) {
+  if (roomW < MIN_WIDTH) {
     width = Math.min(MIN_WIDTH, vw - GAP * 2)
     left = Math.max(GAP, vw - width - GAP)
+    roomW = width
   }
-  return { left, top, width, height }
+  return { left, top, width, height, roomW, roomH }
 }
 
-function useBox(anchor: HTMLElement | null, wide: boolean): Box {
-  const [box, setBox] = useState<Box>(() => placeBox(anchor, wide))
+function useBox(anchor: HTMLElement | null, wide: boolean, width: number | null, height: number | null): Box {
+  const [box, setBox] = useState<Box>(() => placeBox(anchor, wide, { width, height }))
   useLayoutEffect(() => {
     const update = () => setBox((b) => {
-      const n = placeBox(anchor, wide)
-      return n.left === b.left && n.top === b.top && n.width === b.width && n.height === b.height ? b : n
+      const n = placeBox(anchor, wide, { width, height })
+      return n.left === b.left && n.top === b.top && n.width === b.width && n.height === b.height && n.roomW === b.roomW && n.roomH === b.roomH ? b : n
     })
     update()
     window.addEventListener('resize', update)
     const ro = anchor && typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null
     if (anchor) ro?.observe(anchor)
     return () => { window.removeEventListener('resize', update); ro?.disconnect() }
-  }, [anchor, wide])
+  }, [anchor, wide, width, height])
   return box
 }
+
+type ResizeEdge = 'e' | 's' | 'se'
 
 /**
  * 커서를 늦게 따라간다. 같은 경로의 새 객체(트리를 다시 읽음)는 바로 바꾼다.
@@ -121,13 +134,72 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
   const [inside, setInside] = useState(false)
   const [shown, jump] = useLagging(entry, inside)
   const isDir = shown.type === 'dir'
-  const box = useBox(anchor, isDir)
+  // 크기 · 배율 — 사용자가 바꾼 값은 이 브라우저에 남는다 (lib/skim/look.ts). 너비는 파일 · 폴더가 따로, 높이는 같이
+  const prefs = useLookPrefs()
+  const box = useBox(anchor, isDir, isDir ? prefs.folderWidth : prefs.fileWidth, prefs.height)
+  const zoom = isDir ? prefs.gridZoom : prefs.zoom
+  /** 키 · 휠 · 끌기가 읽는 지금 값 (다시 그리기 전에 연달아 와도 맞게) */
+  const live = useRef({ box, isDir })
+  live.current = { box, isDir }
   const frame = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   /** 올리면 격자가 (지금 그린 폴더의) 첫 카드로 포커스를 옮긴다 */
   const [focusToken, setFocusToken] = useState(0)
   const entryRef = useRef(entry)
   entryRef.current = entry
+
+  const zoomBy = useCallback((dir: 1 | -1) => {
+    const p = lookPrefs()
+    setLookPrefs(live.current.isDir ? { gridZoom: stepLookZoom(p.gridZoom, dir) } : { zoom: stepLookZoom(p.zoom, dir) })
+  }, [])
+  /** 지금 그려진 크기에서 `dw` · `dh` 만큼. 0 인 쪽은 건드리지 않는다. 화면에 들어가는 만큼만 */
+  const resizeTo = useCallback((width: number | null, height: number | null) => {
+    const { box: b, isDir: dir } = live.current
+    const patch: Partial<LookPrefs> = {}
+    if (width !== null) patch[dir ? 'folderWidth' : 'fileWidth'] = fitLookSize(width, width, LOOK_MIN_WIDTH, b.roomW)
+    if (height !== null) patch.height = fitLookSize(height, height, LOOK_MIN_HEIGHT, b.roomH)
+    setLookPrefs(patch)
+  }, [])
+  const resizeBy = useCallback((dw: number, dh: number) => {
+    const b = live.current.box
+    resizeTo(dw ? b.width + dw : null, dh ? b.height + dh : null)
+  }, [resizeTo])
+  /** 가장자리 · 모서리 끌기. 두 번 누르면 그 방향의 크기를 처음으로 */
+  const startResize = (edge: ResizeEdge) => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const b = live.current.box
+    const start = { x: e.clientX, y: e.clientY, w: b.width, h: b.height }
+    // 창(window)에서 듣는다 — 빠르게 끌어 손잡이 밖으로 나가도 따라온다
+    const move = (ev: PointerEvent) => resizeTo(edge === 's' ? null : start.w + ev.clientX - start.x, edge === 'e' ? null : start.h + ev.clientY - start.y)
+    const end = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
+  const resetSize = (edge: ResizeEdge) => () => {
+    const patch: Partial<LookPrefs> = {}
+    if (edge !== 's') patch[live.current.isDir ? 'folderWidth' : 'fileWidth'] = null
+    if (edge !== 'e') patch.height = null
+    setLookPrefs(patch)
+  }
+
+  // Ctrl+휠 = 확대 · 축소 (브라우저의 페이지 확대 대신). React 의 onWheel 은 passive 라 막을 수 없어 직접 건다
+  useEffect(() => {
+    const el = frame.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.deltaY === 0) return
+      e.preventDefault()
+      zoomBy(e.deltaY < 0 ? 1 : -1)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [zoomBy])
 
   useImperativeHandle(ref, () => ({
     scrollPage(dir) {
@@ -137,6 +209,8 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
     scrollStep(dir) {
       scroller.current?.scrollBy({ top: dir * QUICKLOOK_STEP })
     },
+    zoomBy,
+    resizeBy,
     contains(node) {
       return !!node && !!frame.current?.contains(node)
     },
@@ -146,7 +220,7 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
       setFocusToken((t) => t + 1)
       return true
     },
-  }), [jump])
+  }), [jump, zoomBy, resizeBy])
 
   // 폴더 카드를 고르거나 Backspace 로 옮기면 새 폴더의 첫 카드로 포커스 (트리 커서가 바뀌어 entry 가 오면 그려진다)
   const pick = useCallback((e: TreeEntry) => {
@@ -181,17 +255,31 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
         setInside(false)
         onFocusOut?.(to)
       }}
+      onKeyDown={(e) => {
+        // 포커스가 창 안(격자)에 있을 때의 확대 · 축소와 크기 — 트리에 있을 때는 FileTree 가 같은 키로 부른다
+        const z = lookZoomKey(e)
+        const size = z ? null : lookResizeKey(e)
+        if (!z && !size) return
+        e.preventDefault()
+        if (z) zoomBy(z)
+        else if (size) resizeBy(size[0], size[1])
+      }}
     >
-      <QuickLookHeader entry={shown} />
+      <QuickLookHeader entry={shown} zoom={zoom} onZoom={zoomBy} onZoomReset={() => setLookPrefs(isDir ? { gridZoom: 1 } : { zoom: 1 })} />
       <div className="quicklook-scroll" ref={scroller}>
-        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} onPick={pick} onUp={up} onBack={onBack} /> : <QuickLookFile path={shown.path} />}
+        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} zoom={zoom} onPick={pick} onUp={up} onBack={onBack} /> : <QuickLookFile path={shown.path} zoom={zoom} />}
       </div>
+      <div className="quicklook-resize is-e" title="끌어서 너비 바꾸기 (Shift+← →) · 두 번 누르면 처음 너비" onPointerDown={startResize('e')} onDoubleClick={resetSize('e')} />
+      <div className="quicklook-resize is-s" title="끌어서 높이 바꾸기 (Shift+↑ ↓) · 두 번 누르면 처음 높이" onPointerDown={startResize('s')} onDoubleClick={resetSize('s')} />
+      <div className="quicklook-resize is-se" title="끌어서 크기 바꾸기 · 두 번 누르면 처음 크기" onPointerDown={startResize('se')} onDoubleClick={resetSize('se')} />
     </div>,
     document.body,
   )
 })
 
-function QuickLookHeader({ entry }: { entry: TreeEntry }) {
+interface HeaderProps { entry: TreeEntry; zoom: number; onZoom: (dir: 1 | -1) => void; onZoomReset: () => void }
+
+function QuickLookHeader({ entry, zoom, onZoom, onZoomReset }: HeaderProps) {
   const isDir = entry.type === 'dir'
   const type = isDir ? null : fileTypeOf(entry.path)
   // 디스크 인코딩 — 읽기는 DocFileView 와 같은 캐시라 한 번만 읽는다
@@ -202,14 +290,20 @@ function QuickLookHeader({ entry }: { entry: TreeEntry }) {
       <span className="quicklook-path" title={entry.path || '(루트)'}>{entry.path || '(루트)'}</span>
       <span className="quicklook-kind">{isDir ? '폴더' : type?.label ?? '지원하지 않는 형식'}</span>
       {encoding && <span className="quicklook-enc" title="UTF-8 이 아닌 파일 — 읽기 전용으로 열린다">{encoding}</span>}
+      {/* 확대 · 축소 — 버튼은 포커스를 받지 않는다 (포커스는 트리에 남는다). 키는 Ctrl+= · Ctrl+-, Ctrl+휠 */}
+      <span className="quicklook-zoom" title={isDir ? '카드 크기' : '글자 크기'}>
+        <button type="button" tabIndex={-1} disabled={zoom <= LOOK_ZOOM_MIN} onClick={() => onZoom(-1)} title="축소 (Ctrl+-)" aria-label="축소">−</button>
+        <button type="button" tabIndex={-1} className="quicklook-zoom-value" onClick={onZoomReset} title="100% 로 되돌리기">{Math.round(zoom * 100)}%</button>
+        <button type="button" tabIndex={-1} disabled={zoom >= LOOK_ZOOM_MAX} onClick={() => onZoom(1)} title="확대 (Ctrl+=)" aria-label="확대">＋</button>
+      </span>
     </div>
   )
 }
 
-/** 파일 내용 — 문서 전체를 rich 로 (표는 DocView 가 앞 60행만). 보기만 한다(inert) */
-export function QuickLookFile({ path }: { path: string }) {
+/** 파일 내용 — 문서 전체를 rich 로 (표는 DocView 가 앞 60행만). 보기만 한다(inert). `zoom` 은 글자 크기 — 너비 안에서 다시 줄바꿈된다 */
+export function QuickLookFile({ path, zoom = 1 }: { path: string; zoom?: number }) {
   return (
-    <div className="quicklook-file" {...INERT}>
+    <div className="quicklook-file" style={zoom === 1 ? undefined : { zoom }} {...INERT}>
       <DocFileView path={path} weight="rich" />
     </div>
   )
@@ -220,6 +314,8 @@ export interface QuickLookFolderProps {
   entry: TreeEntry
   /** 올라가면 첫 카드로 포커스 (카드가 없으면 격자 상자로) */
   focusToken?: number
+  /** 카드 크기의 배율 (1 = 카드 최소 너비 140px). 크게 하면 한 줄의 카드 수가 준다 */
+  zoom?: number
   /** `Enter` · 더블클릭 */
   onPick?: (entry: TreeEntry) => void
   /** `Backspace` — 상위 폴더로 옮겼으면 true */
@@ -243,7 +339,7 @@ const pathOf = (e: IntersectionObserverEntry) => (e.target as HTMLElement).datas
  * - 열 수는 너비로 정한다(`gridColumns`). 방향키 · `PageUp/PageDown` · `Home/End` 로 카드를 옮긴다(`gridMove`).
  * - 카드는 `[tabindex]` 라 클릭으로 포커스를 받는다(틀이 막지 않는다). 포커스 받은 카드 = 고른 카드.
  */
-export function QuickLookFolder({ entry, focusToken = 0, onPick, onUp, onBack }: QuickLookFolderProps) {
+export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack }: QuickLookFolderProps) {
   const items = entry.children ?? []
   const { dirs, files } = folderCounts(items)
   const box = useRef<HTMLDivElement>(null)
@@ -265,13 +361,13 @@ export function QuickLookFolder({ entry, focusToken = 0, onPick, onUp, onBack }:
   useLayoutEffect(() => {
     const g = grid.current
     if (!g) return
-    const update = () => setCols(gridColumns(g.clientWidth))
+    const update = () => setCols(gridColumns(g.clientWidth, CARD_MIN_WIDTH * zoom))
     update()
     if (typeof ResizeObserver !== 'function') return
     const ro = new ResizeObserver(update)
     ro.observe(g)
     return () => ro.disconnect()
-  }, [hasItems])
+  }, [hasItems, zoom])
 
   // 보이는 카드만 그린다 (root = 창의 스크롤 상자)
   useEffect(() => {
@@ -394,7 +490,8 @@ export function QuickLookFolder({ entry, focusToken = 0, onPick, onUp, onBack }:
             ref={grid}
             role="listbox"
             aria-label={`${entry.path || '(루트)'} 의 항목`}
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: CARD_GAP }}
+            // 100% 는 너비를 고르게 채운다. 그 밖의 배율은 카드 너비를 배율대로 고정한다 — 채우면 열 수가 바뀔 때만 크기가 달라져 한 단계가 눈에 안 보인다
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, ${zoom === 1 ? '1fr' : `min(${Math.round(CARD_MIN_WIDTH * zoom)}px, 100%)`}))`, gap: CARD_GAP }}
           >
             {items.map((it, i) => <GridCard key={it.path} item={it} index={i} active={i === active} live={live.has(it.path)} />)}
           </div>

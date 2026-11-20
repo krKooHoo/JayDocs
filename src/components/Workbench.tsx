@@ -10,6 +10,7 @@ import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { dismissNotice, notify } from '../lib/notices'
 import { SKIM_WIDTH_BIG_STEP, isSkimPath, nudgeSkimPanelWidth, refreshSkimPanels, skimPanelState, toggleSkimPanel } from '../lib/skim/panel'
+import { isLookDefault, resetLookPrefs } from '../lib/skim/look'
 import { DocPaneCountContext } from './docPanes'
 import { FileTree, type RootAction } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
@@ -341,6 +342,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
+    { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },

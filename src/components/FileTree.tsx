@@ -6,6 +6,7 @@ import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
 import { onQuickLookRequest, onTreeCursor, type QuickLookMode } from '../lib/nav'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
+import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
 
 /** 트리 오른쪽 클릭의 폴더·경로 동작 */
@@ -295,6 +296,18 @@ export function FileTree(p: Props) {
       e.preventDefault()
       quickLookBox.current?.scrollStep(e.key === 'ArrowDown' ? 1 : -1)
       return
+    }
+    // 훑어보기 창의 확대 · 축소(Ctrl+= · Ctrl+-)와 크기(Shift+방향키). 바꾼 값은 이 브라우저에 남는다 (lib/skim/look.ts).
+    // 창이 없을 때는 건드리지 않는다 — Ctrl+= · Ctrl+- 는 브라우저의 페이지 확대, Shift+방향키는 지금처럼 커서 이동
+    if (quickLook) {
+      const z = lookZoomKey(e)
+      const size = z ? null : lookResizeKey(e)
+      if (z || size) {
+        e.preventDefault()
+        if (z) quickLookBox.current?.zoomBy(z)
+        else if (size) quickLookBox.current?.resizeBy(size[0], size[1])
+        return
+      }
     }
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); go(idx + 1); return
