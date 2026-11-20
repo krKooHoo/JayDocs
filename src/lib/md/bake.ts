@@ -1,5 +1,5 @@
 import type { TsvTable } from '../tsv/model'
-import type { TableSchema } from '../tsv/schema'
+import { isNumericType, type TableSchema } from '../tsv/schema'
 import { applyTsvView, compileWhere, parseTsvViewSpec, resolveViewPath, type TsvViewSpec } from './tsvView'
 
 /**
@@ -77,7 +77,7 @@ export function renderPipeTable(spec: TsvViewSpec, table: TsvTable, schema: Tabl
   if (r.columns.length === 0) return { markdown: '', error: r.error ?? '열이 없습니다' }
   const lines: string[] = []
   lines.push(`| ${r.columns.map((c) => esc(c.name || `${c.index + 1}열`)).join(' | ')} |`)
-  lines.push(`| ${r.columns.map((c) => (c.type === 'byte' || c.type === 'uint' || c.type === 'float' ? '---:' : '---')).join(' | ')} |`)
+  lines.push(`| ${r.columns.map((c) => (isNumericType(c.type) ? '---:' : '---')).join(' | ')} |`)
   for (const row of r.rows) lines.push(`| ${row.cells.map(esc).join(' | ')} |`)
   return { markdown: lines.join('\n'), error: r.error }
 }

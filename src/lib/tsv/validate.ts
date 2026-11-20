@@ -17,6 +17,9 @@ export function issueKey(width: number, r: number, c: number) {
 }
 
 const INT = /^\d+$/
+const SIGNED_INT = /^[-+]?\d+$/
+const INT_MIN = -2147483648
+const INT_MAX = 2147483647
 const FLOAT = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/
 
 /**
@@ -40,6 +43,11 @@ export function checkValue(col: ColumnSchema, v: string): string | null {
       return Number(v) <= 255 ? null : '255 를 넘을 수 없습니다 (byte)'
     case 'uint':
       return INT.test(v) ? null : '0 이상의 정수여야 합니다'
+    case 'int': {
+      if (!SIGNED_INT.test(v)) return '정수여야 합니다'
+      const n = Number(v)
+      return n >= INT_MIN && n <= INT_MAX ? null : '-2147483648 ~ 2147483647 범위여야 합니다 (int)'
+    }
     case 'float':
       return FLOAT.test(v) && Number.isFinite(Number(v)) ? null : '숫자여야 합니다'
     case 'enum': {

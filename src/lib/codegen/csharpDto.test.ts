@@ -1,0 +1,167 @@
+import { describe, expect, it } from 'vitest'
+import { parseTable } from '../tsv/table'
+import { analyzeDto, checkDtoPath, defaultDtoClassName, dtoClassNameOf, dtoSkipNotes, hasDtoMarker, isCsIdentifier, renderDto } from './csharpDto'
+import { cleanDtoPrefs, dirOf, withDtoTarget } from './dtoPrefs'
+
+const rowsOf = (text: string, path = 'x.tsv') => parseTable(text, path).rows.map((r) => r.cells)
+const typesOf = (text: string, path?: string) => Object.fromEntries(analyzeDto(rowsOf(text, path)).fields.map((f) => [f.header, f.type]))
+
+describe('C# DTO — 표 읽기', () => {
+  it('머리글만 있는 표: 데이터를 보고 int / float / string 을 정한다', () => {
+    const m = analyzeDto(rowsOf('ID\tPrefabKey\tMaxHp\tSpeed\tIsBoss\n0\tEnemy/Enemy_00\t100\t2.0\tF\n1\tEnemy/Enemy_01\t60\t3.5\tT\n'))
+    expect(m.headerRow).toBe(0)
+    expect(m.typed).toBe(false)
+    expect(m.dataRows).toBe(2)
+    expect(m.fields.map((f) => [f.header, f.type, f.typeSource])).toEqual([
+      ['ID', 'int', 'inferred'],
+      ['PrefabKey', 'string', 'inferred'],
+      ['MaxHp', 'int', 'inferred'],
+      ['Speed', 'float', 'inferred'],
+      ['IsBoss', 'string', 'inferred'],
+    ])
+  })
+
+  it('빈 칸이 하나라도 있거나 int 범위를 넘으면 string, 데이터가 없으면 전부 string', () => {
+    expect(typesOf('A\tB\tC\tD\n1\t\t2147483648\t-5\n2\t3\t1\t+3\n')).toEqual({ A: 'int', B: 'string', C: 'string', D: 'int' })
+    expect(typesOf('A\tB\n')).toEqual({ A: 'string', B: 'string' })
+  })
+
+  it('실수: 정수와 섞여도 float, 숫자가 아닌 칸 · 빈 칸이 있으면 string', () => {
+    expect(typesOf('A\tB\tC\tD\tE\tF\n1\t2.0\t.5\t1.5\t0.7\t1.0\n2.5\t3\t-1e3\tx\t\t2147483648\n')).toEqual({ A: 'float', B: 'float', C: 'float', D: 'string', E: 'string', F: 'string' })
+    expect(typesOf('A\tB\n1,5\tNaN\n2,5\tInfinity\n')).toEqual({ A: 'string', B: 'string' })
+  })
+
+  it('JayDocs 계약(1행 타입 · 2행 머리글): byte · uint · int 는 int, float 는 float, 나머지는 string, 주석 열은 뺀다', () => {
+    const m = analyzeDto(rowsOf('#string\tenum\tbool\tbyte\tuint\tfloat\tint\t\t\nKey\tTerrain\tPassable\tCost\tGold\tRate\tDelta\tMemo\t#한국명\nA\tPlains\tTRUE\t1\t10\t0.5\t-3\tx\t가\n'))
+    expect(m.typed).toBe(true)
+    expect(m.headerRow).toBe(1)
+    expect(m.fields.map((f) => `${f.type} ${f.name}`)).toEqual(['string Key', 'string Terrain', 'string Passable', 'int Cost', 'int Gold', 'float Rate', 'int Delta'])
+    expect(m.fields.every((f) => f.typeSource === 'declared')).toBe(true)
+    expect(m.skipped).toEqual([
+      { column: 7, header: 'Memo', reason: 'untyped' },
+      { column: 8, header: '#한국명', reason: 'comment' },
+    ])
+    expect(dtoSkipNotes(m)).toEqual(['"Memo" — 타입 행의 칸이 비어 있음 (주석 열)'])
+  })
+
+  it('타입 행의 타입은 데이터보다 앞선다 — string 열에 숫자만 있어도 string, float 열에 정수만 있어도 float', () => {
+    expect(typesOf('#string\tint\tfloat\tdouble\nKey\tHp\tSpeed\tRate\n1\t2\t3\t4\n')).toEqual({ Key: 'string', Hp: 'int', Speed: 'float', Rate: 'float' })
+  })
+
+  it('3행 표(#타입 / #설명 / 머리글): int 를 읽고 설명 행을 주석으로 쓴다', () => {
+    const m = analyzeDto(rowsOf('#int\tstring\tint\n#고유 번호\t프리팹 경로\t\nID\tPrefabKey\tMaxHp\n0\ta\t100\n#주석 줄\tb\t1\n1\tc\t60\n'))
+    expect(m.typed).toBe(true)
+    expect(m.headerRow).toBe(2)
+    expect(m.dataRows).toBe(2) // `#` 로 시작하는 줄은 데이터가 아니다
+    expect(m.fields.map((f) => [f.name, f.type, f.summary])).toEqual([['ID', 'int', '고유 번호'], ['PrefabKey', 'string', '프리팹 경로'], ['MaxHp', 'int', null]])
+  })
+
+  it('타입 행이 아닌 `#` 줄은 주석 — 그 아래 첫 줄이 머리글', () => {
+    const m = analyzeDto(rowsOf('# 적 목록 (밸런스 2차)\n\nID\tName\n1\t가\n'))
+    expect(m.typed).toBe(false)
+    expect(m.headerRow).toBe(2)
+    expect(m.fields.map((f) => `${f.type} ${f.name}`)).toEqual(['int ID', 'string Name'])
+  })
+
+  it('describe 가 준 설명이 설명 행보다 앞선다', () => {
+    const m = analyzeDto(rowsOf('#int\tstring\n#행의 설명\t둘째\nID\tName\n'), (h) => (h === 'ID' ? 'Field 시트의 설명' : null))
+    expect(m.fields.map((f) => f.summary)).toEqual(['Field 시트의 설명', '둘째'])
+  })
+
+  it('C# 이름으로 못 쓰는 머리글 · 겹친 이름은 건너뛰고 알린다. 예약어는 @ 를 붙인다', () => {
+    const m = analyzeDto(rowsOf('ID\tMax Hp\t2nd\tID\t\tclass\t한글이름\t Pad\n1\t2\t3\t4\t5\t6\t7\t8\n'))
+    expect(m.fields.map((f) => f.name)).toEqual(['ID', '@class', '한글이름'])
+    expect(m.fields[1].header).toBe('class')
+    expect(dtoSkipNotes(m)).toEqual([
+      '"Max Hp" — C# 이름으로 쓸 수 없음',
+      '"2nd" — C# 이름으로 쓸 수 없음',
+      '"ID" — 앞 열과 이름이 같음',
+      '" Pad" — C# 이름으로 쓸 수 없음',
+    ])
+  })
+
+  it('머리글이 없으면 headerRow 가 null', () => {
+    expect(analyzeDto(rowsOf('')).headerRow).toBeNull()
+    expect(analyzeDto(rowsOf('#string\tint\n')).headerRow).toBeNull()
+  })
+
+  it('CSV 도 같은 규칙', () => {
+    expect(typesOf('ID,Name,Note\n1,"가, 나",x\n2,다,\n', 'x.csv')).toEqual({ ID: 'int', Name: 'string', Note: 'string' })
+  })
+})
+
+describe('C# DTO — 소스', () => {
+  const model = analyzeDto(rowsOf('#int\tstring\tint\n#고유 번호\t경로 <Resources> & 키\t\nID\tPrefabKey\tMaxHp\n0\ta\t100\n'))
+
+  it('표식 · 클래스 · 필드를 쓴다', () => {
+    expect(renderDto(model, { className: 'EnemyDTO', source: 'enemies.tsv' })).toBe([
+      '// <auto-generated>',
+      '// JayDocs 가 enemies.tsv 의 머리글에서 만든 파일입니다.',
+      '// 직접 고치지 마세요 — 표를 고친 뒤 다시 내보내면 덮어씁니다.',
+      '// </auto-generated>',
+      '',
+      '/// <summary>enemies.tsv 의 한 행.</summary>',
+      'public class EnemyDTO',
+      '{',
+      '    /// <summary>고유 번호</summary>',
+      '    public int ID;',
+      '    /// <summary>경로 &lt;Resources&gt; &amp; 키</summary>',
+      '    public string PrefabKey;',
+      '    public int MaxHp;',
+      '}',
+      '',
+    ].join('\n'))
+  })
+
+  it('같은 표면 같은 글 · 줄바꿈은 고른 대로 · 표식을 알아본다', () => {
+    const a = renderDto(model, { className: 'EnemyDTO', source: 'enemies.tsv', eol: '\r\n' })
+    expect(a).toBe(renderDto(model, { className: 'EnemyDTO', source: 'enemies.tsv', eol: '\r\n' }))
+    expect(a.split('\r\n').length).toBe(15)
+    expect(a.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/)
+    expect(hasDtoMarker(a)).toBe(true)
+    expect(hasDtoMarker('public class EnemyDTO\n{\n}\n')).toBe(false)
+  })
+
+  it('건너뛴 열을 머리 주석에 남긴다', () => {
+    const m = analyzeDto(rowsOf('ID\tMax Hp\n1\t2\n'))
+    const code = renderDto(m, { className: 'XDTO', source: 'x.tsv' })
+    expect(code).toContain('// 필드로 만들지 않은 열:\n//   "Max Hp" — C# 이름으로 쓸 수 없음\n// </auto-generated>')
+  })
+})
+
+describe('C# DTO — 이름 · 경로', () => {
+  it('기본 클래스 이름', () => {
+    expect(defaultDtoClassName('Table/MiniDefence/enemies.tsv')).toBe('EnemyDTO')
+    expect(defaultDtoClassName('units.tsv')).toBe('UnitDTO')
+    expect(defaultDtoClassName('waves.tsv')).toBe('WaveDTO')
+    expect(defaultDtoClassName('wave_meta.tsv')).toBe('WaveMetaDTO')
+    expect(defaultDtoClassName('10-World/Tile/Tile_Table.tsv')).toBe('TileDTO')
+    expect(defaultDtoClassName('macro_tile.csv')).toBe('MacroTileDTO')
+    expect(defaultDtoClassName('process.tsv')).toBe('ProcessDTO')
+    expect(defaultDtoClassName('status.tsv')).toBe('StatusDTO')
+    expect(defaultDtoClassName('@수업/적 목록.tsv')).toBe('적목록DTO')
+    expect(defaultDtoClassName('2024.tsv')).toBe('_2024DTO')
+    expect(defaultDtoClassName('---.tsv')).toBe('TableDTO')
+  })
+
+  it('경로 검사 — 파일 이름이 클래스 이름', () => {
+    expect(checkDtoPath('@Game/Assets/Scripts/Data/EnemyDTO.cs')).toBeNull()
+    expect(checkDtoPath('EnemyDTO.CS')).toBeNull()
+    expect(dtoClassNameOf('@Game/Assets/EnemyDTO.cs')).toBe('EnemyDTO')
+    expect(checkDtoPath('EnemyDTO.txt')).toMatch(/\.cs/)
+    expect(checkDtoPath('a/.cs')).toMatch(/클래스 이름/)
+    expect(checkDtoPath('a/Enemy DTO.cs')).toMatch(/C# 이름/)
+    expect(checkDtoPath('a/1Enemy.cs')).toMatch(/C# 이름/)
+    expect(checkDtoPath('a/class.cs')).toMatch(/예약어/)
+    expect(isCsIdentifier('적_DTO2')).toBe(true)
+  })
+
+  it('대상 경로 기억', () => {
+    expect(cleanDtoPrefs(null)).toEqual({ dir: null, files: {} })
+    expect(cleanDtoPrefs({ dir: 3, files: { 'a.tsv': 'x/A.cs', 'b.tsv': 1, '': 'y.cs' } })).toEqual({ dir: null, files: { 'a.tsv': 'x/A.cs' } })
+    expect(cleanDtoPrefs({ files: ['x'] })).toEqual({ dir: null, files: {} })
+    const p = withDtoTarget({ dir: null, files: { 'a.tsv': 'x/A.cs' } }, 'b.tsv', '@Game/Assets/Data/BDTO.cs')
+    expect(p).toEqual({ dir: '@Game/Assets/Data', files: { 'a.tsv': 'x/A.cs', 'b.tsv': '@Game/Assets/Data/BDTO.cs' } })
+    expect(dirOf('A.cs')).toBe('')
+  })
+})

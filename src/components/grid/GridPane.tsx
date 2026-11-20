@@ -7,7 +7,7 @@ import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, 
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
 import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
-import { baseName, deriveSchema, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
+import { baseName, deriveSchema, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
@@ -153,7 +153,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const createCalc = useCallback(async () => {
     // 예시 규칙에는 숫자 열이 자연스럽다. 없으면 Key·주석이 아닌 첫 열
     const cols = schema?.columns ?? []
-    const example = (cols.find((c) => c.name && (c.type === 'byte' || c.type === 'uint' || c.type === 'float')) ?? cols.find((c) => !c.isKey && c.type !== 'comment' && c.name))?.name ?? null
+    const example = (cols.find((c) => c.name && isNumericType(c.type)) ?? cols.find((c) => !c.isKey && c.type !== 'comment' && c.name))?.name ?? null
     try {
       await backend().write(calcPath, calcTemplate(example), null)
       window.setTimeout(() => openPath(calcPath), 400) // 트리가 갱신될 시간

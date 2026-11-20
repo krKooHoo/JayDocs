@@ -5,9 +5,14 @@ import { sameRoot } from '../roots.mjs'
 /**
  * 열 스키마 유도 (DESIGN §6.2). 별도 스키마 파일 없이 열 때마다 타입 행 + Field 블록에서 만든다.
  */
-export const COLUMN_TYPES = ['string', 'enum', 'bool', 'byte', 'uint', 'float'] as const
+export const COLUMN_TYPES = ['string', 'enum', 'bool', 'byte', 'uint', 'int', 'float'] as const
 export type DataType = (typeof COLUMN_TYPES)[number]
 export type ColumnType = DataType | 'comment' | 'unknown'
+
+/** 숫자 열인가 — 오른쪽 맞춤 · 숫자 정렬에 쓴다 */
+export function isNumericType(t: ColumnType): boolean {
+  return t === 'byte' || t === 'uint' || t === 'int' || t === 'float'
+}
 
 export interface ColumnSchema {
   index: number

@@ -1,7 +1,7 @@
 import './grid-extras.css'
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cellAt, type TsvRow, type TsvTable } from '../../lib/tsv/model'
-import { columnLetter, type ColumnSchema, type TableSchema } from '../../lib/tsv/schema'
+import { columnLetter, isNumericType, type ColumnSchema, type TableSchema } from '../../lib/tsv/schema'
 import { issueKey, type Validation } from '../../lib/tsv/validate'
 import { fillDown, fillRange, fillRight, fillSeries, fillTarget, moveSpan, pasteBlock, pasteHeadedBlock, rangeBlock, setCell, type CellRange } from '../../lib/tsv/edits'
 import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
@@ -119,10 +119,6 @@ function saveWidths(key: string, ws: readonly number[]) {
   try { localStorage.setItem(key, JSON.stringify(ws)) } catch { /* 무시 */ }
 }
 
-function isNumeric(t: ColumnSchema['type']) {
-  return t === 'byte' || t === 'uint' || t === 'float'
-}
-
 function isBoolText(v: string) {
   return v === '' || /^(true|false)$/i.test(v)
 }
@@ -169,7 +165,7 @@ const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill
   let cls = 'grid-cell'
   if (col.type === 'comment') cls += ' is-comment'
   if (col.isKey) cls += ' is-key'
-  if (!head && isNumeric(col.type)) cls += ' is-num'
+  if (!head && isNumericType(col.type)) cls += ' is-num'
   if (selected) cls += ' is-selected'
   if (match) cls += ' is-match'
   if (fill) cls += ' is-fill-target'

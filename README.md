@@ -43,9 +43,11 @@
 
 TSV · CSV 를 엑셀 · 구글 시트처럼 편집해요 — 방향키 이동, 범위 선택, **시트 ↔ JayDocs 복사 · 붙여넣기**, 채우기 핸들, 찾기 · 바꾸기, 행 · 열 삽입 · 삭제 · 옮기기, 되돌리기. **한글 입력도 안 깨져요.**
 
-첫 줄에 `#string enum uint bool …` 같은 타입을 적어 두면 **값을 검사**해 주고, enum 칸은 후보 목록을 띄워 줘요.
+첫 줄에 `#string enum int bool …` 같은 타입을 적어 두면 **값을 검사**해 주고, enum 칸은 후보 목록을 띄워 줘요.
 
 ![표 검증 — 음수 값과 오타 난 enum 값에 빨간 밑줄](docs/images/grid-validate.png)
+
+표의 머리글로 **C# DTO 클래스**를 만들 수도 있어요(`Ctrl+Alt+E`). 머리글 이름이 그대로 필드 이름이 되고, 정수 열은 `int`, 실수 열은 `float`, 나머지는 `string` 이에요.
 
 ### 🔗 문서 안에 표 넣기 (`tsv-view`) — [가이드](docs/guide/tsv-view.md)
 

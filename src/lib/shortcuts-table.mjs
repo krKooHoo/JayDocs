@@ -148,6 +148,7 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+Shift+D', label: '행 복제' },
       { keys: '↓ / ↑ (enum 드롭다운)', label: '후보 고르기, Enter 로 확정' },
       { keys: 'F9', label: '계산식 적용 — 같은 폴더 `X_Calc.tsv` 의 식을 평가해 값 열에 써 넣는다 (바뀔 셀은 미리 노란 밑줄)', command: 'calc' },
+      { keys: 'Ctrl+Alt+E', label: 'C# DTO 내보내기 — 표의 머리글로 DTO 클래스(.cs)를 만든다. 정수 열은 int, 실수 열은 float, 나머지는 string. 처음에만 경로를 묻고(파일 이름이 클래스 이름) 그 뒤로는 묻지 않고 덮어쓴다 — 경로를 바꾸려면 팔레트의 "C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기"', command: 'exportDto' },
     ],
   },
   {

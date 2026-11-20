@@ -104,6 +104,9 @@ src/
   lib/calc/
     expr.ts           계산식 토크나이저 · 파서 · 평가기 (함수 · lookup)
     calc.ts           X_Calc.tsv 규칙 읽기 · 계산 · 적용 (stale 판정)
+  lib/codegen/        표 → C# DTO (DESIGN §26). 파일 쓰기는 `App.tsx` 의 `exportDto`
+    csharpDto.ts      머리글 · 타입 읽기(`analyzeDto`) · C# 소스(`renderDto`) · 기본 클래스 이름 · 경로 검사
+    dtoPrefs.ts       표마다 내보낸 `.cs` 경로 기억 (localStorage)
     *.test.ts         vitest
   store/documents.ts  DocumentStore — 경로당 문서 하나 (TextDoc | TsvDoc), 창 간 동기화, undo 스택, Field 캐시, dirty·충돌·저장. 화면은 경로별로 구독한다(`useDocVersion` 등, DESIGN §24.5)
   components/

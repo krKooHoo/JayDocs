@@ -335,6 +335,20 @@ describe('validate', () => {
     // 완전히 빈 행은 Key 검사에서 뺀다
     expect(msgs.some((m) => m.includes('비었'))).toBe(false)
   })
+  it('int — 부호 있는 정수, int 범위 (DESIGN §2)', () => {
+    const t = parseTsv('#string\tint\nKey\tN\na\t-5\nb\t+3\nc\t0\nd\t2147483647\ne\t-2147483648\nf\t\ng\t1.5\nh\tx\ni\t2147483648\nj\t1,000')
+    const s = deriveSchema(t, 'X_Table.tsv', [])
+    expect(s.typed).toBe(true)
+    expect(s.columns[1].type).toBe('int')
+    const v = validateTable(t, s)
+    const at = (r: number) => v.issues.get(r * t.width + 1) ?? null
+    for (const r of [2, 3, 4, 5, 6, 7]) expect(at(r)).toBeNull()
+    expect(at(8)).toBe('정수여야 합니다')
+    expect(at(9)).toBe('정수여야 합니다')
+    expect(at(10)).toContain('범위')
+    expect(at(11)).toBe('정수여야 합니다')
+    expect(v.count).toBe(4)
+  })
 })
 
 describeSagaSchema('SagaDocs 스키마', () => {

@@ -9,7 +9,7 @@ import { applyTsvView, parseTsvViewSpec, resolveViewPath, rowRecord, type TsvVie
 import { compileTemplate } from '../lib/md/template'
 import { stripBaked, stripBakedWithLines } from '../lib/md/bake'
 import { LINE_ATTR, rehypeSourceLines } from '../lib/md/sourceLines'
-import { columnLetter, deriveSchema, type TableSchema } from '../lib/tsv/schema'
+import { columnLetter, deriveSchema, isNumericType, type TableSchema } from '../lib/tsv/schema'
 import { issueKey, validateTable } from '../lib/tsv/validate'
 import { setCell } from '../lib/tsv/edits'
 import { sanitizeFor, tableFormatOf } from '../lib/tsv/table'
@@ -110,10 +110,6 @@ export function Mermaid({ code }: { code: string }) {
 }
 
 // ---------------------------------------------------------------- tsv-view
-function isNumericType(t: string) {
-  return t === 'byte' || t === 'uint' || t === 'float'
-}
-
 interface Sel {
   /** 표 안의 행 번호 */
   r: number

@@ -17,7 +17,10 @@ import { allCommands, commandByCombo, keysOf, registerCommands, runCommand, tip,
 import { comboFromEvent } from './lib/keys'
 import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
-import { store, useDirtyPaths } from './store/documents'
+import { isTsvPath, store, useDirtyPaths } from './store/documents'
+import { deriveSchema } from './lib/tsv/schema'
+import { analyzeDto, checkDtoPath, defaultDtoClassName, dtoClassNameOf, dtoSkipNotes, hasDtoMarker, renderDto } from './lib/codegen/csharpDto'
+import { dirOf, loadDtoPrefs, rememberDtoTarget } from './lib/codegen/dtoPrefs'
 import { Workbench, type WorkbenchHandle } from './components/Workbench'
 import { Palette, type PaletteItem } from './components/Palette'
 import { HelpDialog } from './components/HelpDialog'
@@ -109,6 +112,7 @@ export default function App() {
 /** 알림 줄의 key — 같은 종류의 알림은 하나만 남는다 */
 const FILE_NOTICE = 'file'
 const UPDATE_NOTICE = 'update'
+const DTO_NOTICE = 'dto'
 
 /** 업데이트 확인 결과 (null 은 앞의 결과를 지운다) */
 function updateNotice(msg: string | null) {
@@ -350,6 +354,93 @@ function Workspace({ layoutId }: { layoutId: string }) {
     notify(`템플릿으로 저장했습니다: ${saved.path} — 새 문서 창(${keysOf('newFile') ?? '새 파일'})의 "내 템플릿" 에 뜹니다`, { key: FILE_NOTICE })
   }, [refreshTree])
 
+  /**
+   * 지금 표의 머리글로 C# DTO 클래스(.cs)를 만든다 (DESIGN §26). 저장 전 편집도 들어간다.
+   * 경로는 표마다 한 번 묻고 기억한다 — 그 뒤로는 묻지 않고 덮어쓴다. askPath 면 다시 묻는다.
+   * JayDocs 가 만든 파일(표식)만 묻지 않고 덮어쓰고, 내용이 같으면 쓰지 않는다 (Unity 가 다시 컴파일하지 않게).
+   */
+  const exportDto = useCallback(async (askPath: boolean) => {
+    const src = bench.current?.activePath()
+    if (!src || !isTsvPath(src)) return
+    const doc = store.get(src)
+    if (!doc || doc.kind !== 'tsv' || doc.status !== 'ready') { notifyError('표를 아직 읽는 중입니다', { key: DTO_NOTICE }); return }
+    const table = doc.table
+    const schema = deriveSchema(table, src, store.fieldFiles())
+    const model = analyzeDto(table.rows.map((r) => r.cells), (header, c) => (schema.typed && schema.columns[c]?.name === header.trim() ? schema.columns[c].description : null))
+    if (model.headerRow === null) { notifyError('머리글 행을 찾지 못했습니다 — `#` 로 시작하지 않는 첫 줄이 머리글입니다', { key: DTO_NOTICE }); return }
+    if (model.fields.length === 0) { notifyError('필드로 만들 열이 없습니다', { items: dtoSkipNotes(model), key: DTO_NOTICE }); return }
+
+    const checkTarget = (path: string): string | null => {
+      const problem = checkEntryPath(path, { kind: 'dir', exists: () => false }) ?? checkDtoPath(path)
+      if (problem) return problem
+      if (model.fields.some((f) => f.header === dtoClassNameOf(path))) return `클래스 이름이 열 이름 "${dtoClassNameOf(path)}" 과 같습니다 — C# 에서는 같은 이름을 쓸 수 없습니다`
+      if (store.readOnlyReason(path) === 'mount') return `읽기 전용으로 가져온 폴더(@${splitRootPath(path).alias})에는 쓸 수 없습니다 — 트리에서 그 폴더를 오른쪽 클릭 → 읽기 전용 끄기`
+      return null
+    }
+
+    const prefs = loadDtoPrefs(layoutId)
+    const known = prefs.files[src]
+    let target: string | null = !askPath && known && checkTarget(known) === null ? known : null
+    if (!target) {
+      const dir = prefs.dir ?? dirOf(src)
+      const initial = known ?? `${dir ? `${dir}/` : ''}${defaultDtoClassName(src)}.cs`
+      const picked: { path: string | null } = { path: null }
+      await askText({
+        title: 'C# DTO 내보내기',
+        label: '만들 .cs 파일의 경로',
+        hint: '파일 이름이 클래스 이름이 됩니다. 가져온 폴더는 @별칭/… 로 적습니다 (예: @MyGame/Assets/Scripts/Data/EnemyDTO.cs). 이 표의 경로로 기억해 다음부터는 묻지 않고 덮어씁니다',
+        value: initial,
+        select: nameStemRange(initial),
+        okLabel: '내보내기',
+        submit: (input) => {
+          const path = cleanEntryPath(input)
+          const problem = checkTarget(path)
+          if (problem) return problem
+          picked.path = path
+          return null
+        },
+      })
+      target = picked.path
+      if (!target) return
+    }
+
+    // 이미 있는 파일: 줄바꿈 · BOM 을 따르고, JayDocs 가 만든 것이 아니면 묻는다
+    let existing: { text: string; mtime: number } | null = null
+    try { existing = await backend().read(target) } catch { existing = null }
+    if (existing && !hasDtoMarker(existing.text)) {
+      const ok = await askConfirm({
+        title: 'C# DTO 내보내기',
+        message: `"${target}" 는 JayDocs 가 만든 파일이 아닙니다 (자동 생성 표식이 없습니다). 덮어쓰면 지금 내용은 사라집니다. 덮어쓸까요?`,
+        okLabel: '덮어쓰기',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    const bom = existing?.text.charCodeAt(0) === 0xfeff
+    const eol = existing ? (existing.text.includes('\r\n') ? '\r\n' : '\n') : table.eol
+    const className = dtoClassNameOf(target)
+    const code = (bom ? '﻿' : '') + renderDto(model, { className, source: src.split('/').pop() ?? src, eol })
+    const count = (t: string) => model.fields.filter((f) => f.type === t).length
+    const summary = `${className} — 필드 ${model.fields.length}개 (int ${count('int')} · float ${count('float')} · string ${count('string')})`
+    const skipped = dtoSkipNotes(model).map((n) => `넣지 않은 열: ${n}`)
+    if (existing && existing.text === code) {
+      rememberDtoTarget(layoutId, src, target)
+      notify(`바뀐 것이 없어 다시 쓰지 않았습니다: ${target} · ${summary}`, { items: skipped, key: DTO_NOTICE })
+      return
+    }
+    try {
+      await backend().write(target, code, existing ? existing.mtime : null)
+    } catch (e) {
+      // 읽지는 못했는데 파일은 있는 경우(너무 큰 파일 등) — 백엔드가 충돌로 막는다. 덮어쓰지 않는다
+      notifyError(e instanceof ConflictError ? `"${target}" 이 이미 있는데 읽지 못했거나 그 사이에 바뀌었습니다 — 덮어쓰지 않았습니다. 다시 내보내 보세요` : `내보내지 못했습니다: ${(e as Error).message}`, { key: DTO_NOTICE })
+      return
+    }
+    rememberDtoTarget(layoutId, src, target)
+    notify(`C# DTO 를 ${existing ? '덮어썼습니다' : '만들었습니다'}: ${target} · ${summary}`, { items: skipped, key: DTO_NOTICE })
+    // 주 폴더에 새 폴더가 생겼을 수 있다 (.cs 는 트리에 보이지 않는다)
+    void refreshTree()
+  }, [layoutId, refreshTree])
+
   const newFolder = useCallback(async (dir: string) => {
     if (blockedReadOnly(dir, '폴더를 만들')) return
     const initial = dir ? `${dir}/새 폴더` : '새 폴더'
@@ -536,6 +627,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
   ])), [mounts, unmount, toggleReadOnly])
 
   // ---- 전역 명령
+  const tableActive = () => { const p = bench.current?.activePath(); return !!p && isTsvPath(p) }
   useEffect(() => registerCommands([
     { id: 'importFolder', label: '폴더 가져오기…', run: () => setOverlay({ kind: 'import' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
@@ -554,9 +646,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'newFile', label: '새 파일…', run: () => newFile(lastDir.current) },
     { id: 'saveAsTemplate', label: '현재 문서를 템플릿으로 저장…', run: () => void saveAsTemplate(), enabled: () => !!bench.current?.activePath() },
     { id: 'newFolder', label: '새 폴더', run: () => void newFolder(lastDir.current) },
+    { id: 'exportDto', label: 'C# DTO 내보내기 — 표의 머리글로 DTO 클래스(.cs) 만들기 · 덮어쓰기', run: () => void exportDto(false), enabled: tableActive },
+    { id: 'exportDtoAs', label: 'C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기…', run: () => void exportDto(true), enabled: tableActive },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
-  ]), [newFile, saveAsTemplate, newFolder, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
+  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
 
