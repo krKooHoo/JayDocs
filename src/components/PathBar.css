@@ -12,7 +12,11 @@
 .path-bar button.path-seg.is-file { color: var(--fg); flex-shrink: 0; max-width: 60%; }
 .path-bar button.path-seg.is-tail { color: var(--fg); flex-shrink: 0.3; max-width: 40%; }
 .path-bar button.path-seg.is-empty { color: var(--muted); font-style: italic; }
-.path-bar button.path-seg:hover:not(:disabled), .path-bar button.path-seg.is-open { background: var(--hover); }
+.path-bar button.path-seg:hover:not(:disabled) { background: var(--hover); }
+/* 목록이 열린 단계 — 연한 강조색 블록 */
+.path-bar button.path-seg.is-open { background: var(--accent-soft); color: var(--fg); }
+/* 키보드 포커스 — 강조색 블록에 흰 글자. 외곽선은 막대(overflow: hidden)에 잘려 괄호처럼만 보여서 쓰지 않는다 */
+.path-bar button.path-seg:focus-visible { outline: none; background: var(--accent); color: var(--badge-fg); font-style: normal; }
 
 .path-pop {
   position: fixed; z-index: 100; width: 320px; max-width: calc(100vw - 8px);

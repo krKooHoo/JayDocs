@@ -1234,6 +1234,7 @@ UI/UX 개편 A1(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 · 4 · 5
 | PB7 | 제목은 `lib/md/outline.ts` 를 같이 쓴다 — 같은 글 · 같은(또는 더 자란) 구문 트리면 뽑아 둔 것을 돌려준다(캐시). 경로 막대는 글 · 커서가 바뀌면 120 ms 에 한 번, **구문 트리를 기다리지 않고**(budget 0) 지금 트리로 본다. 목록을 열 때만 50 ms 기다린다 | 치는 동안 입력이 밀리지 않게. 커서 위쪽은 이미 읽혀 있다 |
 | PB8 | 키: **`Ctrl+Shift+.`** 경로 막대로 포커스 — 활성 문서 창의 막대, 마지막 단계에서 시작(VS Code 와 같은 키). 막대 안 `← / →` · `Home / End` 단계, `Esc` 는 목록을 닫고, 목록이 없으면 편집기 · 그리드로. 팔레트 "경로 막대로 포커스". F6 순서에는 넣지 않는다(문서 창의 일부) | ADOPT A1 · 단축키 규칙(`Ctrl+Shift+` = 영역으로) |
 | PB9 | 좁으면 앞 단계부터 `…` 로 줄고, 더 좁으면 앞이 잘린다(`justify-content: flex-end`) — 파일 이름과 마지막 단계가 끝까지 보인다 | ADOPT A1 "앞 단계를 접는다" |
+| PB10 | 키보드 포커스가 있는 단계는 **강조색 블록**(`--accent` 바탕 · `--badge-fg` 글자), 목록이 열린 단계는 연한 블록(`--accent-soft`). 외곽선은 쓰지 않는다 | Jay(2026-11-23) — 공통 외곽선은 막대의 `overflow: hidden` 에 잘려 괄호처럼만 보여 너무 약했다 |
 
 코드: `lib/pathbar.ts`(`crumbsOf` · `listDir` · `listRoots` · `parentDir` · `filterByLabel`), `lib/match.ts`(팔레트에서 옮김), `components/PathBar.tsx` · `.css`, `MarkdownPane.tsx`(제목 단계 · `pathPing`), `GridPane.tsx`(열 · 블록 단계), `Workbench.tsx`(명령 `focusPathBar`), `lib/md/outline.ts`(캐시), `lib/nav.ts`(`openPath` 의 `focus`), `store.filePaths()`.
 
