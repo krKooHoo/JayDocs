@@ -55,7 +55,13 @@ export class FakeFile {
   async isSameEntry(other: unknown) {
     return other === this
   }
+
+  permission: PermissionState = 'granted'
+  async queryPermission() { return this.permission }
+  async requestPermission() { return this.permission }
 }
+
+export const asFile = (f: FakeFile) => f as unknown as FileSystemFileHandle
 
 export class FakeDir {
   readonly kind = 'directory' as const

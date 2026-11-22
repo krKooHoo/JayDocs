@@ -404,7 +404,7 @@ export function FileTree(p: Props) {
           data-path={e.path}
           className={'tree-row is-dir' + (m ? ' is-mount' : '') + (selectedDir === e.path ? ' is-selected' : '') + (isCursor ? ' is-cursor' : '')}
           style={indent}
-          title={m ? `가져온 폴더${m.readOnly ? ' (읽기 전용)' : ''}\n${m.path ?? m.folder}` : undefined}
+          title={m ? `${m.file ? '가져온 파일 — 그 파일을 고치는 것만 됩니다' : '가져온 폴더'}${m.readOnly ? ' (읽기 전용)' : ''}\n${m.path ?? m.folder}` : undefined}
           onClick={() => activate(row)}
           onContextMenu={(ev) => { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, e.path, true) }}
         >

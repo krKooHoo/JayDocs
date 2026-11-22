@@ -32,6 +32,20 @@ declare class FileSystemObserver {
   disconnect(): void
 }
 
+interface OpenFilePickerOptions {
+  id?: string
+  multiple?: boolean
+  excludeAcceptAllOption?: boolean
+  startIn?: FileSystemHandle | 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos'
+  types?: { description?: string; accept: Record<string, string[]> }[]
+}
+
 interface Window {
   showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>
+  showOpenFilePicker(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>
+}
+
+interface DataTransferItem {
+  /** 파일 탐색기에서 끌어 온 파일 · 폴더의 핸들 (Edge · Chrome). drop 처리 안에서 바로 불러야 한다 */
+  getAsFileSystemHandle?(): Promise<FileSystemHandle | null>
 }

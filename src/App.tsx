@@ -30,6 +30,8 @@ import { askConfirm, askText, dialogOpen } from './lib/dialogs'
 import { dismissAllNotices, dismissNotice, noticeList, notify, notifyError } from './lib/notices'
 import { checkEntryPath, cleanEntryPath, nameStemRange } from './lib/names'
 import { setTreeCursor } from './lib/nav'
+import { useTreeDrop } from './lib/treeDrop'
+import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
 
 type Phase =
@@ -152,7 +154,8 @@ type Overlay =
   | { kind: 'palette' }
   | { kind: 'files' }
   | { kind: 'help' }
-  | { kind: 'import' }
+  /** handle: 파일 트리에 끌어다 놓은 폴더 · 파일, pick: 처음 포커스를 둘 고르기 버튼 (DESIGN §28) */
+  | { kind: 'import'; handle?: FileSystemDirectoryHandle | FileSystemFileHandle; pick?: 'folder' | 'file' }
   /** after: 저장하고 이어서 할 일 (상세 경로가 없어 탐색기 열기·경로 복사가 여기로 왔을 때) */
   | { kind: 'rootInfo'; root: RootDetail; guess: string; after?: { action: 'reveal' | 'copyPath'; path: string } }
   | { kind: 'explorer'; path: string | null }
@@ -170,7 +173,7 @@ const LOOKUP_COMMANDS = new Set(['palette', 'fileSearch', 'help'])
 
 /** 가져온 폴더 목록에서 화면이 쓰는 값만 — 같은지 볼 때 (안의 파일 목록은 뺀다) */
 function mountsKey(mounts: readonly (MountInfo & { error?: string | null })[]) {
-  return JSON.stringify(mounts.map((m) => [m.alias, m.folder, m.readOnly, m.truncated, m.path, m.error ?? null]))
+  return JSON.stringify(mounts.map((m) => [m.alias, m.folder, m.readOnly, m.truncated, m.path, m.file ?? false, m.error ?? null]))
 }
 
 function Workspace({ layoutId }: { layoutId: string }) {
@@ -204,7 +207,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         ...t.entries,
         ...t.mounts.map((m): TreeEntry => ({
           type: 'dir', name: `@${m.alias}`, path: `@${m.alias}`, children: m.entries,
-          mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated, path: m.path },
+          mount: { alias: m.alias, folder: m.folder, readOnly: m.readOnly, truncated: m.truncated, path: m.path, file: m.file },
         })),
       ]
       // 창에 포커스가 돌아올 때마다 여기로 온다. 새 배열을 그대로 넣으면 바뀐 것이 없어도 Workspace 아래가 통째로 다시 그려진다 —
@@ -275,8 +278,13 @@ function Workspace({ layoutId }: { layoutId: string }) {
    * 예전에는 이름을 다 치고 확인을 누른 뒤에야 백엔드가 거부했다. 마지막 판단은 여전히 백엔드가 한다.
    */
   const blockedReadOnly = (path: string, what: string) => {
-    if (store.readOnlyReason(path) !== 'mount') return false
     const { alias } = splitRootPath(path)
+    // 파일 하나만 가져온 곳은 그 파일을 고치는 것만 된다 (DESIGN §28)
+    if (store.inFileRoot(path)) {
+      notifyError(`파일 하나만 가져온 곳(@${alias})에서는 ${what} 수 없습니다 — 원래 폴더에서 하세요`, { key: FILE_NOTICE })
+      return true
+    }
+    if (store.readOnlyReason(path) !== 'mount') return false
     notifyError(`읽기 전용으로 가져온 폴더(@${alias})에서는 ${what} 수 없습니다. 고치려면 트리에서 그 폴더를 오른쪽 클릭 → 읽기 전용 끄기`, { key: FILE_NOTICE })
     return true
   }
@@ -544,7 +552,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       bench.current?.closePaths(`@${alias}`, true)
       await backend().removeRoot(alias)
       await refreshTree()
-      notify(`가져오기를 해제했습니다: @${alias} — 파일은 그대로이고, 폴더 가져오기 창의 "최근 폴더" 에서 다시 가져올 수 있습니다`, { key: FILE_NOTICE })
+      notify(`가져오기를 해제했습니다: @${alias} — 파일은 그대로이고, 가져오기 창의 "최근" 에서 다시 가져올 수 있습니다`, { key: FILE_NOTICE })
     } catch (e) {
       notifyError(`해제하지 못했습니다: ${(e as Error).message}`, { key: FILE_NOTICE })
     }
@@ -609,6 +617,33 @@ function Workspace({ layoutId }: { layoutId: string }) {
     runCommand('focusTree')
   }, [refreshTree])
 
+  /**
+   * 파일 탐색기에서 파일 트리에 끌어다 놓은 것 (DESIGN §28). 하나씩 — 여럿이면 첫 항목만.
+   * 이미 열려 있는 폴더 안의 것이면 가져오지 않고 그 자리로 간다(파일은 열고, 폴더는 트리 커서). 아니면 가져오기 창을 그것으로 연다.
+   */
+  const onTreeDrop = useCallback(async (handles: FileSystemHandle[]) => {
+    if (dialogOpen() || overlayRef.current) return
+    const first = handles[0] as FileSystemDirectoryHandle | FileSystemFileHandle
+    if (handles.length > 1) notify(`하나씩 가져옵니다 — ${first.name} 만 골랐습니다`, { key: FILE_NOTICE })
+    else dismissNotice(FILE_NOTICE)
+    if (first.kind === 'file' && !fileTypeOf(first.name)) {
+      notifyError(`여는 문서 형식이 아닙니다: ${first.name} — ${DOC_EXTS_LABEL}`, { key: FILE_NOTICE })
+      return
+    }
+    const known = await backend().pathOf(first).catch(() => null)
+    if (known === null) { setOverlay({ kind: 'import', handle: first }); return }
+    if (first.kind === 'file') { bench.current?.openFile(known, true); return }
+    setTreeCursor(known)
+    runCommand('focusTree')
+    notify(`이미 열려 있는 폴더입니다: ${known || '(문서 폴더)'}`, { key: FILE_NOTICE })
+  }, [])
+  const dropOver = useTreeDrop((hs) => void onTreeDrop(hs), () => notify('파일 트리에 놓으면 가져옵니다 — 원래 자리에서 @별칭 으로 엽니다', { key: FILE_NOTICE }))
+  // 트리 위로 끌고 있으면 트리를 칠한다 (CSS: :root[data-drop])
+  useEffect(() => {
+    if (dropOver) document.documentElement.dataset.drop = dropOver
+    else delete document.documentElement.dataset.drop
+  }, [dropOver])
+
   const switchFolder = useCallback(async () => {
     if (store.anyDirty()) { notifyError('저장하지 않은 문서가 있습니다. 먼저 저장하세요.', { items: [...store.dirtyPaths()], key: FILE_NOTICE }); return }
     await setCurrentWorkspace(null)
@@ -630,6 +665,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
   const tableActive = () => { const p = bench.current?.activePath(); return !!p && isTsvPath(p) }
   useEffect(() => registerCommands([
     { id: 'importFolder', label: '폴더 가져오기…', run: () => setOverlay({ kind: 'import' }) },
+    { id: 'importFile', label: '파일 가져오기… (파일 하나를 원래 자리에서 열기)', run: () => setOverlay({ kind: 'import', pick: 'file' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
     { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
     { id: 'revealRoot', label: '파일 탐색기에서 문서 폴더 열기', run: () => localAction('reveal', ''), enabled: explorerSupported },
@@ -670,7 +706,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       const ov = overlayRef.current
       if (ov) {
         e.preventDefault()
-        if (id === OVERLAY_COMMAND[ov.kind]) closeOverlay()
+        if (id === OVERLAY_COMMAND[ov.kind] || (ov.kind === 'import' && id === 'importFile')) closeOverlay()
         else if (LOOKUP_OVERLAYS.has(ov.kind) && LOOKUP_COMMANDS.has(id)) runCommand(id)
         return
       }
@@ -762,7 +798,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id, true) }} />
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
-      {overlay?.kind === 'import' && <ImportDialog onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
+      {overlay?.kind === 'import' && <ImportDialog initial={overlay.handle} pick={overlay.pick} onClose={closeOverlay} onImported={(m) => void onImported(m)} />}
+      {dropOver && <div className="drop-hint">{dropOver === 'tree' ? '놓으면 가져오기 창이 열립니다 — 원래 자리에서 @별칭 으로 엽니다' : '파일 트리에 놓으면 가져옵니다'}</div>}
       {overlay?.kind === 'rootInfo' && (
         <FolderInfoDialog
           title={overlay.root.alias === null ? '문서 폴더 정보' : `가져온 폴더 정보 — ${overlay.root.label}`}

@@ -188,9 +188,18 @@ class DocumentStore {
   }
   // ---- 읽기 전용: 읽기 전용으로 가져온 폴더(mount) 또는 UTF-8 이 아닌 파일(encoding)
   private readOnlyAliases = new Set<string>()
+  /** 파일 하나만 가져온 별칭 (DESIGN §28) — 그 안에서는 새 파일 · 이름 바꾸기 · 지우기가 안 된다 */
+  private fileAliases = new Set<string>()
+
+  /** 파일 하나만 가져온 곳 안의 경로인가 */
+  inFileRoot(path: string): boolean {
+    const { alias } = splitRootPath(path)
+    return alias !== null && this.fileAliases.has(alias)
+  }
 
   /** 가져온 폴더 목록이 바뀌면 (트리를 읽을 때마다) */
   setMounts(mounts: readonly MountInfo[]) {
+    this.fileAliases = new Set(mounts.filter((m) => m.file).map((m) => m.alias))
     const next = new Set(mounts.filter((m) => m.readOnly).map((m) => m.alias))
     if ([...next].sort().join('\n') === [...this.readOnlyAliases].sort().join('\n')) return
     this.readOnlyAliases = next

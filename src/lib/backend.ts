@@ -17,6 +17,8 @@ export interface MountInfo {
   truncated: boolean
   /** 사용자가 넣은 전체 경로 */
   path: string | null
+  /** 파일 하나만 가져왔다 — 그 안에서는 그 파일을 고치는 것만 된다 (DESIGN §28) */
+  file?: boolean
 }
 export interface MountTree extends MountInfo {
   entries: TreeEntry[]
@@ -28,6 +30,8 @@ export interface RecentMount {
   folder: string
   readOnly: boolean
   path: string | null
+  /** 파일 하나를 가져왔던 것 */
+  file?: boolean
 }
 /** 주 폴더(alias null) 또는 가져온 폴더의 이름과 경로 */
 export interface RootDetail {
@@ -71,7 +75,10 @@ export interface Backend {
   /** 가져온 폴더 목록 · 최근 해제한 폴더 */
   roots(): Promise<RootsInfo>
   /** 사용자가 고른 폴더를 가져온다. 클릭 처리 안에서 불러야 권한을 물을 수 있다 */
-  addRoot(handle: FileSystemDirectoryHandle, opts?: { alias?: string; readOnly?: boolean; path?: string }): Promise<MountInfo>
+  /** 폴더 또는 파일 하나를 원래 자리에서 `@별칭` 으로 연다 (파일은 DESIGN §28) */
+  addRoot(handle: FileSystemDirectoryHandle | FileSystemFileHandle, opts?: { alias?: string; readOnly?: boolean; path?: string }): Promise<MountInfo>
+  /** 이미 열려 있는 폴더(주 · 가져온) 안의 항목이면 그 앱 경로 (루트 자체는 '' 또는 `@별칭`). 아니면 null */
+  pathOf(handle: FileSystemHandle): Promise<string | null>
   /** 최근 목록의 폴더를 다시 가져온다 */
   restoreRoot(alias: string): Promise<MountInfo>
   setRootReadOnly(alias: string, readOnly: boolean): Promise<MountInfo>

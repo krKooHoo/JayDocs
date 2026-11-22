@@ -66,6 +66,43 @@ function fsFail(e: unknown, what: string): Error {
   return msg ? new Error(`${what}: ${msg}`) : (e as Error)
 }
 
+/** 파일만 가져온 루트에서 할 수 없는 일 */
+const FILE_ROOT_ONLY = '파일 하나만 가져온 곳입니다 — 그 파일을 고쳐 저장하는 것만 됩니다. 새 파일 · 이름 바꾸기 · 지우기는 원래 폴더에서 하세요'
+
+const domError = (name: string) => Object.assign(new Error(name), { name })
+
+/** 확장자를 뗀 이름 — 파일을 가져올 때 별칭으로 쓴다 */
+const stemOf = (name: string) => {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(0, dot) : name
+}
+
+/**
+ * 파일 하나만 가져온 루트 (DESIGN §28). 그 파일 하나만 든 폴더처럼 보이게 해서 트리 · 읽기 · 저장 코드를 그대로 쓴다.
+ * 새 파일 · 폴더 · 지우기 · 이름 바꾸기는 할 수 없다 — `locateWritable` 이 먼저 막고 여기서도 막는다.
+ */
+class SingleFileDir {
+  readonly kind = 'directory' as const
+  constructor(readonly file: FileSystemFileHandle) {}
+  get name() { return this.file.name }
+  private is(name: string) { return name.toLowerCase() === this.file.name.toLowerCase() }
+  async getFileHandle(name: string, opts: { create?: boolean } = {}) {
+    if (this.is(name)) return this.file
+    throw domError(opts.create ? 'NotAllowedError' : 'NotFoundError')
+  }
+  async getDirectoryHandle(name: string, opts: { create?: boolean } = {}): Promise<never> {
+    throw domError(this.is(name) ? 'TypeMismatchError' : opts.create ? 'NotAllowedError' : 'NotFoundError')
+  }
+  async removeEntry(): Promise<never> { throw domError('NotAllowedError') }
+  async *entries(): AsyncGenerator<[string, FileSystemHandle]> { yield [this.file.name, this.file] }
+  async *keys(): AsyncGenerator<string> { yield this.file.name }
+  async *values(): AsyncGenerator<FileSystemHandle> { yield this.file }
+  async resolve(h: FileSystemHandle) { return (await this.file.isSameEntry(h)) ? [this.file.name] : null }
+  async isSameEntry() { return false }
+  queryPermission(d?: FileSystemHandlePermissionDescriptor) { return this.file.queryPermission(d) }
+  requestPermission(d?: FileSystemHandlePermissionDescriptor) { return this.file.requestPermission(d) }
+}
+
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i])
 
 async function readLimited(file: File): Promise<Uint8Array> {
@@ -92,11 +129,12 @@ interface Located {
   segs: string[]
 }
 
-/** 주 폴더(alias null) 또는 가져온 폴더 */
+/** 주 폴더(alias null) 또는 가져온 폴더. 파일만 가져왔으면 handle 은 그 파일 하나만 든 폴더(SingleFileDir) */
 interface Root {
   alias: string | null
   handle: Dir
   readOnly: boolean
+  file: boolean
 }
 
 export interface FsaBackendOptions {
@@ -119,11 +157,22 @@ export class FsaBackend implements Backend {
   }
 
   private primary(): Root {
-    return { alias: null, handle: this.ws.primary, readOnly: false }
+    return { alias: null, handle: this.ws.primary, readOnly: false, file: false }
+  }
+
+  private fileDirs = new WeakMap<FileSystemFileHandle, Dir>()
+
+  /** 저장해 둔 가져온 폴더 · 파일 → 백엔드가 다루는 루트 */
+  private rootOf(m: StoredRoot): Root {
+    if (m.handle.kind === 'directory') return { alias: m.alias, handle: m.handle as Dir, readOnly: m.readOnly, file: false }
+    const f = m.handle as FileSystemFileHandle
+    let d = this.fileDirs.get(f)
+    if (!d) { d = new SingleFileDir(f) as unknown as Dir; this.fileDirs.set(f, d) }
+    return { alias: m.alias, handle: d, readOnly: m.readOnly, file: true }
   }
 
   private mountInfo(m: StoredRoot, truncated = false): MountInfo {
-    return { alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, truncated, path: m.path ?? null }
+    return { alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, truncated, path: m.path ?? null, file: m.handle.kind === 'file' }
   }
 
   private checkedPath(raw: string, folder: string) {
@@ -147,7 +196,7 @@ export class FsaBackend implements Backend {
     const mount = this.ws.mounts.find((m) => m.alias === alias)
     if (mount) {
       if (inner === '') throw new Error('가져온 폴더 자체에는 쓸 수 없습니다')
-      return { root: mount, rel, segs: inner.split('/') }
+      return { root: this.rootOf(mount), rel, segs: inner.split('/') }
     }
     // 주 폴더 최상위에 진짜 `@이름` 폴더가 있으면 그쪽 (가져오기가 그 별칭을 쓰지 못하게 막아 둔다)
     if (await this.primaryHasDir(`@${alias}`)) return { root: this.primary(), rel, segs: parts }
@@ -163,10 +212,17 @@ export class FsaBackend implements Backend {
     }
   }
 
-  /** 쓰기(저장·폴더 만들기·이름 바꾸기·지우기)용 — 읽기 전용으로 가져온 폴더면 거부 */
-  private async locateWritable(path: string) {
+  /**
+   * 쓰기(저장·폴더 만들기·이름 바꾸기·지우기)용 — 읽기 전용으로 가져온 폴더면 거부.
+   * 파일 하나만 가져온 곳은 그 파일의 저장(`save`)만 된다
+   */
+  private async locateWritable(path: string, op: 'save' | 'change' = 'change') {
     const l = await this.locate(path)
-    if (l.root.readOnly) throw new Error(`읽기 전용으로 가져온 폴더입니다 (@${l.root.alias}) — 트리에서 그 폴더를 오른쪽 클릭해 읽기 전용을 끌 수 있습니다`)
+    if (l.root.readOnly) {
+      const what = l.root.file ? '파일' : '폴더'
+      throw new Error(`읽기 전용으로 가져온 ${what}입니다 (@${l.root.alias}) — 트리에서 @${l.root.alias} 를 오른쪽 클릭해 읽기 전용을 끌 수 있습니다`)
+    }
+    if (l.root.file && op !== 'save') throw new Error(FILE_ROOT_ONLY)
     return l
   }
 
@@ -215,7 +271,7 @@ export class FsaBackend implements Backend {
   async roots(): Promise<RootsInfo> {
     return {
       mounts: this.ws.mounts.map((m) => this.mountInfo(m)),
-      recent: this.ws.recent.map((m) => ({ alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, path: m.path ?? null })),
+      recent: this.ws.recent.map((m) => ({ alias: m.alias, folder: m.handle.name, readOnly: m.readOnly, path: m.path ?? null, file: m.handle.kind === 'file' })),
     }
   }
 
@@ -245,9 +301,11 @@ export class FsaBackend implements Backend {
   localPath(path: string) {
     const { alias, rel } = splitRootPath(path)
     // 주 폴더의 진짜 `@이름` 폴더는 가져온 폴더가 아니다
-    const mounted = alias !== null && this.ws.mounts.some((m) => m.alias === alias)
-    const root = this.rootDetail(mounted ? alias : null)
-    return { root, full: root.path ? joinLocal(root.path, mounted ? rel : path) : null }
+    const mount = alias !== null ? this.ws.mounts.find((m) => m.alias === alias) : undefined
+    const root = this.rootDetail(mount ? alias : null)
+    // 파일 하나만 가져왔으면 상세 경로가 곧 그 파일의 경로다
+    if (mount?.handle.kind === 'file') return { root, full: root.path }
+    return { root, full: root.path ? joinLocal(root.path, mount ? rel : path) : null }
   }
 
   /**
@@ -286,7 +344,7 @@ export class FsaBackend implements Backend {
 
   private async mountTree(m: StoredRoot): Promise<MountTree> {
     try {
-      const { entries, truncated } = await this.scan(m)
+      const { entries, truncated } = await this.scan(this.rootOf(m))
       return { ...this.mountInfo(m, truncated), entries, error: null }
     } catch (e) {
       return { ...this.mountInfo(m), entries: [], error: fsFail(e, '폴더를 읽지 못했습니다').message }
@@ -299,32 +357,52 @@ export class FsaBackend implements Backend {
   }
 
   // ---------------------------------------------------------------- 가져온 폴더
-  /** 겹침(주 폴더·다른 가져온 폴더 안이거나 그것들을 품음)과 별칭을 검사한다 */
-  async addRoot(handle: Dir, opts: { alias?: string; readOnly?: boolean; path?: string } = {}): Promise<MountInfo> {
+  /**
+   * 폴더나 파일 하나를 `@별칭` 으로 연다. 겹침(주 폴더·다른 가져온 폴더 안이거나 그것들을 품음)과 별칭을 검사한다.
+   * 파일은 여는 형식(`filetypes.mjs`)만 — 별칭은 확장자를 뗀 이름 (DESIGN §28)
+   */
+  async addRoot(handle: Dir | FileSystemFileHandle, opts: { alias?: string; readOnly?: boolean; path?: string } = {}): Promise<MountInfo> {
     const readOnly = opts.readOnly === true
+    const isFile = handle.kind === 'file'
+    if (isFile && !EXTS.has(extOf(handle.name))) throw new Error(`여는 문서 형식이 아닙니다: ${handle.name} — ${DOC_EXTS.join(' · ')} 파일만 가져옵니다`)
     const path = this.checkedPath(opts.path ?? '', handle.name)
-    const others: Root[] = [this.primary(), ...this.ws.mounts]
+    const what = isFile ? '파일' : '폴더'
+    const others: { alias: string | null; handle: FileSystemHandle }[] = [{ alias: null, handle: this.ws.primary }, ...this.ws.mounts]
     for (const r of others) {
       const name = r.alias === null ? '주 문서 폴더' : `@${r.alias}`
-      if ((await r.handle.resolve(handle)) !== null) throw new Error(`이미 열려 있는 ${name} 안의 폴더입니다`)
-      if ((await handle.resolve(r.handle)) !== null) throw new Error(`이 폴더 안에 ${name} 이 들어 있어 겹칩니다 — 겹치지 않는 폴더를 고르세요`)
+      if (r.handle.kind === 'directory') {
+        if ((await (r.handle as Dir).resolve(handle)) !== null) throw new Error(`이미 열려 있는 ${name} 안의 ${what}입니다`)
+      } else if (await r.handle.isSameEntry(handle)) throw new Error(`이미 가져온 파일입니다 (${name})`)
+      if (!isFile && (await (handle as Dir).resolve(r.handle)) !== null) throw new Error(`이 폴더 안에 ${name} 이 들어 있어 겹칩니다 — 겹치지 않는 폴더를 고르세요`)
     }
     const taken = this.ws.mounts.map((m) => m.alias)
     const typed = opts.alias?.trim()
-    const alias = typed ? typed : makeAlias(handle.name, taken)
+    const alias = typed ? typed : makeAlias(isFile ? stemOf(handle.name) : handle.name, taken)
     if (!isValidAlias(alias)) throw new Error(`별칭으로 쓸 수 없습니다: ${alias} (40자 이하, / \\ : * ? " < > | 와 맨 앞 점 제외)`)
     if (taken.some((t) => t.toLowerCase() === alias.toLowerCase())) throw new Error(`이미 쓰는 별칭입니다: @${alias}`)
     if (await this.primaryHasDir(`@${alias}`)) throw new Error(`주 폴더에 "@${alias}" 폴더가 있어 그 별칭은 쓸 수 없습니다`)
-    if ((await requestRoot(handle, readOnly)) !== 'granted') throw new Error('폴더 접근을 허용하지 않았습니다')
+    if ((await requestRoot(handle, readOnly)) !== 'granted') throw new Error(`${what} 접근을 허용하지 않았습니다`)
     const m: StoredRoot = { alias, handle, readOnly, path }
     this.ws.mounts.push(m)
     const recent: StoredRoot[] = []
     for (const r of this.ws.recent) if (!(await r.handle.isSameEntry(handle))) recent.push(r)
     this.ws.recent = recent
     await this.save(this.ws)
-    if (this.stopWatching) void this.watchRoot(m)
+    if (this.stopWatching) void this.watchRoot(this.rootOf(m))
     this.emit({ type: 'change', event: 'rename', path: `@${alias}` })
     return this.mountInfo(m)
+  }
+
+  async pathOf(handle: FileSystemHandle): Promise<string | null> {
+    const inPrimary = await this.ws.primary.resolve(handle)
+    if (inPrimary) return inPrimary.join('/')
+    for (const m of this.ws.mounts) {
+      if (m.handle.kind === 'directory') {
+        const inner = await (m.handle as Dir).resolve(handle)
+        if (inner) return joinRootPath(m.alias, inner.join('/'))
+      } else if (await m.handle.isSameEntry(handle)) return joinRootPath(m.alias, m.handle.name)
+    }
+    return null
   }
 
   async restoreRoot(alias: string) {
@@ -381,9 +459,10 @@ export class FsaBackend implements Backend {
 
   async write(path: string, text: string, baseMtime: number | null, opts: { convert?: boolean } = {}) {
     if (typeof text !== 'string') throw new Error('text 가 필요합니다')
-    const l = await this.locateWritable(path)
+    const l = await this.locateWritable(path, 'save')
     const kind = await this.kindOf(l)
     if (kind === 'dir') throw new Error('파일이 아닙니다')
+    if (l.root.file && kind === null) throw new Error(FILE_ROOT_ONLY)
     try {
       if (kind === 'file') {
         const file = await (await this.fileOf(l)).getFile()
@@ -509,7 +588,9 @@ export class FsaBackend implements Backend {
   }
 
   private onRecords(root: Root, records: FileSystemChangeRecord[]) {
-    for (const r of records) {
+    for (let r of records) {
+      // 파일을 보면 경로 조각이 비어서 온다 — 그 파일의 이름으로 바꾼다
+      if (root.file && r.relativePathComponents.length === 0 && r.type !== 'errored' && r.type !== 'unknown') r = { ...r, relativePathComponents: [root.handle.name] }
       if (r.type === 'errored' || r.type === 'unknown' || r.relativePathComponents.length === 0) {
         if (r.type === 'errored') void this.watchRoot(root)
         this.emit({ type: 'change', event: 'rescan', path: '' })
@@ -527,7 +608,9 @@ export class FsaBackend implements Backend {
     const ob = new this.Observer((records) => this.onRecords(root, records))
     this.observers.set(key, ob)
     try {
-      await ob.observe(root.handle, { recursive: true })
+      // 파일만 가져온 곳은 그 파일을 본다
+      if (root.file) await ob.observe((root.handle as unknown as SingleFileDir).file)
+      else await ob.observe(root.handle, { recursive: true })
     } catch (e) {
       // 폴더가 사라졌거나 권한이 없다. 포커스·주기 확인이 남아 있으니 앱은 계속 돈다
       console.warn(`파일 감시를 시작하지 못했습니다 (${root.handle.name}):`, (e as Error).message)
@@ -535,7 +618,7 @@ export class FsaBackend implements Backend {
   }
 
   private startWatching() {
-    for (const r of [this.primary(), ...this.ws.mounts]) void this.watchRoot(r)
+    for (const r of [this.primary(), ...this.ws.mounts.map((m) => this.rootOf(m))]) void this.watchRoot(r)
     const rescan = () => this.emit({ type: 'change', event: 'rescan', path: '' })
     // 절전·감시 끊김으로 놓친 변경은 창에 돌아올 때 잡는다
     const hasWindow = typeof window !== 'undefined'

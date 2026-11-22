@@ -80,6 +80,8 @@ src/
   lib/md/template.ts  Mermaid 생성용 Mustache 부분집합 (each · if · .list · .id)
   lib/md/bake.ts      bake — 펜스 찾기 · 파이프 표 생성 · 저장 시 변경 계산 · baked 를 걷어 낸 글의 줄 → 원문 줄
   lib/md/sourceLines.ts  렌더된 조각에 원문 줄 번호(`data-line`)를 찍는 rehype 플러그인 (훑어보기 패널)
+  lib/md/outline.ts   목차 — 편집기 구문 트리에서 제목 뽑기 · 지금 절 찾기 (DESIGN §29). 켬 · 끔은 outlineState.ts
+  lib/treeDrop.ts     파일 탐색기에서 파일 트리에 끌어다 놓기 — 놓는 곳 · 핸들 꺼내기 · `useTreeDrop` (DESIGN §28)
   lib/templates.ts    새 문서 템플릿 표 (형식마다 빈 문서 · 예시) · 이름 칸 → 경로 · 내 템플릿(`_templates/`) 목록
   lib/skim/           훑어보기 (DESIGN §25)
     index.ts          `useSkimText(path)` — 열린 문서는 스토어, 안 연 파일은 디스크에서
@@ -117,7 +119,7 @@ src/
   components/
     Workbench.tsx     flexlayout-react 탭·분할·레이아웃 저장, 닫기 확인
     FileTree.tsx      파일 트리 (오른쪽 클릭 메뉴, 가져온 폴더 `@별칭` 노드)
-    ImportDialog.tsx  폴더 가져오기 창 (폴더 선택 · 별칭 · 상세 경로 · 읽기 전용 · 최근 폴더)
+    ImportDialog.tsx  가져오기 창 (폴더 · 파일 하나 선택 또는 끌어다 놓은 것 · 별칭 · 상세 경로 · 읽기 전용 · 최근)
     StartScreen.tsx   시작 화면 (문서 폴더 열기 · 최근 폴더) · 권한 다시 허용 화면
     UpdateButton.tsx  업데이트 확인 → 받는 중 → 적용 버튼
     FolderInfoDialog.tsx  문서 별칭 · 상세 경로 입력 창
@@ -129,6 +131,7 @@ src/
     DocView.tsx       훑어보기 공통 렌더러 — `DocView`(md · 표 · 평문) · `DocFileView`(읽어서 그림) · `DocThumb`(A4 틀 썸네일)
     NewDocDialog.tsx  새 문서 창 — 빈 문서 · 예시 · 내 템플릿 카드, 이름 칸
     SkimPanel.tsx     훑어보기 패널 — 문서 창 오른쪽의 축소된 문서, 클릭 → 커서, 범위 상자
+    OutlinePanel.tsx  목차 띠 — 하이브리드 모드의 왼쪽, 지금 절 칠하기 · 클릭 / 키보드로 이동 (DESIGN §29)
     QuickLook.tsx     훑어보기 창 — 트리 `Space`. 파일은 문서, 폴더는 썸네일 격자
     docPanes.ts       문서 창 수 context (패널은 문서 창이 하나일 때만 보인다)
     hybrid.ts         하이브리드 Live Preview — CM6 StateField 장식 (표식 숨김 · 펜스 블록 위젯 · 코드 상자)

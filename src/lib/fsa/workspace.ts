@@ -4,7 +4,8 @@
  */
 export interface StoredRoot {
   alias: string
-  handle: FileSystemDirectoryHandle
+  /** 가져온 폴더. 파일 하나만 가져왔으면 그 파일 (DESIGN §28) */
+  handle: FileSystemDirectoryHandle | FileSystemFileHandle
   readOnly: boolean
   /** 사용자가 넣은 전체 경로. 브라우저는 알려 주지 않는다 (DESIGN §21) */
   path?: string
@@ -100,11 +101,11 @@ export async function workspaceFor(handle: FileSystemDirectoryHandle): Promise<W
 
 const modeOf = (readOnly: boolean) => ({ mode: readOnly ? 'read' : 'readwrite' }) as const
 
-export function queryRoot(handle: FileSystemDirectoryHandle, readOnly: boolean) {
+export function queryRoot(handle: FileSystemHandle, readOnly: boolean) {
   return handle.queryPermission(modeOf(readOnly))
 }
 
 /** 권한을 묻는다. 사용자 동작(클릭·키) 안에서만 창이 뜬다 */
-export function requestRoot(handle: FileSystemDirectoryHandle, readOnly: boolean) {
+export function requestRoot(handle: FileSystemHandle, readOnly: boolean) {
   return handle.requestPermission(modeOf(readOnly))
 }

@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { syntaxTree } from '@codemirror/language'
 import { baseExtensions, isMarkdownPath, remote } from '../lib/cm'
 import { runCommand, tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
-import { dismissNotice, notifyError } from '../lib/notices'
+import { dismissNotice, notify, notifyError } from '../lib/notices'
+import { setOutlineOn, useOutlineOn } from '../lib/md/outlineState'
 import { store, useDocVersion } from '../store/documents'
 import { PreviewPane } from './PreviewPane'
 import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { SkimPanel } from './SkimPanel'
+import { OutlinePanel } from './OutlinePanel'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
 
@@ -39,6 +42,10 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   /** 편집기가 바뀌면(글 · 커서 · 줄 높이) 부를 함수 — 훑어보기 패널이 넣는다 */
   const skimPing = useRef<(() => void) | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
+  /** 글 · 구문 트리가 바뀌면 부를 함수 — 목차 띠가 넣는다 (DESIGN §29) */
+  const outlinePing = useRef<(() => void) | null>(null)
+  /** 목차로 포커스를 옮기는 함수 — 목차 띠가 넣는다. 띠가 숨겨져 있으면 false */
+  const outlineFocus = useRef<(() => boolean) | null>(null)
   const hybridComp = useRef(new Compartment())
   const [mode, setModeState] = useState<Mode>(() => loadMode(path))
   /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
@@ -77,7 +84,21 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     if (a === 'cycleMdMode' && isMarkdownPath(path)) setMode(MODES[(MODES.indexOf(modeRef.current) + 1) % MODES.length])
     if (a === 'focus') window.setTimeout(focusPane, 0)
     if (a === 'formatJson') formatActive()
+    if (a === 'focusOutline') focusOutline()
   }), [path])
+
+  /** 목차로 포커스 (Ctrl+Alt+T). 꺼져 있으면 켠다. 이미 목차에 있으면 편집기로 돌아간다 */
+  function focusOutline() {
+    if (!isMarkdownPath(path)) return
+    if (modeRef.current !== 'hybrid') { notify('목차는 하이브리드 모드에서 보입니다 — 보기 모드 순환은 Ctrl+Shift+V', { key: 'outline' }); return }
+    if (root.current?.querySelector('.outline-list')?.contains(document.activeElement)) { focusPane(); return }
+    setOutlineOn(true)
+    // 켠 띠가 그려진 다음에
+    window.setTimeout(() => {
+      if (outlineFocus.current?.()) dismissNotice('outline')
+      else notify('창이 좁아 목차를 숨겼습니다 — 창을 넓히면 보입니다', { key: 'outline' })
+    }, 0)
+  }
 
   const d = store.get(path)
   const ready = d?.status === 'ready' && d.kind === 'text'
@@ -116,6 +137,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           hybridComp.current.of(isMd && loadMode(path) === 'hybrid' ? hybrid(path) : []),
           EditorView.updateListener.of((u) => {
             if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
+            if (outlinePing.current && (u.docChanged || syntaxTree(u.state) !== syntaxTree(u.startState))) outlinePing.current()
             if (!u.docChanged) return
             for (const tr of u.transactions) {
               if (tr.docChanged && !tr.annotation(remote)) store.applyChanges(path, tr.changes, source)
@@ -156,6 +178,10 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const paneCount = useDocPaneCount()
   const skimShown = skimmable && skimOn && paneCount === 1 && ready
 
+  // 목차 띠 (DESIGN §29): 마크다운 · 하이브리드 모드에서만, 켜져 있을 때
+  const outlineOn = useOutlineOn()
+  const outlineShown = isMd && mode === 'hybrid' && outlineOn && ready
+
   return (
     <div className="pane" ref={root}>
       <div className="pane-bar">
@@ -173,6 +199,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
             <span className={'pane-status' + (jsonErr ? ' is-err' : '')} title={jsonErr ?? 'JSON 문법 이상 없음'}>{jsonErr ? 'JSON 오류' : 'JSON ✓'}</span>
             <button onClick={formatActive} disabled={readOnly} title="들여쓰기 2칸으로 정렬 (명령 팔레트: JSON 정렬). Ctrl+Z 로 되돌린다">정렬</button>
           </>
+        )}
+        {isMd && mode === 'hybrid' && (
+          <button
+            className={'outline-toggle' + (outlineOn ? ' is-on' : '')}
+            aria-pressed={outlineOn}
+            onClick={() => { setOutlineOn(!outlineOn); focusPane() }}
+            title={tip('목차 보이기 / 숨기기 — 하이브리드 모드에서 왼쪽에 제목 목록을 띄운다', 'toggleOutline')}
+          >
+            목차
+          </button>
         )}
         {skimmable && (
           <button
@@ -201,6 +237,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       {bakeErrors.map((e) => <div key={e} className="banner">{e}</div>)}
       {d?.status === 'loading' && <div className="pane-empty">불러오는 중…</div>}
       <div className={'md-body is-' + mode} ref={bodyRef}>
+        {outlineShown && <OutlinePanel key={path} view={skimView} ping={outlinePing} focusRef={outlineFocus} />}
         <div className="editor-host" ref={host} style={{ display: mode === 'preview' ? 'none' : undefined }} />
         {/* lines: 미리보기 전용 모드에서 훑어보기 패널이 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다. 그때만 찍는다 */}
         {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}

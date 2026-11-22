@@ -11,6 +11,7 @@ import { fileTypeOf } from '../lib/filetypes.mjs'
 import { dismissNotice, notify } from '../lib/notices'
 import { SKIM_WIDTH_BIG_STEP, isSkimPath, nudgeSkimPanelWidth, refreshSkimPanels, skimPanelState, toggleSkimPanel } from '../lib/skim/panel'
 import { isLookDefault, resetLookPrefs } from '../lib/skim/look'
+import { outlineOn, setOutlineOn } from '../lib/md/outlineState'
 import { DocPaneCountContext } from './docPanes'
 import { FileTree, type RootAction } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
@@ -350,6 +351,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
     { id: 'toggleSkim', label: '훑어보기 패널 켜기 / 끄기', run: toggleSkim },
+    { id: 'focusOutline', label: '목차로 포커스 (마크다운 · 하이브리드 모드, 꺼져 있으면 켠다)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'focusOutline') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
+    { id: 'toggleOutline', label: '목차 보이기 / 숨기기 (마크다운 · 하이브리드 모드)', run: () => { setOutlineOn(!outlineOn()); notify(outlineOn() ? '목차를 켰습니다 — 마크다운의 하이브리드 모드에서 보입니다' : '목차를 껐습니다', { key: 'outline' }) } },
     { id: 'skimWider', label: '훑어보기 패널 넓히기', run: () => nudgeSkimPanelWidth(SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
     { id: 'skimNarrower', label: '훑어보기 패널 좁히기', run: () => nudgeSkimPanelWidth(-SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },

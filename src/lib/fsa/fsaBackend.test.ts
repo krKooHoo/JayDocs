@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConflictError, type ChangeEvent, type TreeEntry } from '../backend'
 import { MOUNT_SCAN_LIMIT } from '../roots.mjs'
-import { FakeDir, FakeFile, asDir } from './fake'
+import { FakeDir, FakeFile, asDir, asFile } from './fake'
 import { FsaBackend, decodeText } from './fsaBackend'
 import type { Workspace } from './workspace'
 
@@ -331,7 +331,7 @@ describe('가져온 폴더', () => {
     await b.addRoot(asDir(m), { readOnly: true })
     await b.removeRoot('M')
     expect((await b.roots()).mounts).toEqual([])
-    expect((await b.roots()).recent).toEqual([{ alias: 'M', folder: 'M', readOnly: true, path: null }])
+    expect((await b.roots()).recent).toEqual([{ alias: 'M', folder: 'M', readOnly: true, path: null, file: false }])
     await expect(b.read('@M/a.md')).rejects.toThrow('가져온 폴더가 없습니다')
     expect(m.text('a.md')).toBe('A')
     await b.restoreRoot('M')
@@ -345,6 +345,109 @@ describe('가져온 폴더', () => {
     const { b } = setup()
     await b.addRoot(asDir(new FakeDir('M')))
     await expect(b.write('@M', 'x', null)).rejects.toThrow('자체에는')
+  })
+})
+
+describe('파일 하나 가져오기 (DESIGN §28)', () => {
+  /** 다른 곳에 있는 폴더의 파일 */
+  const elsewhere = (name = '제출.md', text = '# 제출\n') => {
+    const d = new FakeDir('수강생')
+    const f = d.put(name, text)
+    d.put('옆.md', '옆')
+    return { d, f }
+  }
+
+  it('별칭은 확장자를 뗀 이름, 트리에는 그 파일 하나', async () => {
+    const { b } = setup()
+    const { f } = elsewhere()
+    const info = await b.addRoot(asFile(f))
+    expect(info).toMatchObject({ alias: '제출', folder: '제출.md', file: true, readOnly: false })
+    const t = await b.tree()
+    expect(t.mounts[0]).toMatchObject({ alias: '제출', file: true, error: null })
+    expect(flat(t.mounts[0].entries)).toEqual(['@제출/제출.md'])
+  })
+
+  it('읽고 저장한다 — 바이트 · 낙관적 잠금은 폴더와 같다', async () => {
+    const { b } = setup()
+    const { d, f } = elsewhere('a.tsv', 'x\r\n')
+    await b.addRoot(asFile(f))
+    const r = await b.read('@a/a.tsv')
+    expect(r.text).toBe('x\r\n')
+    await b.write('@a/a.tsv', 'y\r\n', r.mtime)
+    expect(d.text('a.tsv')).toBe('y\r\n')
+    await expect(b.write('@a/a.tsv', 'z', r.mtime)).rejects.toBeInstanceOf(ConflictError)
+  })
+
+  it('옆 파일은 읽지 못하고, 새 파일 · 폴더 · 이름 바꾸기 · 지우기는 거부한다', async () => {
+    const { b } = setup()
+    const { d, f } = elsewhere()
+    await b.addRoot(asFile(f))
+    await expect(b.read('@제출/옆.md')).rejects.toThrow()
+    await expect(b.write('@제출/새.md', 'x', null)).rejects.toThrow('파일 하나만 가져온 곳')
+    await expect(b.mkdir('@제출/d')).rejects.toThrow('파일 하나만 가져온 곳')
+    await expect(b.rename('@제출/제출.md', '@제출/b.md')).rejects.toThrow('파일 하나만 가져온 곳')
+    await expect(b.remove('@제출/제출.md')).rejects.toThrow('파일 하나만 가져온 곳')
+    expect(d.names()).toEqual(['옆.md', '제출.md'])
+  })
+
+  it('읽기 전용이면 저장도 거부한다', async () => {
+    const { b } = setup()
+    const { f } = elsewhere()
+    await b.addRoot(asFile(f), { readOnly: true })
+    const { mtime } = await b.read('@제출/제출.md')
+    await expect(b.write('@제출/제출.md', 'x', mtime)).rejects.toThrow('읽기 전용으로 가져온 파일')
+  })
+
+  it('여는 형식이 아니거나 · 이미 열린 곳 안이거나 · 같은 파일을 또 가져오면 거부한다', async () => {
+    const { root, b } = setup()
+    await expect(b.addRoot(asFile(elsewhere('그림.png').f))).rejects.toThrow('여는 문서 형식이 아닙니다')
+    await expect(b.addRoot(asFile(root.put('docs/a.md', 'a')))).rejects.toThrow('주 문서 폴더 안의 파일')
+    const { f } = elsewhere()
+    await b.addRoot(asFile(f))
+    await expect(b.addRoot(asFile(f), { alias: '또' })).rejects.toThrow('이미 가져온 파일')
+  })
+
+  it('가져온 파일이 든 폴더는 겹친다 — 폴더를 가져오려면 파일을 먼저 해제한다', async () => {
+    const { b } = setup()
+    const { d, f } = elsewhere()
+    await b.addRoot(asFile(f))
+    await expect(b.addRoot(asDir(d))).rejects.toThrow('겹칩니다')
+    await b.removeRoot('제출')
+    expect((await b.roots()).recent[0]).toMatchObject({ alias: '제출', file: true })
+    expect((await b.addRoot(asDir(d))).alias).toBe('수강생')
+  })
+
+  it('해제한 파일을 최근 목록에서 다시 가져온다', async () => {
+    const { b } = setup()
+    const { f } = elsewhere()
+    await b.addRoot(asFile(f), { readOnly: true })
+    await b.removeRoot('제출')
+    await b.restoreRoot('제출')
+    expect((await b.roots()).mounts[0]).toMatchObject({ alias: '제출', file: true, readOnly: true })
+  })
+
+  it('상세 경로는 파일의 전체 경로 — 탐색기 · 경로 복사에 그대로 쓴다', async () => {
+    const { b } = setup()
+    const { f } = elsewhere()
+    await expect(b.addRoot(asFile(f), { path: 'D:\\수강생\\다른.md' })).rejects.toThrow('"제출.md"')
+    await b.addRoot(asFile(f), { path: 'D:\\수강생\\제출.md' })
+    expect(b.localPath('@제출/제출.md').full).toBe('D:\\수강생\\제출.md')
+  })
+
+  it('pathOf — 이미 열린 곳 안의 항목이면 그 앱 경로', async () => {
+    const { root, b } = setup()
+    const inPrimary = root.put('docs/a.md', 'a')
+    const m = new FakeDir('M')
+    const inMount = m.put('x/b.md', 'b')
+    await b.addRoot(asDir(m))
+    const { f } = elsewhere()
+    await b.addRoot(asFile(f))
+    expect(await b.pathOf(asFile(inPrimary))).toBe('docs/a.md')
+    expect(await b.pathOf(asDir(root.at('docs') as FakeDir))).toBe('docs')
+    expect(await b.pathOf(asFile(inMount))).toBe('@M/x/b.md')
+    expect(await b.pathOf(asDir(m))).toBe('@M')
+    expect(await b.pathOf(asFile(f))).toBe('@제출/제출.md')
+    expect(await b.pathOf(asFile(elsewhere('다른.md').f))).toBeNull()
   })
 })
 
@@ -430,6 +533,18 @@ describe('변경 감지', () => {
     expect(events).toEqual([{ type: 'change', event: 'change', path: '@M/a.md' }])
     await b.removeRoot('M')
     expect(ob.disconnected).toBe(true)
+  })
+  it('파일 하나만 가져온 곳은 그 파일을 보고, 바뀌면 그 파일의 경로로 알린다', async () => {
+    const { b, events } = start()
+    const d = new FakeDir('수강생')
+    const f = d.put('제출.md', 'x')
+    await b.addRoot(asFile(f))
+    events.length = 0
+    const ob = FakeObserver.all[FakeObserver.all.length - 1]
+    expect(ob.observed).toBe(f)
+    ob.fire('modified', [])
+    await vi.advanceTimersByTimeAsync(200)
+    expect(events).toEqual([{ type: 'change', event: 'change', path: '@제출/제출.md' }])
   })
   it('구독을 다 끊으면 감시도 끝난다', () => {
     const { ob, stop } = start()

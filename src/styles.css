@@ -248,6 +248,9 @@ button.tree-search {
 .tree-dir { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-body { flex: 1; overflow: auto; padding: 4px 0; outline: none; }
 .tree-body:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); outline: none; }
+/* 파일 탐색기에서 트리 위로 끌고 있을 때 (DESIGN §28) */
+:root[data-drop='tree'] .tree-body { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.drop-hint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 1000; padding: 8px 16px; border-radius: 6px; background: var(--elev); color: var(--fg); border: 1px solid var(--accent); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); font-size: 13px; pointer-events: none; }
 .tree-empty { padding: 12px; color: var(--muted); }
 .tree-row {
   display: flex; align-items: center; gap: 5px;
@@ -281,7 +284,7 @@ button.tree-search {
 .flexlayout__tab { background: var(--bg); overflow: hidden; }
 
 /* ---- 마크다운 창 모드 ---- */
-.md-body { flex: 1; min-height: 0; display: flex; }
+.md-body { flex: 1; min-height: 0; display: flex; container: md-body / inline-size; }
 .md-body .editor-host { flex: 1; min-width: 0; }
 .md-body.is-split .editor-host { flex: 1 1 50%; border-right: 1px solid var(--border); }
 .md-body.is-split .preview { flex: 1 1 50%; }
