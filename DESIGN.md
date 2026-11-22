@@ -1319,6 +1319,30 @@ UI/UX 개편 A4(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 7 맞음(�
 - 같은 문서를 두 창에 연 채 되돌리기(다른 창에도 바로 반영되는지 — 스토어가 같은 변경을 보낸다).
 - 미리보기 전용 모드에서 되돌린 뒤의 `Ctrl+Z`(포커스가 미리보기에 있다).
 
+## 35. 빈 폴더 · 빈 화면 안내 (2026-11-23)
+
+UI/UX 개편 A5(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(안내에 단축키), 5 맞음(빈 곳에서 멈추지 않는다), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| EM1 | 폴더 격자(훑어보기)에서 폴더가 비었으면 "이 폴더는 비어 있습니다", 하위 폴더만 있으면 "이 폴더 바로 아래에는 문서가 없습니다" 아래에 **새 문서** 단추 — 그 폴더 아래에 새 문서 창. 빈 폴더에서는 격자의 `Enter` 도 새 문서(고를 카드가 없다), 하위 폴더만 있을 때의 `Enter` 는 그대로 카드를 고른다(단추에 `Ctrl+Alt+N` 을 적는다) | ADOPT A5. HIG 온보딩 — 한 번의 안내보다 상황별 안내 |
+| EM2 | 읽기 전용으로 가져온 폴더 · 파일 하나만 가져온 곳은 단추 대신 **이유**(🔒 … — 트리에서 오른쪽 클릭 → 읽기 전용 끄기) | 누를 수 없는 단추를 보이지 않는다. 새 문서 창의 막힘(`blockedReadOnly`)과 같은 규칙 |
+| EM3 | 파일 트리가 비었으면(문서가 하나도 없는 폴더) **새 문서** · **폴더 가져오기** 단추와 키, "파일 탐색기에서 끌어다 놓아도 됩니다" | 처음 연 빈 폴더에서 할 일 |
+| EM4 | 문서가 없는 빈 창의 안내는 **새 문서**(예전 "새 파일" — 새 문서 창 이름과 맞춤)를 맨 위로, 팔레트에 "모든 명령" 설명 | 이미 있던 안내(§24.7 X3)를 ADOPT 순서로 |
+| EM5 | 안내의 단추는 `Tab` 순서에 넣지 않는다 — 키보드는 적힌 키로 | 트리 · 격자의 키 흐름을 바꾸지 않는다 |
+
+말투는 앱의 다른 안내와 같은 합니다체("비어 있습니다")로 했다 — ADOPT 의 예문은 해요체였다.
+
+코드: `QuickLook.tsx`(`onNewFile` · 빈 폴더 안내 · `Enter`), `QuickLook.css`, `FileTree.tsx`(빈 트리 · `onNewFile` 전달), `Workbench.tsx`(빈 창 안내), `styles.css`, `shortcuts-table.mjs`(폴더 격자 `Enter`).
+
+### 35.1 확인한 것
+
+`npm test` · `npm run build`. dev `?opfs` + 내장 브라우저(시험용 폴더를 OPFS 에 만들었다가 지웠다): 빈 폴더 → 트리 `Space` → `Tab` → "이 폴더는 비어 있습니다" + **새 문서 Enter** → `Enter` 로 새 문서 창(위치 `빈폴더/`) → `Esc`. 읽기 전용으로 바꾼 `@가져온폴더` 의 하위 폴더만 있는 폴더 → 이유만 보이고 단추 없음. 탭을 모두 닫은 빈 창 → 새 문서 · 파일 트리 · 파일 검색 · 명령 팔레트 · 단축키 도움말(키와 함께). 콘솔 오류 없음.
+
+### 35.2 확인하지 못한 것 (TESTCASES §29)
+
+- 문서가 하나도 없는 실제 폴더를 열었을 때의 트리 안내(OPFS 샘플은 비울 수 없다).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

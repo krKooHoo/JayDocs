@@ -6,6 +6,8 @@ import { PAGE_RATIO, useSkimText } from '../lib/skim'
 import { CARD_GAP, CARD_MIN_WIDTH, folderCounts, gridColumns, gridMove, isGridKey, pageRowsOf } from '../lib/skim/grid'
 import { LOOK_MIN_HEIGHT, LOOK_MIN_WIDTH, LOOK_ZOOM_MAX, LOOK_ZOOM_MIN, fitLookSize, lookPrefs, lookResizeKey, lookZoomKey, setLookPrefs, stepLookZoom, useLookPrefs, type LookPrefs } from '../lib/skim/look'
 import { DocFileView, DocThumb } from './DocView'
+import { keysOf } from '../lib/commands'
+import { store } from '../store/documents'
 import './QuickLook.css'
 
 /**
@@ -54,6 +56,8 @@ export interface QuickLookProps {
   onUp?: () => boolean
   /** 격자에서 `Esc` · `Shift+Tab` — 트리로 포커스를 돌려준다 (창은 열린 채) */
   onBack?: () => void
+  /** 문서가 없는 폴더의 "새 문서" (DESIGN §35) — 그 폴더 아래에 새 문서 창 */
+  onNewFile?: (dir: string) => void
 }
 
 /** React 18 은 inert 를 모르는 속성으로 넘긴다 — 빈 문자열이어야 붙는다 (DocView 의 DocThumb 과 같다) */
@@ -129,7 +133,7 @@ function useLagging(entry: TreeEntry, immediate: boolean): [TreeEntry, () => voi
   return [now ? entry : lagged, jump]
 }
 
-export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function QuickLook({ entry, anchor, onFocusOut, onPick, onUp, onBack }, ref) {
+export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function QuickLook({ entry, anchor, onFocusOut, onPick, onUp, onBack, onNewFile }, ref) {
   /** 포커스가 창 안(격자)에 있는가 */
   const [inside, setInside] = useState(false)
   const [shown, jump] = useLagging(entry, inside)
@@ -267,7 +271,7 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
     >
       <QuickLookHeader entry={shown} zoom={zoom} onZoom={zoomBy} onZoomReset={() => setLookPrefs(isDir ? { gridZoom: 1 } : { zoom: 1 })} />
       <div className="quicklook-scroll" ref={scroller}>
-        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} zoom={zoom} onPick={pick} onUp={up} onBack={onBack} /> : <QuickLookFile path={shown.path} zoom={zoom} />}
+        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} zoom={zoom} onPick={pick} onUp={up} onBack={onBack} onNewFile={onNewFile} /> : <QuickLookFile path={shown.path} zoom={zoom} />}
       </div>
       <div className="quicklook-resize is-e" title="끌어서 너비 바꾸기 (Shift+← →) · 두 번 누르면 처음 너비" onPointerDown={startResize('e')} onDoubleClick={resetSize('e')} />
       <div className="quicklook-resize is-s" title="끌어서 높이 바꾸기 (Shift+↑ ↓) · 두 번 누르면 처음 높이" onPointerDown={startResize('s')} onDoubleClick={resetSize('s')} />
@@ -322,6 +326,8 @@ export interface QuickLookFolderProps {
   onUp?: () => boolean
   /** `Esc` · `Shift+Tab` */
   onBack?: () => void
+  /** 문서가 없는 폴더의 "새 문서" 단추 · `Enter` (DESIGN §35) */
+  onNewFile?: (dir: string) => void
 }
 
 /** 스크롤 상자 위아래로 이만큼(상자 높이에 대한 비율) 안에 들어온 카드를 그린다 — 미리 읽어 두어 스크롤할 때 빈 틀이 덜 보이게 */
@@ -339,7 +345,7 @@ const pathOf = (e: IntersectionObserverEntry) => (e.target as HTMLElement).datas
  * - 열 수는 너비로 정한다(`gridColumns`). 방향키 · `PageUp/PageDown` · `Home/End` 로 카드를 옮긴다(`gridMove`).
  * - 카드는 `[tabindex]` 라 클릭으로 포커스를 받는다(틀이 막지 않는다). 포커스 받은 카드 = 고른 카드.
  */
-export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack }: QuickLookFolderProps) {
+export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack, onNewFile }: QuickLookFolderProps) {
   const items = entry.children ?? []
   const { dirs, files } = folderCounts(items)
   const box = useRef<HTMLDivElement>(null)
@@ -357,6 +363,21 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
   }
 
   const hasItems = items.length > 0
+  /** 문서가 없는 폴더에서 새 문서를 못 만드는 이유 (DESIGN §35) — 읽기 전용으로 가져온 폴더 · 파일 하나만 가져온 곳 */
+  const blocked = store.inFileRoot(entry.path) ? '파일 하나만 가져온 곳이라 새 문서를 만들 수 없습니다' : store.readOnlyReason(entry.path) === 'mount' ? '읽기 전용으로 가져온 폴더라 새 문서를 만들 수 없습니다 — 트리에서 폴더를 오른쪽 클릭 → 읽기 전용 끄기' : null
+  const canCreate = files === 0 && !!onNewFile && !blocked
+  const emptyNote = (text: string) => (
+    <div className="quicklook-folder-empty">
+      <p>{text}</p>
+      {files === 0 && (blocked
+        ? <p className="quicklook-folder-why">🔒 {blocked}</p>
+        : onNewFile && (
+          <button className="quicklook-folder-new" onMouseDown={(e) => e.preventDefault()} onClick={() => onNewFile(entry.path)} tabIndex={-1}>
+            새 문서 <kbd>{hasItems ? keysOf('newFile') : 'Enter'}</kbd>
+          </button>
+        ))}
+    </div>
+  )
   // 열 수 = 격자 너비로
   useLayoutEffect(() => {
     const g = grid.current
@@ -441,6 +462,8 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     switch (e.key) {
       case 'Enter': {
         e.preventDefault()
+        // 빈 폴더는 Enter 가 새 문서 — 고를 카드가 없다
+        if (!hasItems) { if (!e.repeat && canCreate) onNewFile?.(entry.path); return }
         const it = items[current()]
         if (!e.repeat && it) choose(it)
         return
@@ -481,10 +504,10 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
         <span className="quicklook-folder-count">폴더 {dirs} · 문서 {files}</span>
       </div>
       {!hasItems ? (
-        <div className="quicklook-folder-empty">비어 있는 폴더</div>
+        emptyNote('이 폴더는 비어 있습니다')
       ) : (
         <>
-          {files === 0 && <div className="quicklook-folder-empty">이 폴더 바로 아래에는 문서가 없습니다</div>}
+          {files === 0 && emptyNote('이 폴더 바로 아래에는 문서가 없습니다')}
           <div
             className="ql-grid"
             ref={grid}

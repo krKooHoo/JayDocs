@@ -37,6 +37,11 @@
 .quicklook-folder-empty, .quicklook-folder-count { color: var(--muted); }
 .quicklook-folder-count { flex: none; font-size: 12px; }
 .quicklook-folder-empty { margin-bottom: 10px; }
+/* 빈 폴더 안내 (DESIGN §35) */
+.quicklook-folder-empty p { margin: 0 0 8px; }
+.quicklook-folder-why { font-size: 12px; }
+.quicklook-folder-new { display: inline-flex; gap: 8px; align-items: center; }
+.quicklook-folder-new kbd { font-size: 11px; color: var(--muted); }
 .ql-grid { display: grid; align-items: start; }
 .ql-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 4px; border-radius: 6px; cursor: default; outline: none; }
 .ql-card:hover .doc-thumb { border-color: var(--muted); }

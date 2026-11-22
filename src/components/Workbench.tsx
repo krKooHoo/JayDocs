@@ -552,10 +552,10 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     <div className="empty-pane" tabIndex={0} data-focus-target="empty" aria-label="열린 문서 없음">
       <p className="empty-pane-title">열린 문서가 없습니다</p>
       <ul>
+        <li><button onClick={() => runCommand('newFile')}>새 문서</button><kbd>{keysOf('newFile')}</kbd><span>빈 문서 · 예시 · 내 템플릿에서</span></li>
         <li><button onClick={() => runCommand('focusTree')}>파일 트리</button><kbd>{keysOf('focusTree')}</kbd><span>에서 파일을 골라 <kbd>Enter</kbd></span></li>
         <li><button onClick={() => runCommand('fileSearch')}>파일 검색</button><kbd>{keysOf('fileSearch')}</kbd></li>
-        <li><button onClick={() => runCommand('palette')}>명령 팔레트</button><kbd>{keysOf('palette')}</kbd></li>
-        <li><button onClick={() => runCommand('newFile')}>새 파일</button><kbd>{keysOf('newFile')}</kbd></li>
+        <li><button onClick={() => runCommand('palette')}>명령 팔레트</button><kbd>{keysOf('palette')}</kbd><span>모든 명령</span></li>
         <li><button onClick={() => runCommand('help')}>단축키 도움말</button><kbd>{keysOf('help')}</kbd></li>
       </ul>
     </div>

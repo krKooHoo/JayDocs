@@ -461,11 +461,19 @@ export function FileTree(p: Props) {
         onBlur={(ev) => { if (quickLook) onFocusLeave(ev.relatedTarget as Element | null) }}
         onContextMenu={(ev) => { if (ev.target === ev.currentTarget) { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, '', true) } }}
       >
-        {p.entries.length === 0 && <div className="tree-empty">{DOC_EXTS_LABEL} 파일이 없습니다</div>}
+        {p.entries.length === 0 && (
+          // 빈 문서 폴더 (DESIGN §35): 무엇을 할 수 있는지 키와 함께. 단추는 Tab 순서에 넣지 않는다 — 키보드는 적힌 키로
+          <div className="tree-empty">
+            <p>{DOC_EXTS_LABEL} 파일이 없습니다</p>
+            <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.onNewFile('')}>새 문서 <kbd>{keysOf('newFile')}</kbd></button>
+            <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('importFolder')}>폴더 가져오기 <kbd>{keysOf('importFolder')}</kbd></button>
+            <p className="tree-empty-hint">파일 탐색기에서 폴더 · 파일을 여기로 끌어다 놓아도 됩니다</p>
+          </div>
+        )}
         {rows.map(renderRow)}
       </div>
       {quickLook && lookEntry && (
-        <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} />
+        <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} onNewFile={p.onNewFile} />
       )}
       {menu && (() => {
         const { mount, isRoot } = mountOf(menu.path)
