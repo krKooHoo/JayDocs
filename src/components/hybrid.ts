@@ -1,14 +1,14 @@
 import { createElement, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { StateField, type EditorState, type Extension, type Transaction } from '@codemirror/state'
+import { Facet, StateField, type EditorState, type Extension, type Transaction } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
 import { redo, undo } from '@codemirror/commands'
 import type { SyntaxNode } from '@lezer/common'
 import ReactMarkdown from 'react-markdown'
 import { Mermaid, REMARK_PLUGINS, TsvView, imageSrc } from './PreviewPane'
-import { HybridTable } from './HybridTable'
-import { appendRowChange, cellChange, parseTable, type TextChange } from '../lib/md/tableEdit'
+import { HybridTable, type CellPos } from './HybridTable'
+import { appendRowChange, cellChange, insertColChanges, parseTable, tableOpChanges, type TableOp, type TextChange } from '../lib/md/tableEdit'
 
 /**
  * 하이브리드 Live Preview (DESIGN D2 v2, §11 Phase 3). Obsidian 식 — 커서가 있는 줄은 원문, 나머지는 렌더.
@@ -42,8 +42,19 @@ interface Holder {
   mdPath: string
   code: string
   render: () => void
+  /** 표만: 이 칸을 고치기 시작하라는 요청 (n 이 바뀔 때마다 한 번) */
+  focusReq: (CellPos & { n: number }) | null
 }
 const holders = new WeakMap<HTMLElement, Holder>()
+
+/**
+ * 편집기마다 마지막으로 고친 하이브리드 표 칸 — 팔레트의 표 명령이 이 칸을 기준으로 돈다.
+ * 칸에서 포커스가 빠져도(팔레트를 열면) 남고, 편집기 본문이 포커스를 받으면 지운다 (그때는 커서 기준).
+ */
+const lastCell = new WeakMap<EditorView, { wrap: HTMLElement; h: Holder; pos: CellPos }>()
+
+/** 하이브리드 모드인가 — `|||` 가 표를 만든 뒤 커서를 표 밖에 두고 칸으로 갈지 정한다 */
+export const hybridOn = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) })
 
 /** 표 위젯이 가리키는 원문 위치. 위젯이 들고 있는 원문과 문서가 어긋났으면 null (그 사이 다른 변경) */
 function tableAt(view: EditorView, wrap: HTMLElement, h: Holder) {
@@ -53,9 +64,49 @@ function tableAt(view: EditorView, wrap: HTMLElement, h: Holder) {
   return table ? { from, table } : null
 }
 
-function applyAt(view: EditorView, from: number, c: TextChange | null) {
+function applyAt(view: EditorView, from: number, c: TextChange | TextChange[] | null, userEvent = 'input.type') {
   if (!c) return
-  view.dispatch({ changes: { from: from + c.from, to: from + c.to, insert: c.insert }, userEvent: 'input.type' })
+  const list = Array.isArray(c) ? c : [c]
+  if (!list.length) return
+  view.dispatch({ changes: list.map((x) => ({ from: from + x.from, to: from + x.to, insert: x.insert })), userEvent })
+}
+
+/** 칸 고치기 요청을 표 위젯에 넣고 다시 그린다 */
+function requestFocus(h: Holder, pos: CellPos) {
+  h.focusReq = { ...pos, n: (h.focusReq?.n ?? 0) + 1 }
+  h.render()
+}
+
+/** 행 · 열 넣기 · 지우기. 되돌리기 한 번에 한 동작씩. 그 뒤에 고칠 칸 (못 하면 null) */
+function structure(view: EditorView, wrap: HTMLElement, h: Holder, op: TableOp, row: number, col: number): CellPos | null {
+  const at = tableAt(view, wrap, h)
+  const r = at && tableOpChanges(h.code, op, row, col)
+  if (!at || !r) return null
+  const snap = view.scrollSnapshot()
+  applyAt(view, at.from, r.changes, 'input.table')
+  view.dispatch({ effects: snap })
+  return r.next
+}
+
+/**
+ * 팔레트의 표 명령 — 이 편집기에서 마지막으로 고친 하이브리드 표 칸 기준. 그런 칸이 없으면 false (커서 기준으로 넘긴다).
+ * 못 하는 동작이면(머리글 지우기 등) 칸으로 포커스만 돌려준다.
+ */
+export function runHybridTableOp(view: EditorView, op: TableOp): boolean {
+  const last = lastCell.get(view)
+  if (!last || !last.wrap.isConnected || holders.get(last.wrap) !== last.h) return false
+  const next = structure(view, last.wrap, last.h, op, last.pos.row, last.pos.col)
+  requestFocus(last.h, next ?? last.pos)
+  return true
+}
+
+/** 문서의 `from` 에서 시작하는 표 위젯의 (row, col) 칸을 고치기 시작한다. 위젯이 아직 없으면 false */
+export function focusTableCellAt(view: EditorView, from: number, pos: CellPos): boolean {
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>('.cm-hybrid-block.is-table')) {
+    const h = holders.get(el)
+    if (h && view.posAtDOM(el) === from) { requestFocus(h, pos); return true }
+  }
+  return false
 }
 
 /** 표 칸에서 되돌리기 — 커서(표 밖)로 화면이 튀지 않게 스크롤을 그대로 둔다 */
@@ -78,8 +129,12 @@ function tableElement(view: EditorView, wrap: HTMLElement, h: Holder) {
       if (at) applyAt(view, at.from, cellChange(at.table, row, col, text))
     },
     onAddRow: () => addRow(view, wrap, h),
-    onUndo: (isRedo: boolean) => undoInPlace(view, isRedo),
-    onLeave: () => view.focus(),
+    onStructure: (op: TableOp, row: number, col: number) => structure(view, wrap, h, op, row, col),
+    // 되돌려서 표가 없어지면(`|||` 로 만든 표 등) 위젯과 함께 입력 칸이 사라진다 → 편집기로
+    onUndo: (isRedo: boolean) => { undoInPlace(view, isRedo); if (!wrap.isConnected) view.focus() },
+    onLeave: () => { lastCell.delete(view); view.focus() },
+    onActive: (pos: CellPos) => lastCell.set(view, { wrap, h, pos }),
+    focusReq: h.focusReq,
   })
 }
 
@@ -122,6 +177,7 @@ class BlockWidget extends WidgetType {
       mdPath: this.mdPath,
       code: this.code,
       render: () => h.root.render(h.kind === 'table' ? tableElement(view, wrap, h) : renderBlock(h.kind, h.code, h.mdPath)),
+      focusReq: null,
     }
     holders.set(wrap, h)
     if (this.kind === 'table' && !view.state.readOnly) {
@@ -129,7 +185,16 @@ class BlockWidget extends WidgetType {
       add.textContent = '＋ 행'
       add.title = '표 끝에 빈 행 추가 (마지막 칸에서 Tab 도 같다)'
       add.addEventListener('mousedown', (e) => { e.preventDefault(); addRow(view, wrap, h) })
-      bar.append(add)
+      const addCol = document.createElement('button')
+      addCol.textContent = '＋ 열'
+      addCol.title = '표 오른쪽 끝에 빈 열 추가 (칸에서 Ctrl+Alt+Shift+= 는 그 칸 오른쪽에)'
+      addCol.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        const at = tableAt(view, wrap, h)
+        const t = at && parseTable(h.code)
+        if (at && t) applyAt(view, at.from, insertColChanges(h.code, t.cols - 1), 'input.table')
+      })
+      bar.append(add, addCol)
     }
     bar.append(btn)
     h.render()
@@ -382,7 +447,13 @@ export function hybrid(mdPath: string): Extension {
     },
     provide: (f) => EditorView.decorations.from(f),
   })
-  return [field, hybridTheme]
+  return [
+    field,
+    hybridTheme,
+    hybridOn.of(true),
+    // 편집기 본문으로 돌아오면 표 명령은 다시 커서 기준
+    EditorView.domEventHandlers({ focus: (_e, view) => { lastCell.delete(view) } }),
+  ]
 }
 
 const hybridTheme = EditorView.baseTheme({
@@ -405,10 +476,21 @@ const hybridTheme = EditorView.baseTheme({
   // 표 칸 편집
   '.cm-hybrid-table td.is-editable, .cm-hybrid-table th.is-editable': { cursor: 'text' },
   '.cm-hybrid-table td.is-editable:hover, .cm-hybrid-table th.is-editable:hover': { background: 'var(--hover)' },
+  // 칸은 너비 안에서 줄을 바꾼다 (H10). 한국어는 어절 단위로 바꾸고(keep-all), 한 어절이 칸보다 길면 그 안에서도 바꾼다.
+  // 칸마다 가장 긴 어절만큼 최소 폭을 둔다 (HybridTable 의 minWidthOf). 그래도 표가 넓으면 가로로 스크롤
+  '.cm-hybrid-table th, .cm-hybrid-table td': { wordBreak: 'keep-all', overflowWrap: 'anywhere', minWidth: '3em' },
+  '.cm-hybrid-host .preview-body.is-inline:has(> .cm-hybrid-table)': { overflowX: 'auto' },
   '.cm-hybrid-table .is-editing': { padding: '0', outline: '2px solid var(--accent)', outlineOffset: '-2px' },
+  // 고치는 칸: 보이지 않는 글자 상자가 칸 크기를 정하고, textarea 가 그 위를 덮는다
+  '.cm-hybrid-cell-edit': { position: 'relative' },
+  '.cm-hybrid-cell-sizer, .cm-hybrid-cell-input': {
+    display: 'block', font: 'inherit', fontWeight: 'inherit', lineHeight: 'inherit', padding: '4px 9px', boxSizing: 'border-box',
+    whiteSpace: 'pre-wrap', wordBreak: 'keep-all', overflowWrap: 'anywhere', textAlign: 'inherit', letterSpacing: 'inherit',
+  },
+  '.cm-hybrid-cell-sizer': { visibility: 'hidden', minWidth: '6ch' },
   '.cm-hybrid-cell-input': {
-    font: 'inherit', fontWeight: 'inherit', color: 'var(--fg)', background: 'var(--bg)', border: 'none', outline: 'none',
-    padding: '4px 9px', width: '100%', minWidth: '6ch', boxSizing: 'border-box', fieldSizing: 'content', textAlign: 'inherit',
+    position: 'absolute', inset: '0', width: '100%', height: '100%', margin: '0', resize: 'none', overflow: 'hidden',
+    color: 'var(--fg)', background: 'var(--bg)', border: 'none', outline: 'none',
   },
   '.cm-hybrid-cell-empty': { display: 'inline-block', minWidth: '2ch' },
   // ``` 코드 블록 — 미리보기의 pre 와 같은 모양

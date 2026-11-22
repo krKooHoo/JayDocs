@@ -103,6 +103,12 @@ export const SHORTCUTS = [
     items: [
       { keys: 'Ctrl+Enter (tsv-view 셀)', label: '미리보기·하이브리드의 tsv-view 에서 선택한 셀을 그리드로 연다. 셀은 더블클릭·Enter·F2 로 그 자리에서 편집, Tab/Enter 로 이동, Delete 로 비움' },
       { keys: '↑ / ↓ · PageUp / PageDown · Home / End · Space (미리보기 전용 모드)', label: '미리보기 스크롤 — 미리보기 전용 모드에서는 미리보기가 포커스를 받는다 (F6 · 탭 이동 · Ctrl+Shift+M 도 미리보기로). Ctrl+Shift+V 로 소스로 돌면 편집기로 돌아온다' },
+      { keys: '|||', label: '빈 줄에 치면 빈 표(2열 · 본문 1행)가 된다 — 하이브리드는 머리글 첫 칸, 소스는 그 칸에 커서. 코드 블록 · 표 안은 그대로, Ctrl+Z 한 번이면 친 글자로 돌아간다' },
+      { keys: 'Tab / Shift+Tab · Enter / Shift+Enter · ↑ / ↓ (하이브리드 표 칸)', label: '다음 / 이전 칸 (마지막 칸에서 Tab 은 새 행) · 아래 / 위 칸 (마지막 행에서 아래는 표를 떠난다). 칸 글자는 칸 너비에서 줄을 바꾼다. Esc 는 편집기로' },
+      { keys: 'Ctrl+Alt+= (표)', label: '아래에 행 넣기 — 하이브리드 표 칸 또는 표 안의 커서 기준 (머리글에서는 본문 첫 행). 그리드와 같은 키, 팔레트 "마크다운 표: …" 도 같다. 위젯 머리의 ＋ 행 · ＋ 열 은 끝에 붙인다' },
+      { keys: 'Ctrl+Alt+Shift+= (표)', label: '오른쪽에 열 넣기' },
+      { keys: 'Ctrl+Alt+- (표)', label: '행 지우기 (머리글 행은 못 지운다)' },
+      { keys: 'Ctrl+Alt+Shift+- (표)', label: '열 지우기 (하나 남은 열은 못 지운다)' },
       { keys: 'Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z', label: '되돌리기 / 다시 실행 (다시 실행은 둘 중 아무거나)' },
       { keys: 'Ctrl+F', label: '찾기 — 편집기 위에 찾기 패널 (바꾸기도)' },
       { keys: 'Ctrl+D', label: '같은 단어를 하나 더 선택 (여러 커서)' },

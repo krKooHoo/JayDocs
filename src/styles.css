@@ -363,6 +363,9 @@ button.tree-search {
 .tsv-view-err { color: var(--danger); }
 .tsv-view table { border-collapse: collapse; width: 100%; margin: 0; font-size: 13px; }
 .tsv-view th, .tsv-view td { border: 0; border-bottom: 1px solid var(--border); padding: 4px 10px; text-align: left; white-space: pre; }
+/* 칸 글이 표 폭을 넘으면 칸 안에서 줄을 바꾼다 (한국어는 어절 단위, 긴 어절은 그 안에서도). 짧은 칸의 최소 폭은 칸마다 style 로.
+   고칠 때도 같은 폭에서 줄을 바꾸므로 다시 고치러 들어와도 한 줄로 길게 늘어나지 않는다 */
+.tsv-view td { white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; vertical-align: top; }
 .tsv-view th { background: var(--panel2); font-weight: 600; position: sticky; top: 0; }
 .tsv-view td.is-num { text-align: right; font-variant-numeric: tabular-nums; }
 .tsv-view td.is-empty { color: var(--muted); text-align: center; }
@@ -378,10 +381,14 @@ button.tree-search {
 .tsv-view-btn { padding: 0 6px; font-size: 11px; line-height: 16px; }
 .tsv-view-input {
   position: absolute; z-index: 5; box-sizing: border-box; margin: 0;
-  border: 2px solid var(--accent); padding: 2px 4px; border-radius: 0;
+  /* 글자 자리가 칸의 글자 자리와 같게: 테두리 2 + 여백 = 칸 여백(위아래 4 · 좌우 10) */
+  border: 2px solid var(--accent); padding: 2px 8px; border-radius: 0;
   font: inherit; font-size: 13px; line-height: 20px; resize: none; background: var(--elev); color: var(--fg);
-  outline: none; white-space: pre-wrap; overflow: hidden; box-shadow: var(--shadow);
+  outline: none; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; overflow: hidden; box-shadow: var(--shadow);
 }
+/* 고치는 칸: 원래 글은 높이 0 으로 열 너비만 지키고, 고치는 글이 칸 너비에서 줄을 바꿔 행 높이를 정한다 (입력 칸이 그 크기를 따라간다) */
+.tsv-view-keep { height: 0; overflow: hidden; visibility: hidden; }
+.tsv-view-sizer { visibility: hidden; width: 0; min-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 20px; }
 .tsv-view-input:not(.is-editing) { opacity: 0; width: 1px !important; height: 1px !important; border: 0; padding: 0; pointer-events: none; box-shadow: none; }
 .tsv-view-gen { margin: 0; padding: 10px 12px; font-size: 12px; white-space: pre-wrap; background: var(--code-bg); }
 .tsv-view-gen.is-error { color: var(--danger); background: var(--err-bg); }

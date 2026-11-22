@@ -16,6 +16,16 @@ import { DocPaneCountContext } from './docPanes'
 import { FileTree, type RootAction } from './FileTree'
 import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
+import { runTableCommand } from './tableCommands'
+import type { TableOp } from '../lib/md/tableEdit'
+
+/** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
+const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
+  ['mdTableRowBelow', 'rowBelow', '마크다운 표: 아래에 행 넣기', 'Ctrl+Alt+='],
+  ['mdTableColRight', 'colRight', '마크다운 표: 오른쪽에 열 넣기', 'Ctrl+Alt+Shift+='],
+  ['mdTableDeleteRow', 'deleteRow', '마크다운 표: 행 지우기', 'Ctrl+Alt+-'],
+  ['mdTableDeleteCol', 'deleteCol', '마크다운 표: 열 지우기', 'Ctrl+Alt+Shift+-'],
+]
 
 export interface WorkbenchHandle {
   /** focus: 열고 그 문서 창(편집기 · 그리드)으로 포커스 — 새 파일, 파일 검색 */
@@ -355,6 +365,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'toggleOutline', label: '목차 보이기 / 숨기기 (마크다운 · 하이브리드 모드)', run: () => { setOutlineOn(!outlineOn()); notify(outlineOn() ? '목차를 켰습니다 — 마크다운의 하이브리드 모드에서 보입니다' : '목차를 껐습니다', { key: 'outline' }) } },
     { id: 'skimWider', label: '훑어보기 패널 넓히기', run: () => nudgeSkimPanelWidth(SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
     { id: 'skimNarrower', label: '훑어보기 패널 좁히기', run: () => nudgeSkimPanelWidth(-SKIM_WIDTH_BIG_STEP), enabled: () => skimPanelState().on },
+    // 마크다운 표 (DESIGN §23 H9) — 마지막으로 쓴 마크다운 편집기의 표 칸 · 커서 기준. 키는 그 편집기가 직접 받는다
+    ...MD_TABLE_COMMANDS.map(([id, op, label, keys]) => ({
+      id, label, keys,
+      run: () => { const msg = runTableCommand(op); if (msg) notify(msg, { key: 'mdTable' }) },
+      enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
+    })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
   ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, cyclePane, toggleSkim])
 

@@ -16,6 +16,7 @@ import { sanitizeFor, tableFormatOf } from '../lib/tsv/table'
 import type { TsvTable } from '../lib/tsv/model'
 import { isDocName } from '../lib/filetypes.mjs'
 import { codeLangOf } from '../lib/code/langs'
+import { minCellWidth } from '../lib/cellWidth'
 import { CodeBlock } from './CodeBlock'
 
 /**
@@ -171,6 +172,11 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   const [sel, setSel] = useState<Sel | null>(null)
   const [editing, setEditing] = useState(false)
   const [box, setBox] = useState<Box | null>(null)
+  /**
+   * 고치는 중인 글. 그 칸 안에 보이지 않게 같은 글을 넣어 행 높이가 글만큼 늘어나게 한다 — 입력 칸은 그 칸 크기를 따라간다.
+   * textarea 는 계속 비제어(uncontrolled)라 이 값을 넣어도 한글 조합은 건드리지 않는다
+   */
+  const [draft, setDraft] = useState<string | null>(null)
 
   const colIndexOf = useCallback((ci: number) => result?.columns[ci]?.index ?? 0, [result])
   const cellValue = useCallback((s: Sel) => table?.rows[s.r]?.cells[colIndexOf(s.ci)] ?? '', [table, colIndexOf])
@@ -183,7 +189,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     const b = w.getBoundingClientRect()
     return { left: a.left - b.left, top: a.top - b.top, width: a.width, height: a.height }
   }, [])
-  useLayoutEffect(() => { setBox(sel ? locate(sel) : null) }, [sel, result, locate])
+  useLayoutEffect(() => { setBox(sel ? locate(sel) : null) }, [sel, result, locate, draft])
 
   const select = useCallback((s: Sel) => {
     setSel(s)
@@ -200,6 +206,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     }
     setSel(s)
     setEditing(true)
+    setDraft(el.value)
     el.focus({ preventScroll: true })
   }, [sel, cellValue])
 
@@ -226,6 +233,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     el.value = ''
     liveEdit.current = false
     setEditing(false)
+    setDraft(null)
     if (move) moveSel(move)
   }, [sel, file, editing, colIndexOf, moveSel])
 
@@ -249,6 +257,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
     if (el) el.value = ''
     liveEdit.current = false
     setEditing(false)
+    setDraft(null)
   }, [])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -285,8 +294,10 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   }
   const onInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     if (!editing) { if (!sel) { e.currentTarget.value = ''; return } setEditing(true) }
+    // 조합 중인 글자까지 — 친 만큼 행이 늘어난다
+    setDraft(e.currentTarget.value)
   }
-  const onCompositionStart = () => { if (!editing && sel) setEditing(true) }
+  const onCompositionStart = () => { if (!editing && sel) { setEditing(true); setDraft(ta.current?.value ?? '') } }
   const onBlur = () => { if (editing) commit(null) }
 
   if (!file) return <div className="tsv-view is-error">tsv-view: <code>file</code> 이 필요합니다</div>
@@ -339,6 +350,8 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
                         data-r={row.index}
                         data-ci={ci}
                         className={cls.trim()}
+                        // 칸은 줄을 바꾼다 — 짧은 칸이 눌리지 않게 최소 폭 (좌우 여백 20 + 2)
+                        style={{ minWidth: minCellWidth(v, 22) }}
                         title={issue}
                         onMouseDown={(e) => {
                           e.preventDefault()
@@ -347,7 +360,13 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
                         }}
                         onDoubleClick={() => startEdit('edit', { r: row.index, ci })}
                       >
-                        {v}
+                        {selected && editing && draft !== null ? (
+                          // 원래 글은 높이 0 으로 남겨 열 너비를 그대로 두고, 고치는 글이 칸 너비에서 줄을 바꿔 행 높이를 정한다
+                          <>
+                            <div className="tsv-view-keep" aria-hidden="true">{v}</div>
+                            <div className="tsv-view-sizer" aria-hidden="true">{draft + '​'}</div>
+                          </>
+                        ) : v}
                       </td>
                     )
                   })}

@@ -17,6 +17,7 @@ import { SkimPanel } from './SkimPanel'
 import { OutlinePanel } from './OutlinePanel'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
+import { mdTableExtension } from './tableCommands'
 
 type Mode = 'source' | 'hybrid' | 'preview' | 'split'
 const MODES: Mode[] = ['source', 'hybrid', 'split', 'preview']
@@ -135,6 +136,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         extensions: [
           ...baseExtensions(path, { save: () => void store.save(path), readOnly }),
           hybridComp.current.of(isMd && loadMode(path) === 'hybrid' ? hybrid(path) : []),
+          isMd ? mdTableExtension() : [],
           EditorView.updateListener.of((u) => {
             if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
             if (outlinePing.current && (u.docChanged || syntaxTree(u.state) !== syntaxTree(u.startState))) outlinePing.current()
