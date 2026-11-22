@@ -53,6 +53,8 @@ interface Props {
   onDelete: (path: string, isDir: boolean) => void
   onRootAction: (action: RootAction, path: string) => void
   onSelectDir?: (dir: string) => void
+  /** 활성 문서가 바뀌면 (창 제목 — DESIGN §33). 탭 전환 · 닫기 · 이름 바꾸기 때 */
+  onActiveDocChange?: (path: string | null) => void
 }
 
 const LAYOUT_VERSION = 1
@@ -182,6 +184,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   const [activeDoc, setActiveDoc] = useState<string | null>(() => activePath())
   /** 문서 창의 수 (훑어보기 패널은 하나일 때만 보인다 — PLAN-skim SK6). 레이아웃이 바뀔 때 세고, 수가 달라질 때만 다시 그린다 */
   const [paneCount, setPaneCount] = useState(() => countDocPanes(model))
+  const onActiveDocChange = p.onActiveDocChange
+  useEffect(() => { onActiveDocChange?.(activeDoc) }, [activeDoc, onActiveDocChange])
 
   /** 훑어보기 패널 켜기 / 끄기. 켰는데 지금 화면에는 안 보이는 경우(분할 중 · md · txt 가 아닌 문서)에는 이유를 알린다 */
   const toggleSkim = useCallback(() => {

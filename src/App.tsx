@@ -14,6 +14,7 @@ import { NewDocDialog, type NewDocChoice } from './components/NewDocDialog'
 import { fileNameOf, TEMPLATES_DIR, userTemplatePaths } from './lib/templates'
 import { allCommands, commandByCombo, keysOf, registerCommands, runCommand, tip, useCommandsVersion } from './lib/commands'
 import { comboFromEvent } from './lib/keys'
+import { windowTitle } from './lib/title'
 import { usePwa } from './lib/pwa'
 import { toggleTheme, useTheme } from './lib/theme'
 import { isTsvPath, store, useDirtyPaths } from './store/documents'
@@ -139,10 +140,6 @@ function filesUnder(entries: TreeEntry[], dir: string): string[] {
   return allFiles(entries).filter((p) => p.startsWith(prefix))
 }
 
-/** 창 제목에 문서 별칭 — 작업 표시줄에서 구분된다 */
-function showRootName() {
-  document.title = `${backend().rootDetail(null).label} — JayDocs`
-}
 
 function allFiles(entries: TreeEntry[], out: string[] = []): string[] {
   for (const e of entries) {
@@ -245,7 +242,6 @@ function Workspace({ layoutId }: { layoutId: string }) {
   useEffect(() => {
     backend().info().then((i) => {
       setRoot(i.root)
-      showRootName()
     }).catch((e) => setError((e as Error).message))
     void refreshTree()
   }, [refreshTree])
@@ -731,6 +727,19 @@ function Workspace({ layoutId }: { layoutId: string }) {
   const watching = backend().watching()
   const primary = backend().rootDetail(null)
 
+  // 창 제목 (DESIGN §33): `● 개요.md — 문서 별칭 — JayDocs`. 활성 문서 · 저장 안 한 문서의 있고 없음 · 별칭이 바뀔 때만 쓴다.
+  // 활성 문서는 state 로 두지 않는다 — 탭을 바꿀 때마다 앱 전체가 다시 그려지지 않게
+  const activeDocRef = useRef<string | null>(null)
+  const titleRef = useRef({ rootLabel: primary.label, dirty: dirtyCount > 0 })
+  titleRef.current = { rootLabel: primary.label, dirty: dirtyCount > 0 }
+  const writeTitle = useCallback(() => {
+    const next = windowTitle({ ...titleRef.current, activePath: activeDocRef.current })
+    if (document.title !== next) document.title = next
+  }, [])
+  const onActiveDocChange = useCallback((path: string | null) => { activeDocRef.current = path; writeTitle() }, [writeTitle])
+  useEffect(writeTitle, [writeTitle, primary.label, dirtyCount > 0])
+  useEffect(() => () => { document.title = 'JayDocs' }, [])
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     // 최근 순 (DESIGN §24.7 X6): 팔레트로 실행한 명령 · 연 파일이 위에 온다. 지금 못 쓰는 명령은 올리지 않고, 없어진 파일은 목록에 없으니 저절로 빠진다
     if (overlay?.kind === 'palette') {
@@ -791,6 +800,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
             onRename={(path, isDir) => void rename(path, isDir)}
             onDelete={(path, isDir) => void remove(path, isDir)}
             onRootAction={rootAction}
+            onActiveDocChange={onActiveDocChange}
           />
         )}
       </main>
@@ -820,7 +830,6 @@ function Workspace({ layoutId }: { layoutId: string }) {
             // 경로 칸만 보였으면 별칭은 그대로 둔다
             const keepLabel = overlay.root.alias === null && overlay.root.label !== overlay.root.folder ? overlay.root.label : ''
             await backend().updateRoot(overlay.root.alias, { label: overlay.copyPath !== undefined ? keepLabel : label, path })
-            showRootName()
             setOverlay(null)
             // 클릭 직후여야 클립보드에 쓸 수 있다 — 트리를 다시 읽기 전에
             if (overlay.copyPath !== undefined && path) copyPathOf(overlay.copyPath)

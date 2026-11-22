@@ -1277,6 +1277,24 @@ UI/UX 개편 A2(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 · 3 · 7
 - 실제 CP949 파일을 "UTF-8 로 저장" 까지 — 바꾸는 동작은 예전 안내 막대와 같은 함수다.
 - 밝은 테마의 색.
 
+## 33. 창 제목의 수정됨 표시 (2026-11-23)
+
+UI/UX 개편 A3(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 7 맞음(수동 저장 모델의 약점 — 다른 창으로 가면 저장 안 한 것을 잊음 — 을 줄인다), 2 주의(WT3), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| WT1 | 창 제목은 `● 개요.md — 문서 별칭 — JayDocs`(`lib/title.ts`). 활성 문서 창의 파일 이름, 문서가 없으면 `문서 별칭 — JayDocs`. 문서 별칭은 남긴다 | 예전엔 별칭만 썼다(`src/App.tsx` 의 `showRootName`, 지웠다). 별칭은 JayDocs 창이 여럿일 때 작업 표시줄에서 구분된다 |
+| WT2 | `●` 는 **이 창에 저장 안 한 문서가 하나라도 있으면** 붙는다 — 지금 보는 문서가 깨끗해도 다른 탭이 고쳐졌으면 붙는다 | 창 단위 표시(macOS 닫기 버튼의 점, TextEdit). 목적이 "다른 앱으로 갔을 때 잊지 않기" 라 어느 탭이든 알려야 한다. 어느 문서인지는 탭 · 트리의 `●` 와 "모두 저장 (N)" 이 보인다 |
+| WT3 | 제목은 활성 문서 · 저장 안 한 문서의 있고 없음 · 문서 별칭이 바뀔 때만 쓴다. 글자를 칠 때마다 쓰지 않는다. 활성 문서는 Workbench 가 `onActiveDocChange` 로 알리고 App 은 state 로 두지 않는다 | 탭을 바꿀 때마다 앱 전체가 다시 그려지지 않게 |
+
+### 33.1 확인한 것
+
+`npm test` — 새 4건(`title.test.ts`). dev `?opfs` + 내장 브라우저(`document.title`): 열 때 `Item_Table.tsv — dev-docs — JayDocs`, 셀을 고치면 `● Item_Table.tsv — …`, 다른 탭을 누르면 `● 가져온 문서.md — …`(다른 탭이 고쳐져 있어 `●` 가 남음), 돌아와 `Ctrl+Z` 면 `●` 가 사라짐. 콘솔 오류 없음.
+
+### 33.2 확인하지 못한 것 (TESTCASES §27)
+
+- 설치한 Edge 앱의 창 제목 · 작업 표시줄 · `Alt+Tab` 에 보이는 모양(Edge 가 앱 이름을 앞에 붙이는지).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
