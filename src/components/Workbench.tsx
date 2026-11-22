@@ -18,6 +18,8 @@ import { MarkdownPane } from './MarkdownPane'
 import { GridPane } from './grid/GridPane'
 import { runTableCommand } from './tableCommands'
 import type { TableOp } from '../lib/md/tableEdit'
+import { SUMMARY_KEYS, SUMMARY_LABELS, toggleSummaryKey, useSummaryKeys } from '../lib/tsv/summary'
+import { confirmConvertToUtf8 } from './ReadOnlyBanner'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
@@ -382,6 +384,22 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
   ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, focusPathBar, cyclePane, toggleSkim])
+
+  // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
+  const summaryKeys = useSummaryKeys()
+  useEffect(() => registerCommands([
+    ...SUMMARY_KEYS.map((k) => ({
+      id: `selSummary:${k}`,
+      label: `선택 요약: ${SUMMARY_LABELS[k]} ${summaryKeys.includes(k) ? '숨기기' : '보이기'} (그리드 상태 줄)`,
+      run: () => toggleSummaryKey(k),
+    })),
+    {
+      id: 'convertUtf8',
+      label: 'UTF-8 로 바꿔 저장 (UTF-8 이 아닌 현재 문서)',
+      run: () => { const path = activePath(); if (path) void confirmConvertToUtf8(path) },
+      enabled: () => { const path = activePath(); const d = path ? store.get(path) : undefined; return !!d && d.status === 'ready' && d.encoding !== 'utf-8' },
+    },
+  ]), [summaryKeys, activePath])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'

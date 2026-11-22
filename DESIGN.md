@@ -1248,6 +1248,35 @@ UI/UX 개편 A1(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 · 4 · 5
 - 실제 한글 IME 로 목록을 거를 때(자동화는 글자를 바로 넣는다).
 - 실제 폴더 · 큰 폴더(Unity)에서 목록을 여는 속도, 긴 문서에서 치는 동안의 지연.
 
+## 32. 문서 상태 줄 (2026-11-23)
+
+UI/UX 개편 A2(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 · 3 · 7 맞음(키보드 사용자도 열 정보를 본다, 표 확인을 문서에 쓰지 않고 한다, 표시만 한다), 2 주의(SS4), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| SS1 | 모든 문서 창(마크다운 · txt · json · 표)의 맨 아래에 한 줄(`components/DocStatus.tsx`). `[자리 정보 …] [선택 요약] [창이 넣는 것] [LF · BOM 없음] [UTF-8] [저장됨]` | ADOPT A2. 그리드에만 있던 아래 줄(`grid-foot`)을 모든 형식으로 넓혔다 |
+| SS2 | 저장 상태 글자(`저장됨` · `● 수정됨` · `저장 중…` · `충돌` · `🔒 읽기 전용`)는 **위 창 막대에서 이 줄로 옮긴다**. 위에는 **저장** 단추만 남는다 | 한 곳에만 둔다. 위 막대는 경로 막대(§31)가 넓게 쓴다 |
+| SS3 | 그리드의 자리 정보: 활성 셀 이름(`C7`) · 열 이름 · 타입(타입 행이 있는 표만, `#` 뗌, 주석 열 · 리스트 표시) · **검증 오류**(빨강 `⚠`) · Field 설명. 넘치면 끝이 `…` | 지금은 마우스 툴팁에만 있던 정보 |
+| SS4 | **선택 요약**: 여러 칸을 고르면 개수(비지 않은 칸) · 합 · 평균 · 최소 · 최대. 머리글 행은 뺀다. 숫자는 타입 행이 있는 표면 숫자 타입 열(byte · uint · int · float)만, 없는 표(CSV 등)는 숫자로 읽히는 칸(Sheets 와 같다). 20만 칸이 넘으면 세지 않고 "N칸 — 요약은 200,000칸까지"(`lib/tsv/summary.ts`) | Numbers · Sheets 의 아래쪽 빠른 계산. string 열의 `001` 같은 키가 합에 섞이지 않게. 큰 표 전체 선택에서 멈추지 않게 |
+| SS5 | 보일 계산은 팔레트 **선택 요약: 합 보이기 / 숨기기** 등 다섯 개로 켜고 끈다(이름이 지금 상태를 따라간다). 기본은 개수 · 합 · 평균, localStorage `jaydocs.selSummary` | ADOPT A2 "선택 요약에 보일 계산 고르기" — 여러 개 고르는 새 창 대신 팔레트 명령. 키는 주지 않는다(드문 동작) |
+| SS6 | 그리드가 그 밖에 넣는 것: 표 크기 · 오류 수 · 스키마 · 계산식 · **끝 개행 추가** 단추(예전 아래 줄과 같다) | 있던 것을 잃지 않는다 |
+| SS7 | 인코딩이 UTF-8 이 아니면 인코딩이 **단추**가 된다 — 누르면 "UTF-8 로 바꿔 저장" 확인(안내 막대와 같은 함수 `confirmConvertToUtf8`). 팔레트에도 **UTF-8 로 바꿔 저장** | ADOPT A2 "항목을 누르면 관련 명령". 버튼은 팔레트에도(A6) |
+| SS8 | 좁은 창(줄이 560px 미만)에서는 줄바꿈 · 표 크기 · 스키마 · 계산식 · "오류 없음" 을 숨긴다(container query). 인코딩 · 저장 상태는 줄지 않고 늘 보인다 — 자리 정보와 선택 요약이 `…` 로 줄어든다 | 저장 안 한 것을 놓치지 않게 |
+
+"다른 인코딩으로 다시 열기" 는 C4 에서 넣는다. 마크다운의 자리 정보(줄 · 칸 · 글자 수)는 ADOPT 에 없어 넣지 않았다.
+
+코드: `components/DocStatus.tsx` · `.css`, `lib/tsv/summary.ts`(`summarizeRange` · `summaryParts` · `formatNumber` · 보일 계산), `Grid.tsx`(`onRangeChange`), `GridPane.tsx`(자리 정보 · 요약 · `grid-foot` 삭제), `MarkdownPane.tsx`, `ReadOnlyBanner.tsx`(`confirmConvertToUtf8`), `Workbench.tsx`(명령 `selSummary:*` · `convertUtf8`).
+
+### 32.1 확인한 것
+
+`npm test` — 이 절 새 6건(`summary.test.ts`: 머리글 빼기 · 숫자 타입 열만 · 타입 행 없는 표 · 범위 밖 · 상한 · 보일 글 · 숫자 모양). dev `?opfs` + 내장 브라우저: `Item_Field.tsv`(`A1 … 12행 × 3열 · 오류 없음 · 스키마 없음 · LF · BOM 없음 · UTF-8 · 저장됨`), `Item_Table.tsv` 의 `A1 Key string 아이템 고유 키` · `C7` 의 `⚠ 허용되지 않은 값: Weapn`, E3:F9 선택 → `개수 14 · 합 434 · 평균 31`(손으로 계산한 값과 같다), 팔레트 "선택 요약: 최대 보이기" → `최대 120` · localStorage, `목록.csv`(타입 행 없음) C2:C4 → `합 14`, `개요.md` 의 `LF · BOM 없음 · UTF-8 · 저장됨`, 셀을 고치면 `● 수정됨` → `Ctrl+Z` 로 `저장됨`, EUC-KR 로 쓴 시험 파일 → `CRLF · BOM 없음 · [EUC-KR] · 🔒 읽기 전용`, 단추 → 확인창 → `Esc` 로 단추에 포커스(시험 파일은 지웠다), 창 너비 640 · 520px 에서 인코딩 · 저장 상태가 남음. 콘솔 오류 없음.
+
+### 32.2 확인하지 못한 것 (TESTCASES §26)
+
+- 실제 폴더의 큰 표(2만 행)에서 열 · 전체 선택 때의 반응.
+- 실제 CP949 파일을 "UTF-8 로 저장" 까지 — 바꾸는 동작은 예전 안내 막대와 같은 함수다.
+- 밝은 테마의 색.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

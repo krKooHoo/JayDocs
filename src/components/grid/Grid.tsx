@@ -71,6 +71,8 @@ export interface GridProps {
   onCalc: () => void
   /** 열 너비를 기억할 localStorage 키 */
   widthsKey: string
+  /** 선택 범위가 바뀌면 (상태 줄의 선택 요약 — DESIGN §32) */
+  onRangeChange?: (range: CellRange) => void
 }
 
 interface Editing {
@@ -267,6 +269,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     return normalizeRange(a, active)
   }, [anchor, active, maxR, maxC])
   const multi = range.r1 !== range.r2 || range.c1 !== range.c2
+  const onRangeChange = p.onRangeChange
+  useEffect(() => { onRangeChange?.(range) }, [range, onRangeChange])
 
   // ---- 열 너비. 열 수가 바뀐 그 렌더에서 바로 길이를 맞춘다 — effect 로 한 박자 늦추면
   // 열 삭제 직후 옛 너비 배열이 없는 열(schema.columns[c] = undefined)을 그리려다 터진다 (TC-307)

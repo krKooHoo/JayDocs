@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
 import { tip } from '../../lib/commands'
 import { backend } from '../../lib/backend'
@@ -10,6 +10,8 @@ import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type Fin
 import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { parseFieldBlocks } from '../../lib/tsv/field'
 import { PathBar, type PathTail } from '../PathBar'
+import { DocStatus } from '../DocStatus'
+import { summarizeRange, summaryParts, useSummaryKeys } from '../../lib/tsv/summary'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
@@ -55,6 +57,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   useTreeVersion()
   const grid = useRef<GridHandle>(null)
   const [active, setActive] = useState<CellPos>({ r: 0, c: 0 })
+  /** 그리드의 선택 범위 — 상태 줄의 선택 요약 (DESIGN §32) */
+  const [range, setRange] = useState<CellRange | null>(null)
   /** "되돌리기" 버튼이 달린 알림과 그때의 표 — 표가 다시 바뀌면(Ctrl+Z · 다른 편집) 버튼이 엉뚱한 것을 되돌리지 않게 알림을 내린다 */
   const undoNotice = useRef<{ id: number; after: TsvTable } | null>(null)
   /** 이 창이 마지막으로 고친 결과 (고쳐지지 않았으면 null) */
@@ -366,7 +370,6 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   const dirty = store.isDirty(path)
   const readOnly = store.isReadOnly(path)
-  const status = doc?.saving ? '저장 중…' : doc?.conflict ? '충돌' : readOnly ? '🔒 읽기 전용' : dirty ? '● 수정됨' : '저장됨'
   const canUndo = store.canUndo(path)
   const canRedo = store.canRedo(path)
 
@@ -398,11 +401,50 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     }
   }
 
+  // 문서 상태 줄 (DESIGN §32): 활성 셀의 이름 · 열 · 타입 · 검증 오류 · Field 설명, 여러 칸을 고르면 선택 요약
+  const summaryKeys = useSummaryKeys()
+  const summary = useMemo(() => {
+    if (!table || !schema || !range || (range.r1 === range.r2 && range.c1 === range.c2)) return null
+    return summaryParts(summarizeRange(table, schema, range), summaryKeys)
+  }, [table, schema, range, summaryKeys])
+  let statusCell: ReactNode = null
+  let statusExtra: ReactNode = null
+  if (table && schema && validation) {
+    const col = schema.columns[active.c]
+    const issue = validation.issues.get(issueKey(table.width, active.r, active.c))
+    const typeLabel = !schema.typed || !col ? null : col.type === 'comment' ? '주석 열' : `${col.rawType.replace(/^#/, '') || col.type}${col.list ? ' (리스트)' : ''}`
+    statusCell = (
+      <>
+        <span className="ds-ref" title="활성 셀 (열 글자 + 행 번호)">{columnLetter(active.c)}{active.r + 1}</span>
+        {col?.name && <span className="ds-name">{col.name}</span>}
+        {typeLabel && <span title="타입 행의 타입">{typeLabel}</span>}
+        {issue && <span className="is-err">⚠ {issue}</span>}
+        {col?.description && <span title={col.description}>{col.description}</span>}
+      </>
+    )
+    statusExtra = (
+      <>
+        <span className="ds-item ds-opt">{table.rows.length}행 × {table.width}열</span>
+        <span className={'ds-item' + (validation.count ? ' is-err' : ' ds-opt')}>{validation.count ? `오류 ${validation.count}` : '오류 없음'}</span>
+        <span className="ds-item ds-opt">{schemaLabel}</span>
+        {hasCalc && calcRules && <span className="ds-item ds-opt" title={calcPath}>계산식 {calcRules.rules.length}개{calcResult?.staleCount ? ` · 바뀔 셀 ${calcResult.staleCount}` : ''}</span>}
+        {!table.trailingNewline && (
+          <button
+            className="ds-btn"
+            title="파일 끝에 개행을 넣는다. 끝 개행이 없으면 행을 덧붙일 때마다 마지막 줄이 git diff 에 같이 나온다 (.editorconfig 도 끝 개행을 요구한다)"
+            onClick={() => { edit((t) => ({ ...t, trailingNewline: true })); refocus() }}
+          >
+            끝 개행 추가
+          </button>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="pane">
       <div className="pane-bar">
         <PathBar path={path} tail={pathTail} onExit={() => grid.current?.focus()} />
-        <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
         <button onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title={tip('저장', 'save')}>저장</button>
         <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
@@ -534,27 +576,12 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
               calcCells={calcResult?.cells ?? NO_CALC}
               onCalc={runCalc}
               widthsKey={`jaydocs.colw:${path}`}
+              onRangeChange={setRange}
             />
           </PaneErrorBoundary>
-          <div className="grid-foot">
-            <span>{table.rows.length}행 × {table.width}열</span>
-            <span>{active.r + 1}행 {active.c + 1}열{schema.columns[active.c]?.name ? ` · ${schema.columns[active.c].name}` : ''}</span>
-            <span className={validation.count ? 'is-err' : ''}>{validation.count ? `오류 ${validation.count}` : '오류 없음'}</span>
-            <span>{table.format === 'csv' ? 'CSV · ' : ''}{table.eol === '\r\n' ? 'CRLF' : 'LF'}{table.bom ? ' · BOM' : ''}{table.trailingNewline ? '' : ' · 끝 개행 없음'}</span>
-            {!table.trailingNewline && (
-              <button
-                className="grid-foot-btn"
-                title="파일 끝에 개행을 넣는다. 끝 개행이 없으면 행을 덧붙일 때마다 마지막 줄이 git diff 에 같이 나온다 (.editorconfig 도 끝 개행을 요구한다)"
-                onClick={() => { edit((t) => ({ ...t, trailingNewline: true })); refocus() }}
-              >
-                끝 개행 추가
-              </button>
-            )}
-            <span>{schemaLabel}</span>
-            {hasCalc && calcRules && <span title={calcPath}>계산식 {calcRules.rules.length}개{calcResult?.staleCount ? ` · 바뀔 셀 ${calcResult.staleCount}` : ''}</span>}
-          </div>
         </>
       )}
+      <DocStatus path={path} cell={statusCell} summary={summary} extra={statusExtra} />
     </div>
   )
 }

@@ -461,13 +461,6 @@ button.tree-search {
 .grid-toolbar button { padding: 2px 7px; }
 .grid-toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
 .grid-toolbar-label { color: var(--muted); font-size: 12px; }
-.grid-foot {
-  display: flex; gap: 14px; align-items: center;
-  padding: 3px 8px; border-top: 1px solid var(--border); background: var(--panel);
-  color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
-}
-.grid-foot .is-err { color: var(--danger); font-weight: 600; }
-.grid-foot-btn { padding: 0 6px; font-size: 11px; line-height: 16px; }
 
 /* ---- 팔레트 · 도움말 ---- */
 .overlay {

@@ -1,0 +1,23 @@
+/* 문서 상태 줄 (DESIGN §32) — 모든 문서 창의 맨 아래 */
+.doc-status {
+  display: flex; gap: 12px; align-items: center; flex-shrink: 0;
+  padding: 3px 8px; border-top: 1px solid var(--border); background: var(--panel);
+  color: var(--muted); font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden;
+  container-type: inline-size;
+}
+/* 자리 정보 — 남는 너비를 다 쓰고, 넘치면 끝이 …. 좁아도 셀 이름(A1)만큼은 남긴다 */
+.ds-cell { flex: 1 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.ds-cell > span + span { margin-left: 10px; }
+.ds-cell .ds-ref { color: var(--fg); font-family: var(--mono); }
+.ds-cell .ds-name { color: var(--fg); }
+.ds-cell .is-err, .doc-status .is-err { color: var(--danger); font-weight: 600; }
+/* 선택 요약 — 좁으면 뒤(최소 · 최대)부터 … 로 줄어든다. 인코딩 · 저장 상태는 줄지 않고 늘 보인다 */
+.ds-summary { color: var(--fg); flex: 0 1 auto; min-width: 5em; overflow: hidden; text-overflow: ellipsis; }
+.ds-item { flex-shrink: 0; }
+.ds-save.is-dirty { color: var(--dirty); }
+.doc-status button.ds-btn { padding: 0 6px; font-size: 11px; line-height: 16px; flex-shrink: 0; }
+.doc-status button.ds-btn.is-warn { color: var(--dirty); border-color: var(--dirty); }
+/* 좁은 창: 덜 중요한 것부터 숨긴다 */
+@container (max-width: 560px) {
+  .ds-opt { display: none; }
+}

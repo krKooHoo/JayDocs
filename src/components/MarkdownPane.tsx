@@ -16,6 +16,7 @@ import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { SkimPanel } from './SkimPanel'
 import { OutlinePanel } from './OutlinePanel'
 import { PathBar, type PathTail } from './PathBar'
+import { DocStatus } from './DocStatus'
 import { activeIndex, outlineOf } from '../lib/md/outline'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
@@ -177,7 +178,6 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   }, [mode, path, isMd])
 
   const dirty = store.isDirty(path)
-  const status = d?.saving ? '저장 중…' : d?.conflict ? '충돌' : readOnly ? '🔒 읽기 전용' : dirty ? '● 수정됨' : '저장됨'
   const bakeErrors = d?.kind === 'text' ? d.bakeErrors : []
 
   // 훑어보기 패널 (PLAN-skim SK6): md · txt 에만, 켜져 있고 문서 창이 하나일 때만 보인다
@@ -274,7 +274,6 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
             훑어보기
           </button>
         )}
-        <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
         <button onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title={tip('저장', 'save')}>저장</button>
         <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
@@ -298,6 +297,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}
         {skimShown && <SkimPanel key={'skim:' + path}path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
       </div>
+      <DocStatus path={path} />
     </div>
   )
 }
