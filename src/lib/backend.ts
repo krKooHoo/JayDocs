@@ -40,6 +40,8 @@ export interface RootDetail {
   /** 화면에 보이는 이름: 주 폴더는 문서 별칭, 가져온 폴더는 `@별칭` */
   label: string
   path: string | null
+  /** 파일 하나만 가져온 곳 — folder 는 그 파일 이름, path 는 그 파일의 전체 경로 */
+  file?: boolean
 }
 export interface RootsInfo {
   mounts: MountInfo[]

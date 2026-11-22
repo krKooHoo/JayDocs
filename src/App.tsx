@@ -2,11 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { backend, ConflictError, setBackend, type MountInfo, type RootDetail, type TreeEntry } from './lib/backend'
 import { FsaBackend } from './lib/fsa/fsaBackend'
 import { currentWorkspaceId, listWorkspaces, queryRoot, saveWorkspace, setCurrentWorkspace, touchWorkspace, type Workspace as WorkspaceData } from './lib/fsa/workspace'
-import { explorerSupported, helperReady, openInExplorer } from './lib/explorer'
 import { guessPath } from './lib/localPath'
 import { splitRootPath } from './lib/roots.mjs'
 import { checkForUpdate, UpdateButton } from './components/UpdateButton'
-import { ExplorerHelperDialog } from './components/ExplorerHelperDialog'
 import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
@@ -32,6 +30,7 @@ import { dismissAllNotices, dismissNotice, noticeList, notify, notifyError } fro
 import { checkEntryPath, cleanEntryPath, nameStemRange } from './lib/names'
 import { setTreeCursor } from './lib/nav'
 import { useTreeDrop } from './lib/treeDrop'
+import { copyText } from './lib/copyText'
 import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
 
@@ -159,9 +158,8 @@ type Overlay =
   | { kind: 'help' }
   /** handle: 파일 트리에 끌어다 놓은 폴더 · 파일, pick: 처음 포커스를 둘 고르기 버튼 (DESIGN §28) */
   | { kind: 'import'; handle?: FileSystemDirectoryHandle | FileSystemFileHandle; pick?: 'folder' | 'file' }
-  /** after: 저장하고 이어서 할 일 (상세 경로가 없어 탐색기 열기·경로 복사가 여기로 왔을 때) */
-  | { kind: 'rootInfo'; root: RootDetail; guess: string; after?: { action: 'reveal' | 'copyPath'; path: string } }
-  | { kind: 'explorer'; path: string | null }
+  /** copyPath: 저장하고 이어서 전체 경로를 복사할 앱 경로 (상세 경로가 없어 경로 복사가 여기로 왔을 때) */
+  | { kind: 'rootInfo'; root: RootDetail; guess: string; copyPath?: string }
   /** 새 문서 창 (PLAN-skim SK8). dir: 트리에서 고른 폴더 */
   | { kind: 'newDoc'; dir: string }
   | null
@@ -578,40 +576,43 @@ function Workspace({ layoutId }: { layoutId: string }) {
     }
   }, [mounts, refreshTree])
 
-  // ---- 폴더 정보 · 파일 탐색기
-  /** 폴더 정보 창. 넣은 적 없는 경로는 아는 경로 옆에 있다고 보고 미리 채운다 */
-  const editRoot = useCallback(async (alias: string | null, after?: { action: 'reveal' | 'copyPath'; path: string }) => {
+  // ---- 폴더 정보 · 전체 경로 복사
+  /**
+   * 폴더 정보 창. 넣은 적 없는 경로는 아는 경로 옆에 있다고 보고 미리 채운다.
+   * copyPath: 전체 경로 복사를 하려는데 상세 경로가 없어 온 것 — 저장하면 그 경로를 복사한다 (DESIGN §21 · §30)
+   */
+  const editRoot = useCallback(async (alias: string | null, copyPath?: string) => {
     const root = backend().rootDetail(alias)
     const known = backend().rootDetail(null).path ?? (await listWorkspaces()).find((w) => w.path)?.path
-    setOverlay({ kind: 'rootInfo', root, guess: !root.path && known ? guessPath(known, root.folder) : '', after })
-  }, [])
-
-  const openExplorer = useCallback((full: string) => {
-    setOverlay(null)
-    openInExplorer(full, () => notify('탐색기 창이 뜨지 않았다면 명령 팔레트의 "파일 탐색기 연결 도우미" 를 확인하세요', { key: FILE_NOTICE }))
+    setOverlay({ kind: 'rootInfo', root, guess: !root.path && known ? guessPath(known, root.folder) : '', copyPath })
   }, [])
 
   const copyLocalPath = useCallback((full: string) => {
     setOverlay(null)
-    navigator.clipboard.writeText(full).then(() => notify(`경로를 복사했습니다: ${full}`, { key: FILE_NOTICE }), (e) => notifyError(`복사하지 못했습니다: ${(e as Error).message}`, { key: FILE_NOTICE }))
+    // 막히면 경로를 알림에 남겨 손으로 복사하게 한다
+    void copyText(full).then((ok) => ok
+      ? notify(`경로를 복사했습니다: ${full}`, { key: FILE_NOTICE })
+      : notifyError(`브라우저가 클립보드 쓰기를 막았습니다 — 아래 경로를 직접 복사하세요`, { items: [full], key: FILE_NOTICE }))
   }, [])
 
-  const localAction = useCallback((action: 'reveal' | 'copyPath', path: string) => {
+  /**
+   * 전체 경로 복사. 브라우저는 폴더의 전체 경로를 알려 주지 않는다 — 사용자가 한 번 넣은 상세 경로(폴더마다 기억)로 만든다.
+   * 아직 없으면 그 폴더의 경로를 묻는 창을 띄우고, 저장하면 이어서 복사한다
+   */
+  const copyPathOf = useCallback((path: string) => {
     const { root, full } = backend().localPath(path)
-    if (!full) void editRoot(root.alias, { action, path })
-    else if (action === 'copyPath') copyLocalPath(full)
-    else if (helperReady()) openExplorer(full)
-    else setOverlay({ kind: 'explorer', path: full })
-  }, [editRoot, copyLocalPath, openExplorer])
+    if (full) copyLocalPath(full)
+    else void editRoot(root.alias, path)
+  }, [editRoot, copyLocalPath])
 
   const rootAction = useCallback((action: RootAction, path: string) => {
     const alias = splitRootPath(path).alias
     if (action === 'refresh') void refreshTree()
-    else if (action === 'reveal' || action === 'copyPath') localAction(action, path)
+    else if (action === 'copyPath') copyPathOf(path)
     else if (action === 'editRoot') void editRoot(backend().localPath(path).root.alias)
     else if (alias !== null && action === 'unmount') void unmount(alias)
     else if (alias !== null && action === 'toggleReadOnly') void toggleReadOnly(alias)
-  }, [refreshTree, unmount, toggleReadOnly, localAction, editRoot])
+  }, [refreshTree, unmount, toggleReadOnly, copyPathOf, editRoot])
 
   const onImported = useCallback(async (m: MountInfo) => {
     setOverlay(null)
@@ -671,8 +672,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'importFile', label: '파일 가져오기… (파일 하나를 원래 자리에서 열기)', run: () => setOverlay({ kind: 'import', pick: 'file' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
     { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
-    { id: 'revealRoot', label: '파일 탐색기에서 문서 폴더 열기', run: () => localAction('reveal', ''), enabled: explorerSupported },
-    { id: 'explorerHelper', label: '파일 탐색기 연결 도우미…', run: () => setOverlay({ kind: 'explorer', path: null }), enabled: explorerSupported },
+    { id: 'copyActivePath', label: '현재 문서의 전체 경로 복사', run: () => { const p = bench.current?.activePath(); if (p) copyPathOf(p) }, enabled: () => !!bench.current?.activePath() },
     { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
     { id: 'checkUpdate', label: '업데이트 확인', run: () => void checkForUpdate(updateNotice), enabled: () => app.canCheck },
     { id: 'applyUpdate', label: '새 버전 지금 적용', run: applyUpdate, enabled: () => app.updateReady },
@@ -689,7 +689,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'exportDtoAs', label: 'C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기…', run: () => void exportDto(true), enabled: tableActive },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
-  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, localAction])
+  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, copyPathOf])
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
 
@@ -805,23 +805,29 @@ function Workspace({ layoutId }: { layoutId: string }) {
       {dropOver && <div className="drop-hint">{dropOver === 'tree' ? '놓으면 가져오기 창이 열립니다 — 원래 자리에서 @별칭 으로 엽니다' : '파일 트리에 놓으면 가져옵니다'}</div>}
       {overlay?.kind === 'rootInfo' && (
         <FolderInfoDialog
-          title={overlay.root.alias === null ? '문서 폴더 정보' : `가져온 폴더 정보 — ${overlay.root.label}`}
+          title={overlay.copyPath !== undefined
+            ? `전체 경로 복사${overlay.root.alias !== null ? ` — ${overlay.root.label}` : ''}`
+            : overlay.root.alias === null ? '문서 폴더 정보' : `가져온 ${overlay.root.file ? '파일' : '폴더'} 정보 — ${overlay.root.label}`}
+          forCopy={overlay.copyPath !== undefined}
+          file={overlay.root.file}
           folder={overlay.root.folder}
-          label={overlay.root.alias === null ? (overlay.root.label === overlay.root.folder ? '' : overlay.root.label) : undefined}
+          // 경로 복사로 왔으면 경로 칸만 — 별칭은 "별칭 · 상세 경로 편집" 에서
+          label={overlay.root.alias === null && overlay.copyPath === undefined ? (overlay.root.label === overlay.root.folder ? '' : overlay.root.label) : undefined}
           path={overlay.root.path ?? ''}
           guess={overlay.guess}
           onClose={closeOverlay}
           onSave={async (label, path) => {
-            await backend().updateRoot(overlay.root.alias, { label, path })
+            // 경로 칸만 보였으면 별칭은 그대로 둔다
+            const keepLabel = overlay.root.alias === null && overlay.root.label !== overlay.root.folder ? overlay.root.label : ''
+            await backend().updateRoot(overlay.root.alias, { label: overlay.copyPath !== undefined ? keepLabel : label, path })
             showRootName()
             setOverlay(null)
-            // 클릭 직후여야 브라우저가 앱 열기를 허용한다 — 트리를 다시 읽기 전에
-            if (overlay.after && path) localAction(overlay.after.action, overlay.after.path)
+            // 클릭 직후여야 클립보드에 쓸 수 있다 — 트리를 다시 읽기 전에
+            if (overlay.copyPath !== undefined && path) copyPathOf(overlay.copyPath)
             void refreshTree()
           }}
         />
       )}
-      {overlay?.kind === 'explorer' && <ExplorerHelperDialog path={overlay.path} onOpen={openExplorer} onCopy={copyLocalPath} onClose={closeOverlay} />}
       {/* 닫으면 창이 스스로 부르던 곳(트리 · 편집기)으로 포커스를 돌려준다 — 이름 입력 대화상자와 같은 규칙 */}
       {overlay?.kind === 'newDoc' && <NewDocDialog dir={overlay.dir} userTemplates={userTemplatePaths(tree)} onCreate={createDoc} onClose={() => setOverlay(null)} />}
     </div>

@@ -282,7 +282,7 @@ export class FsaBackend implements Backend {
     }
     const m = this.ws.mounts.find((x) => x.alias === alias)
     if (!m) throw new Error(`가져온 폴더가 없습니다 (@${alias})`)
-    return { alias, folder: m.handle.name, label: `@${alias}`, path: m.path ?? null }
+    return { alias, folder: m.handle.name, label: `@${alias}`, path: m.path ?? null, file: m.handle.kind === 'file' }
   }
 
   async updateRoot(alias: string | null, info: { label?: string; path: string }) {

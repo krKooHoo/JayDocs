@@ -55,7 +55,7 @@ npm run lint    # oxlint (기본 규칙). 경고만 낸다 — 지금 25건, 버
 ## 구조
 
 ```
-public/               manifest · 앱 아이콘 · 파일 탐색기 연결 도우미(helper/)
+public/               manifest · 앱 아이콘
 scripts/gen-sw.mjs    npm run build 끝에 dist/sw.js 생성 (오프라인 · 자동 업데이트)
 scripts/gen-shortcuts.mjs  npm run shortcuts — SHORTCUTS.md 생성
 .github/workflows/deploy.yml  main push → 테스트 · 빌드 → GitHub Pages 배포
@@ -64,7 +64,7 @@ src/
   lib/fsa/fsaBackend.ts  File System Access 구현 — 트리 · 읽기(인코딩 감지 · 바이너리/크기 거부) · 저장(낙관적 잠금) · 이름 변경(덮어쓰기 검사, move 실패 시 복사) · 변경 감지(FileSystemObserver, 뭉치기) · 가져온 폴더
   lib/fsa/workspace.ts   작업 공간(주 폴더 + 가져온 폴더 · 별칭 · 상세 경로) · IndexedDB 저장 · 최근 10개 · 권한 묻기
   lib/localPath.ts    상세 경로 다듬기 · 검사 · 앱 경로와 합치기 · 미리 채울 값
-  lib/explorer.ts     파일 탐색기 열기 (jaydocs-open: → 연결 도우미)
+  lib/copyText.ts     클립보드에 글 넣기 (Clipboard API → 막히면 execCommand) — 전체 경로 복사
   lib/fsa/fake.ts     시험용 메모리 파일 시스템
   lib/fsa/devSeed.ts  개발 전용 `?opfs` — 폴더 선택 창 없이 브라우저 저장소로 화면 시험 (스키마 · 계산식 · tsv-view 샘플 포함)
   lib/pwa.ts          앱 설치 · 서비스 워커 등록 · 새 버전 안내
@@ -123,7 +123,6 @@ src/
     StartScreen.tsx   시작 화면 (문서 폴더 열기 · 최근 폴더) · 권한 다시 허용 화면
     UpdateButton.tsx  업데이트 확인 → 받는 중 → 적용 버튼
     FolderInfoDialog.tsx  문서 별칭 · 상세 경로 입력 창
-    ExplorerHelperDialog.tsx  파일 탐색기 연결 도우미 안내
     MarkdownPane.tsx  CodeMirror 6 + 소스/하이브리드/분할/미리보기 모드. md 가 아니면 평문(txt) · JSON(강조·검사·정렬)
     ReadOnlyBanner.tsx 읽기 전용 배너 — 읽기 전용 가져온 폴더("읽기 전용 끄기") · UTF-8 아닌 파일("UTF-8 로 바꿔 저장")
     PreviewPane.tsx   react-markdown + mermaid(동적) + tsv-view 표(그 자리 편집 · 템플릿 렌더)
@@ -146,6 +145,5 @@ src/
 - **문서는 올라가지 않는다.** 서버가 없고, 코드는 브라우저 안에서 돌며 파일을 직접 읽고 쓴다. 공개되는 것은 앱 코드뿐이다.
 - 배포된 코드는 허용한 폴더를 고칠 수 있다. **GitHub 2단계 인증 필수.** 라이브러리는 번들에 넣고 lockfile 로 고정하며, 실행 중에 CDN 에서 코드를 받지 않는다.
 - 같은 주소(`krkoohoo.github.io`)의 다른 페이지는 저장소와 폴더 핸들을 함께 볼 수 있다. 위키와 `portfolio-test` 가 여기에 있으니 **두 사이트에 외부 스크립트나 다른 사람의 코드를 넣지 않는다.** 넣어야 한다면 JayDocs 를 먼저 다른 주소로 옮긴다.
-- 연결 도우미를 설치하면 어느 웹페이지든 `jaydocs-open:` 주소를 부를 수 있다. 그래서 도우미는 로컬 드라이브 경로의 폴더를 보여 주거나 파일을 선택해 보여 주기만 하고, 파일을 실행하지 않으며, 네트워크 경로(`\\서버`)는 거부한다. 브라우저도 처음에 앱을 열지 묻는다.
 - 경로는 허용한 폴더 아래로만(`..`, 절대 경로, `.git` 안 거부). 쓰기는 읽기 전용 폴더에서 막힌다.
 - 삭제는 휴지통으로 가지 않는다. 앱이 그렇게 묻는다.

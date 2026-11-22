@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MountInfo, TreeEntry } from '../lib/backend'
 import { keysOf, runCommand, tip } from '../lib/commands'
-import { explorerSupported } from '../lib/explorer'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
 import { onQuickLookRequest, onTreeCursor, type QuickLookMode } from '../lib/nav'
@@ -10,7 +9,7 @@ import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
 
 /** 트리 오른쪽 클릭의 폴더·경로 동작 */
-export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'reveal' | 'copyPath' | 'editRoot'
+export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'copyPath' | 'editRoot'
 
 interface Props {
   /** 펼친 폴더를 기억하는 열쇠 (작업 공간 id) */
@@ -480,7 +479,6 @@ export function FileTree(p: Props) {
             {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
             {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
             {!isRoot && writable && !menu.isDir && <button onClick={() => { closeMenu(); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
-            {explorerSupported() && <button onClick={() => act('reveal')}>파일 탐색기에서 열기</button>}
             <button onClick={() => act('copyPath')}>전체 경로 복사</button>
             {(isRoot || isPrimary) && <button onClick={() => act('editRoot')}>{isPrimary ? '별칭 · 상세 경로 편집' : '상세 경로 편집'}</button>}
             {!isRoot && !isPrimary && writable && <button className="is-danger" onClick={() => { closeMenu(); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}

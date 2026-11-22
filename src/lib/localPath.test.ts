@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { explorerUrl } from './explorer'
 import { newestFirst } from './fsa/workspace'
 import { checkPath, cleanPath, guessPath, joinLocal } from './localPath'
 
@@ -55,15 +54,6 @@ describe('guessPath', () => {
   })
   it('드라이브 루트만 알면 채우지 않는다', () => {
     expect(guessPath('D:\\', 'b')).toBe('')
-  })
-})
-
-describe('탐색기 주소', () => {
-  it('한글 · 공백 · 특수문자가 그대로 돌아온다', () => {
-    const p = 'C:\\문서 모음\\50%&#a+b\\표.tsv'
-    const url = explorerUrl(p)
-    expect(url).toMatch(/^jaydocs-open:[A-Za-z0-9%._~!*'()-]+$/)
-    expect(decodeURIComponent(url.replace('jaydocs-open:', ''))).toBe(p)
   })
 })
 
