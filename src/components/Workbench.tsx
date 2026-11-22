@@ -20,6 +20,8 @@ import { runTableCommand } from './tableCommands'
 import type { TableOp } from '../lib/md/tableEdit'
 import { SUMMARY_KEYS, SUMMARY_LABELS, toggleSummaryKey, useSummaryKeys } from '../lib/tsv/summary'
 import { confirmConvertToUtf8 } from './ReadOnlyBanner'
+import { EditorView } from '@codemirror/view'
+import { revertTextInView } from '../lib/revert'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
@@ -333,6 +335,30 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     seg?.focus()
   }, [activeTab, focusEditor])
 
+  /**
+   * 마지막 저장 상태로 되돌리기 (DESIGN §34). 묻지 않는다 — Ctrl+Z 한 번으로 다시 고친 상태로 간다.
+   * 글 문서는 활성 탭의 편집기에서 트랜잭션으로 (같은 문서가 두 창에 열려 있어도 되돌리기 기록은 이 창에 남는다)
+   */
+  const canRevert = useCallback(() => {
+    const path = activePath()
+    const d = path ? store.get(path) : undefined
+    return !!path && !!d && d.status === 'ready' && !d.conflict && !d.saving && store.isDirty(path)
+  }, [activePath])
+  const revertActive = useCallback(() => {
+    const tab = activeTab()
+    const path = activePath()
+    if (!tab || !path) return
+    let done = false
+    if (isTsvPath(path)) done = store.revertTable(path)
+    else {
+      const el = document.querySelector<HTMLElement>(`[data-tab-id="${tab.getId()}"] .cm-editor`)
+      const view = el ? EditorView.findFromDOM(el) : null
+      done = !!view && revertTextInView(view, path)
+    }
+    if (done) notify(`마지막 저장 상태로 되돌렸습니다 — Ctrl+Z 로 고친 내용으로 다시 돌아갑니다`, { key: `revert:${path}` })
+    focusTabPane(tab.getId())
+  }, [activeTab, activePath])
+
   /** F6 / Shift+F6 — 파일 트리(펴져 있을 때) → 문서가 있는 탭 묶음들 순서로 포커스를 돌린다 */
   const cyclePane = useCallback((delta: number) => {
     const tabsets: TabSetNode[] = []
@@ -369,6 +395,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
     { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
+    { id: 'revertToSaved', label: '마지막 저장 상태로 되돌리기 — 저장 안 한 수정 버림 (Ctrl+Z 로 다시)', run: revertActive, enabled: canRevert },
     { id: 'focusPathBar', label: '경로 막대로 포커스 (폴더 · 파일 · 제목 · 열 목록)', run: focusPathBar, enabled: () => activePath() !== null },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },
@@ -387,7 +414,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, focusPathBar, cyclePane, toggleSkim])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim])
 
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()

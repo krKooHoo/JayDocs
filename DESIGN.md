@@ -1295,6 +1295,30 @@ UI/UX 개편 A3(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 7 맞음(�
 
 - 설치한 Edge 앱의 창 제목 · 작업 표시줄 · `Alt+Tab` 에 보이는 모양(Edge 가 앱 이름을 앞에 붙이는지).
 
+## 34. 마지막 저장 상태로 되돌리기 (2026-11-23)
+
+UI/UX 개편 A4(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 7 맞음(앱 안 사본을 만들지 않고 저장한 상태가 기준점), 1 맞음(팔레트), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RV1 | 팔레트 **마지막 저장 상태로 되돌리기 — 저장 안 한 수정 버림 (Ctrl+Z 로 다시)**. 활성 문서에 저장 안 한 수정이 있을 때만 켜진다. 키는 주지 않는다 | ADOPT A4 — 드문 동작. TextEdit · Pages 의 Revert To → Last Saved |
+| RV2 | **묻지 않는다** — 되돌린 것 자체가 되돌리기 한 단계라 `Ctrl+Z` 한 번이면 고친 상태로 돌아간다. 알림 줄에 그 사실을 적는다 | HIG: 되돌릴 수 있는 동작은 묻지 않는다 |
+| RV3 | 기준은 **마지막으로 저장(또는 연) 내용**(`savedText` · `savedTable`) — 디스크를 다시 읽지 않는다. 충돌 중(디스크가 바뀜)이면 꺼진다 — 그때는 배너의 "디스크 내용 받기 (내 수정 버림)" | 충돌 처리와 겹치지 않게. 문구는 배너와 같은 "수정 버림" |
+| RV4 | 글 문서(md · txt · json): **활성 탭의 편집기**에 보통 트랜잭션 하나로 넣는다 — 바뀐 곳(앞 · 뒤의 같은 부분을 뺀 가운데)만 바꾼다(`lib/revert.ts`). 같은 문서가 두 창에 열려 있어도 되돌리기 기록은 활성 창에 남는다 | 편집기의 되돌리기 기록에 남아야 `Ctrl+Z` 가 된다. 바뀐 곳만 바꿔 커서 · 스크롤이 덜 흔들린다 |
+| RV5 | 표: `store.revertTable` — 저장한 스냅샷을 되돌리기 스택에 한 단계로 올린다. 읽기 전용이어도 된다(고친 것을 버리는 일) | 표의 되돌리기는 문서 단위 스택 |
+| RV6 | 되돌린 뒤 포커스는 그 창(편집기 · 그리드) | 바로 `Ctrl+Z` 를 누를 수 있게 |
+
+코드: `lib/revert.ts`(`revertChange` · `revertTextInView`), `store.revertTable`, `Workbench.tsx`(명령 `revertToSaved`).
+
+### 34.1 확인한 것
+
+`npm test` — 새 6건(`revert.test.ts` 4: 바뀐 곳만 · 더한 글 · 지운 글 · 아무 두 글. `documents.test.ts` 2: 표 되돌리기와 `Ctrl+Z`, 고친 것이 없을 때). dev `?opfs` + 내장 브라우저: `개요.md` 의 두 곳(첫 줄 · 끝)을 고침 → 팔레트로 되돌리기 → 저장한 글 · `저장됨` · 창 제목의 `●` 사라짐 · 편집기에 포커스 · 알림 → `Ctrl+Z` 한 번에 두 곳 모두 돌아옴. 고친 것이 없으면 명령이 흐리게. `목록.csv` 의 두 칸 → 되돌리기 → 원래 값, 그리드에 포커스 → `Ctrl+Z` 로 고친 값. 콘솔 오류 없음.
+
+### 34.2 확인하지 못한 것 (TESTCASES §28)
+
+- 같은 문서를 두 창에 연 채 되돌리기(다른 창에도 바로 반영되는지 — 스토어가 같은 변경을 보낸다).
+- 미리보기 전용 모드에서 되돌린 뒤의 `Ctrl+Z`(포커스가 미리보기에 있다).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

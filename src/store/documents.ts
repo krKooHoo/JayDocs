@@ -348,6 +348,23 @@ class DocumentStore {
     if (isFieldFile(path)) this.fieldsStale = true
     this.touch(path)
   }
+  /**
+   * 마지막 저장 상태로 되돌린다 (DESIGN §34) — 표는 저장된 스냅샷을 되돌리기 한 단계로 올린다(`Ctrl+Z` 로 다시 고친 표로).
+   * 읽기 전용이어도 된다 — 고친 것을 버리는 일이라. 충돌 중이면 하지 않는다(배너의 "디스크 내용 받기" 가 맡는다).
+   * 글 문서는 편집기 창이 트랜잭션으로 한다(`lib/revert.ts`) — 되돌리기 기록이 편집기에 있어서.
+   * 되돌렸으면 true
+   */
+  revertTable(path: string): boolean {
+    const d = this.docs.get(path)
+    if (!d || d.kind !== 'tsv' || d.status !== 'ready' || d.conflict || d.saving || d.table === d.savedTable) return false
+    d.past.push(d.table)
+    if (d.past.length > UNDO_LIMIT) d.past.shift()
+    d.future = []
+    d.table = d.savedTable
+    if (isFieldFile(path)) this.fieldsStale = true
+    this.touch(path)
+    return true
+  }
   canUndo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.past.length > 0 }
   canRedo(path: string) { const d = this.docs.get(path); return d?.kind === 'tsv' && d.future.length > 0 }
   undo(path: string) {

@@ -672,3 +672,32 @@ describe('구독 수명 — 누수 없음', () => {
     await flush()
   })
 })
+
+describe('마지막 저장 상태로 되돌리기 — 표 (DESIGN §34)', () => {
+  const tableOf = (path: string) => { const d = store.get(path); return d?.kind === 'tsv' ? d.table : null }
+  it('저장한 표로 돌아가고, 되돌리기 한 번이면 고친 표로 다시', async () => {
+    const path = freshTsv()
+    await open(path)
+    const saved = tableOf(path)
+    store.editTable(path, (t) => setCell(t, 1, 1, '7'))
+    store.editTable(path, (t) => setCell(t, 1, 1, '8'))
+    const edited = tableOf(path)
+    expect(store.revertTable(path)).toBe(true)
+    expect(tableOf(path)).toBe(saved)
+    expect(store.isDirty(path)).toBe(false)
+    store.undo(path)
+    expect(tableOf(path)).toBe(edited)
+    expect(store.isDirty(path)).toBe(true)
+    store.release(path)
+    await flush()
+  })
+
+  it('고친 것이 없으면 하지 않는다', async () => {
+    const path = freshTsv()
+    await open(path)
+    expect(store.revertTable(path)).toBe(false)
+    expect(store.canUndo(path)).toBe(false)
+    store.release(path)
+    await flush()
+  })
+})
