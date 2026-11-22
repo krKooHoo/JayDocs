@@ -397,6 +397,11 @@ class DocumentStore {
     for (const p of this.fieldPaths) this.ensureAux(p)
   }
 
+  /** 트리의 모든 파일 경로 (경로 막대의 목록 — DESIGN §31). 읽기만 한다 */
+  filePaths(): ReadonlySet<string> {
+    return this.treePaths
+  }
+
   /** 트리에 있는 파일인가 (아직 트리를 못 받았으면 모른다 → true) */
   hasPath(path: string): boolean {
     return this.treePaths.size === 0 || this.treePaths.has(path)

@@ -1,5 +1,7 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
-import type { EditorState } from '@codemirror/state'
+import type { EditorState, Text } from '@codemirror/state'
+
+type Tree = ReturnType<typeof syntaxTree>
 
 /**
  * 마크다운의 목차 (DESIGN §29). 하이브리드 모드의 왼쪽 띠(`OutlinePanel`)가 쓴다.
@@ -44,11 +46,25 @@ export function plainHeading(raw: string): string {
 
 /**
  * 문서의 제목들. 문서가 커서 구문 트리가 아직 다 만들어지지 않았으면 만들어진 데까지만 — 트리가 자라면 다시 부른다
- * (`budgetMs` 만큼은 기다려서 더 만든다).
+ * (`budgetMs` 만큼은 기다려서 더 만든다. 0 이면 기다리지 않고 지금 트리만 — 글을 치는 동안 부르는 곳).
  */
 export function outlineOf(state: EditorState, budgetMs = 50): OutlineItem[] {
-  const tree = ensureSyntaxTree(state, state.doc.length, budgetMs) ?? syntaxTree(state)
-  const doc = state.doc
+  const tree = budgetMs > 0 ? ensureSyntaxTree(state, state.doc.length, budgetMs) ?? syntaxTree(state) : syntaxTree(state)
+  // 같은 글이면 그때 트리가 지금 것 이상으로 자라 있었으면 된다 (구문 트리는 글이 같은 동안 자라기만 한다)
+  const hit = cache.get(state.doc)
+  if (hit && (hit.tree === tree || hit.tree.length >= tree.length)) return hit.items
+  const items = outlineFromTree(state.doc, tree)
+  cache.set(state.doc, { tree, items })
+  return items
+}
+
+/**
+ * 같은 글 · 같은 구문 트리면 뽑아 둔 것을 돌려준다 — 목차 띠와 경로 막대(DESIGN §31)가 같은 문서를 따로 뽑지 않게.
+ * 글(`Text`)이 바뀌면 새 객체라 저절로 버려진다.
+ */
+const cache = new WeakMap<Text, { tree: Tree; items: OutlineItem[] }>()
+
+function outlineFromTree(doc: Text, tree: Tree): OutlineItem[] {
   const items: OutlineItem[] = []
   tree.iterate({
     enter(node) {

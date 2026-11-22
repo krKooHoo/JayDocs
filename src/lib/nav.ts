@@ -8,7 +8,7 @@ export interface CellPos {
   c: number
 }
 
-type Opener = (path: string) => void
+type Opener = (path: string, focus?: boolean) => void
 type SelectListener = (pos: CellPos) => void
 export type PaneAction = 'cycleMdMode' | 'focus' | 'calc' | 'formatJson' | 'focusOutline'
 type ActionListener = (action: PaneAction) => void
@@ -22,14 +22,14 @@ export function setOpener(fn: Opener | null) {
   opener = fn
 }
 
-/** 문서를 탭으로 연다. pos 를 주면 (그리드 문서일 때) 그 셀을 활성으로 */
-export function openPath(path: string, pos?: CellPos) {
+/** 문서를 탭으로 연다. pos 를 주면 (그리드 문서일 때) 그 셀을 활성으로. focus: 연 문서 창으로 포커스 */
+export function openPath(path: string, pos?: CellPos, focus = false) {
   if (pos) {
     const ls = selectListeners.get(path)
     if (ls && ls.size) for (const l of ls) l(pos)
     else pendingSelect.set(path, pos)
   }
-  opener?.(path)
+  opener?.(path, focus)
 }
 
 /** 그리드 창이 켜질 때 — 미리 요청된 셀이 있으면 받고, 이후 요청을 구독한다 */

@@ -15,6 +15,8 @@ import { PreviewPane } from './PreviewPane'
 import { ReadOnlyBanner } from './ReadOnlyBanner'
 import { SkimPanel } from './SkimPanel'
 import { OutlinePanel } from './OutlinePanel'
+import { PathBar, type PathTail } from './PathBar'
+import { activeIndex, outlineOf } from '../lib/md/outline'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
 import { mdTableExtension } from './tableCommands'
@@ -45,6 +47,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const bodyRef = useRef<HTMLDivElement>(null)
   /** 글 · 구문 트리가 바뀌면 부를 함수 — 목차 띠가 넣는다 (DESIGN §29) */
   const outlinePing = useRef<(() => void) | null>(null)
+  /** 글 · 커서 · 구문 트리가 바뀌면 부를 함수 — 경로 막대의 마지막 단계(커서가 든 절의 제목)를 따라가게 (DESIGN §31) */
+  const pathPing = useRef<(() => void) | null>(null)
   /** 목차로 포커스를 옮기는 함수 — 목차 띠가 넣는다. 띠가 숨겨져 있으면 false */
   const outlineFocus = useRef<(() => boolean) | null>(null)
   const hybridComp = useRef(new Compartment())
@@ -139,7 +143,9 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           isMd ? mdTableExtension() : [],
           EditorView.updateListener.of((u) => {
             if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
-            if (outlinePing.current && (u.docChanged || syntaxTree(u.state) !== syntaxTree(u.startState))) outlinePing.current()
+            const treeMoved = u.docChanged || syntaxTree(u.state) !== syntaxTree(u.startState)
+            if (outlinePing.current && treeMoved) outlinePing.current()
+            if (pathPing.current && (treeMoved || u.selectionSet)) pathPing.current()
             if (!u.docChanged) return
             for (const tr of u.transactions) {
               if (tr.docChanged && !tr.annotation(remote)) store.applyChanges(path, tr.changes, source)
@@ -184,10 +190,56 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const outlineOn = useOutlineOn()
   const outlineShown = isMd && mode === 'hybrid' && outlineOn && ready
 
+  // 경로 막대의 마지막 단계 (DESIGN §31): 커서가 든 절의 제목. 미리보기 전용 모드는 편집기가 숨어 있어 두지 않는다
+  const headingTail = isMd && mode !== 'preview'
+  const [heading, setHeading] = useState<string | null>(null)
+  useEffect(() => {
+    const view = skimView
+    if (!view || !headingTail) { setHeading(null); return }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const update = () => {
+      timer = null
+      // 기다리지 않고 지금 트리로 — 커서 위쪽은 이미 읽혀 있다. 같은 글이면 목차 띠가 뽑은 것을 같이 쓴다
+      const items = outlineOf(view.state, 0)
+      const i = activeIndex(items, view.state.doc.lineAt(view.state.selection.main.head).number)
+      setHeading(i >= 0 ? items[i].text || '(빈 제목)' : null)
+    }
+    update()
+    pathPing.current = () => { if (timer === null) timer = setTimeout(update, 120) }
+    return () => {
+      pathPing.current = null
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [skimView, headingTail])
+
+  const pathTail: PathTail | null = headingTail && skimView ? {
+    name: '제목',
+    label: heading,
+    empty: '제목 없음',
+    list: () => {
+      const view = skimView
+      const items = outlineOf(view.state)
+      const minLevel = items.reduce((m, it) => Math.min(m, it.level), 6)
+      return {
+        current: activeIndex(items, view.state.doc.lineAt(view.state.selection.main.head).number),
+        items: items.map((it) => ({
+          label: it.text || '(빈 제목)',
+          depth: it.level - minLevel,
+          // 목차 띠와 같다 — 제목을 편집기 맨 위로, 커서는 제목 글 앞
+          run: () => {
+            const len = view.state.doc.length
+            view.dispatch({ selection: { anchor: Math.min(it.textFrom, len) }, effects: EditorView.scrollIntoView(Math.min(it.from, len), { y: 'start', yMargin: 4 }) })
+            view.focus()
+          },
+        })),
+      }
+    },
+  } : null
+
   return (
     <div className="pane" ref={root}>
       <div className="pane-bar">
-        <span className="pane-path" title={path}>{path}</span>
+        <PathBar path={path} tail={pathTail} onExit={focusPane} />
         {isMd && (
           <span className="seg" title={tip('보기 모드 — 순환', 'cycleMdMode')}>
             <button className={mode === 'source' ? 'is-on' : ''} onClick={() => setMode('source')} title="소스만">소스</button>

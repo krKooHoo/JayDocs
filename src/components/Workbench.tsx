@@ -319,6 +319,14 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     focusLater(treeOpen ? '[data-focus-target="tree"]' : '[data-focus-target="empty"]')
   }, [activeTab, model])
 
+  /** 경로 막대로 포커스 (Ctrl+Shift+., DESIGN §31) — 활성 문서 창의 막대, 마지막 단계(제목 · 열)에 */
+  const focusPathBar = useCallback(() => {
+    const tab = activeTab()
+    if (!tab || !DOC_COMPONENTS.has(tab.getComponent() ?? '')) { focusEditor(); return }
+    const seg = [...document.querySelectorAll<HTMLElement>(`[data-tab-id="${tab.getId()}"] .path-seg[tabindex="0"]`)].find((el) => el.offsetParent !== null)
+    seg?.focus()
+  }, [activeTab, focusEditor])
+
   /** F6 / Shift+F6 — 파일 트리(펴져 있을 때) → 문서가 있는 탭 묶음들 순서로 포커스를 돌린다 */
   const cyclePane = useCallback((delta: number) => {
     const tabsets: TabSetNode[] = []
@@ -355,6 +363,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
     { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
+    { id: 'focusPathBar', label: '경로 막대로 포커스 (폴더 · 파일 · 제목 · 열 목록)', run: focusPathBar, enabled: () => activePath() !== null },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 하이브리드 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
@@ -372,7 +381,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, cyclePane, toggleSkim])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, focusPathBar, cyclePane, toggleSkim])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'

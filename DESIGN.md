@@ -1219,6 +1219,34 @@ Jay 의 PC 에 설치된 연결 도우미는 그대로 남는다 — 지우려�
 
 - 설치한 Edge 앱에서 복사 → 붙여 넣기(TC-2408). Edge 는 보통 Clipboard API 가 된다.
 
+## 31. 경로 막대 (2026-11-23)
+
+UI/UX 개편 A1(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 · 4 · 5 맞음, 2 주의(아래 PB6 · PB7), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| PB1 | 문서 창 막대의 경로 글자(`pane-path`)를 **경로 막대**로 바꾼다 — `루트 › 폴더 › … › 파일 › 마지막 단계`. 새 줄을 더하지 않는다 | 창 막대가 이미 탭과 편집기 사이의 한 줄이다. 세로 자리를 늘리지 않는다 |
+| PB2 | 루트는 주 폴더면 문서 별칭(§21), 가져온 폴더면 `@별칭` | 트리 머리와 같은 이름 |
+| PB3 | 마지막 단계: 마크다운은 **커서가 든 절의 제목**(미리보기 전용 모드에서는 없다 — 편집기가 숨는다), 표는 **활성 셀의 열**(`A · 이름`), `_Field` 시트는 활성 셀이 든 **블록**(블록 사이 빈 줄은 위 블록). txt · json 은 없다 | ADOPT A1. 목차 띠(§29)는 스크롤 맨 위의 절, 경로 막대는 커서의 절 |
+| PB4 | 단계를 누르면(키보드 `Enter` · `↓` · `Space`) 목록이 뜬다. 루트 · 폴더 · 파일 단계는 **같은 폴더의 항목**(트리 순서 — 폴더 먼저), 루트 단계는 주 폴더 + 가져온 폴더. 목록에서 폴더는 안으로 들어가고(`→` 도) `←` · `Backspace`(거르는 글자가 없을 때) · 머리의 `↑` 는 상위로. 파일은 열고 그 창으로 포커스(`openPath(…, true)`) | Xcode 점프 바 · Finder 경로 막대. 트리를 펼치지 않고 이웃으로 간다 |
+| PB5 | 목록 맨 위에 입력 칸 — 글자를 치면 거른다(팔레트와 같은 `lib/match.ts`). 지금 문서가 있는 항목은 굵게, 처음 커서도 거기 | 글자로 거르기는 팔레트 · 파일 검색과 같은 손 |
+| PB6 | 폴더 목록은 **목록을 열 때만** 트리의 파일 경로(`store.filePaths()`)에서 뽑는다. 한 번에 300개까지 그리고 나머지는 "N개 더 — 글자로 거르세요" | 평소 비용 0. Unity 폴더(2만 항목)에서도 가볍게 |
+| PB7 | 제목은 `lib/md/outline.ts` 를 같이 쓴다 — 같은 글 · 같은(또는 더 자란) 구문 트리면 뽑아 둔 것을 돌려준다(캐시). 경로 막대는 글 · 커서가 바뀌면 120 ms 에 한 번, **구문 트리를 기다리지 않고**(budget 0) 지금 트리로 본다. 목록을 열 때만 50 ms 기다린다 | 치는 동안 입력이 밀리지 않게. 커서 위쪽은 이미 읽혀 있다 |
+| PB8 | 키: **`Ctrl+Shift+.`** 경로 막대로 포커스 — 활성 문서 창의 막대, 마지막 단계에서 시작(VS Code 와 같은 키). 막대 안 `← / →` · `Home / End` 단계, `Esc` 는 목록을 닫고, 목록이 없으면 편집기 · 그리드로. 팔레트 "경로 막대로 포커스". F6 순서에는 넣지 않는다(문서 창의 일부) | ADOPT A1 · 단축키 규칙(`Ctrl+Shift+` = 영역으로) |
+| PB9 | 좁으면 앞 단계부터 `…` 로 줄고, 더 좁으면 앞이 잘린다(`justify-content: flex-end`) — 파일 이름과 마지막 단계가 끝까지 보인다 | ADOPT A1 "앞 단계를 접는다" |
+
+코드: `lib/pathbar.ts`(`crumbsOf` · `listDir` · `listRoots` · `parentDir` · `filterByLabel`), `lib/match.ts`(팔레트에서 옮김), `components/PathBar.tsx` · `.css`, `MarkdownPane.tsx`(제목 단계 · `pathPing`), `GridPane.tsx`(열 · 블록 단계), `Workbench.tsx`(명령 `focusPathBar`), `lib/md/outline.ts`(캐시), `lib/nav.ts`(`openPath` 의 `focus`), `store.filePaths()`.
+
+### 31.1 확인한 것
+
+`npm test` — 이 절 새 11건(`pathbar.test.ts`: 단계 · 목록 · 루트 · 상위 · 거르기). dev `?opfs` + 내장 브라우저(`Ctrl+Shift+.` 는 이벤트로): md · csv · `_Field` 의 마지막 단계, `Ctrl+Shift+.` → `←` → `Enter` → `→` 로 폴더 안 → 글자 거르기 → `Enter` 로 csv 열기(그리드에 포커스), 열 목록에서 `메모` → 활성 셀 D, `_Field` 블록 목록 → Category 행, `Home` → 루트 목록(주 폴더 · `@가져온폴더`) → 세 단계 내려가 `Item_Field.tsv` 열기, 제목 3개(단계 들여쓰기 · 지금 절 굵게) → 첫 제목으로, 가져온 폴더 문서의 루트 단계를 마우스로, 밖을 누르면 목록이 닫힘, `Esc` 로 그리드, 560px · 900px 너비. 콘솔 오류 없음.
+
+### 31.2 확인하지 못한 것 (TESTCASES §25)
+
+- 설치한 Edge 앱에서 `Ctrl+Shift+.` 가 앱에 오는지 — HANDOFF 의 "먼저 시험".
+- 실제 한글 IME 로 목록을 거를 때(자동화는 글자를 바로 넣는다).
+- 실제 폴더 · 큰 폴더(Unity)에서 목록을 여는 속도, 긴 문서에서 치는 동안의 지연.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

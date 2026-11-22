@@ -27,8 +27,9 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭 · 분할로 편집하는 로컬 PWA. Edge
 | 코드 블록의 색(shiki) | §27 |
 | 끌어다 놓아 가져오기 · 파일 하나 가져오기 | §28 |
 | 하이브리드 목차 | §29 |
+| 경로 막대 | §31 |
 
-마지막 기능 커밋은 2026-11-22 마크다운 표 편집 개선(`cd9877f`, §23 H9~H11). 그 뒤는 문서만 — 제품 원칙(`PRINCIPLES.md`)과 UI/UX 개편 계획(`docs/research/apple-uiux/` — Apple 도구 조사 01~09, `ADOPT.md` 가져올 것, `REJECT.md` 가져오지 않을 것).
+마지막 기능은 2026-11-23 경로 막대(UI/UX 개편 A1, §31). 그 앞은 2026-11-22 마크다운 표 편집 개선(`cd9877f`, §23 H9~H11)과 문서 — 제품 원칙(`PRINCIPLES.md`)과 UI/UX 개편 계획(`docs/research/apple-uiux/` — Apple 도구 조사 01~09, `ADOPT.md` 가져올 것, `REJECT.md` 가져오지 않을 것).
 
 ## 2. 읽을 순서
 
@@ -40,14 +41,14 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭 · 분할로 편집하는 로컬 PWA. Edge
 
 항목마다 근거 · 원칙 크로스 체크 · 구현 메모는 `ADOPT.md` 의 같은 번호. 새 기능은 만들기 전에 `PRINCIPLES.md` 와 크로스 체크한다. 단축키는 Jay 가 따로 정리하지 않는다 — ADOPT 의 제안과 단축키 규칙을 따르고, `src/lib/shortcuts-table.mjs` 만 고치면 앱 · `SHORTCUTS.md` · F1 이 같이 바뀐다. 크기: 작음(반나절) · 중간(하루) · 큼(여러 날).
 
-**먼저 시험**: 설치한 Edge 앱에서 새 키가 앱에 오는지(`Alt+Enter` · `Shift+F1` · `Ctrl+Shift+.` · `Alt+,` · `Alt+.` · `Ctrl+Alt+O` · `Ctrl+Alt+Enter`), 마크다운의 지금 `Ctrl+H` 동작, Mac Chrome 에서 `Ctrl+Alt+D` · `Ctrl+Alt+M` 이 시스템과 겹치는지.
+**먼저 시험**: 설치한 Edge 앱에서 새 키가 앱에 오는지(`Alt+Enter` · `Shift+F1` · `Ctrl+Shift+.`(A1 에 이미 넣음 — TC-2512) · `Alt+,` · `Alt+.` · `Ctrl+Alt+O` · `Ctrl+Alt+Enter`), 마크다운의 지금 `Ctrl+H` 동작, Mac Chrome 에서 `Ctrl+Alt+D` · `Ctrl+Alt+M` 이 시스템과 겹치는지.
 
 순서 A → K → B → C → D → E. 묶음마다 따로 배포할 수 있다.
 
 | # | 할 일 | 크기 | 키 |
 |---|---|---|---|
 | **A** | **위치와 상태** | | |
-| A1 | 경로 막대 | 중간 | `Ctrl+Shift+.` |
+| ~~A1~~ | ~~경로 막대~~ — 2026-11-23 끝(§31) | 중간 | `Ctrl+Shift+.` |
 | A2 | 문서 상태 줄 (TSV 는 셀 정보 · 선택 요약) | 중간 | — |
 | A3 | 창 제목에 수정됨 표시 | 작음 | — |
 | A4 | 마지막 저장 상태로 되돌리기 | 작음 | 팔레트 |
@@ -112,6 +113,7 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭 · 분할로 편집하는 로컬 PWA. Edge
 | 끌어다 놓아 가져오기 — 권한 · 파일 선택 창 · 재시작 · Edge 앱 | 2212~2215 |
 | 하이브리드 목차 · 전체 경로 복사 | 2309~2311 · 2408 |
 | 마크다운 표 편집 | 217~220 · 615 |
+| 경로 막대 — Edge 앱의 `Ctrl+Shift+.` · 한글로 거르기 · 큰 폴더 | 2512~2514 |
 
 ### 3.4 정할 것 · 후보
 

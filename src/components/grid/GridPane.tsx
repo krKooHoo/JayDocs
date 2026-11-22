@@ -7,7 +7,9 @@ import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, 
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
 import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
-import { baseName, deriveSchema, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
+import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
+import { parseFieldBlocks } from '../../lib/tsv/field'
+import { PathBar, type PathTail } from '../PathBar'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
 import { Grid, type CellPos, type ColOp, type GridHandle, type RowOp } from './Grid'
@@ -372,10 +374,34 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   if (schema?.typed) schemaLabel = schema.defBlock ? `스키마: 타입 행 + ${baseName(schema.defBlock.file)}` : '스키마: 타입 행만'
   else if (schema?.headerRows) schemaLabel = 'CSV — 첫 줄을 머리글로'
 
+  // 경로 막대의 마지막 단계 (DESIGN §31): 활성 셀의 열, `_Field` 시트는 활성 셀이 든 블록
+  const fieldBlocks = useMemo(() => (table && isFieldFile(path) ? parseFieldBlocks(path, table).blocks : null), [table, path])
+  const goCell = (pos: CellPos) => { setActive(pos); refocus() }
+  let pathTail: PathTail | null = null
+  if (table && schema && fieldBlocks) {
+    // 블록 사이의 빈 줄은 위 블록에 붙여 본다
+    let at = -1
+    for (let i = 0; i < fieldBlocks.length && fieldBlocks[i].startRow <= active.r; i++) at = i
+    pathTail = {
+      name: '블록',
+      label: at >= 0 ? fieldBlocks[at].name || '(이름 없는 블록)' : null,
+      empty: '블록 밖',
+      list: () => ({ current: at, items: fieldBlocks.map((b) => ({ label: b.name || '(이름 없는 블록)', run: () => goCell({ r: b.startRow, c: 0 }) })) }),
+    }
+  } else if (table && schema && table.width > 0) {
+    const colLabel = (c: number) => { const name = schema.columns[c]?.name; return name ? `${columnLetter(c)} · ${name}` : columnLetter(c) }
+    pathTail = {
+      name: '열',
+      label: colLabel(active.c),
+      empty: '',
+      list: () => ({ current: active.c, items: Array.from({ length: table.width }, (_, c) => ({ label: colLabel(c), run: () => goCell({ r: active.r, c }) })) }),
+    }
+  }
+
   return (
     <div className="pane">
       <div className="pane-bar">
-        <span className="pane-path" title={path}>{path}</span>
+        <PathBar path={path} tail={pathTail} onExit={() => grid.current?.focus()} />
         <span className={'pane-status' + (dirty ? ' is-dirty' : '')}>{status}</span>
         <button onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title={tip('저장', 'save')}>저장</button>
         <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>

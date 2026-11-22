@@ -1,0 +1,30 @@
+/* 경로 막대 (DESIGN §31) — 문서 창 막대의 경로 자리 */
+.path-bar { flex: 1; min-width: 0; display: flex; }
+/* 넘치면 앞(왼쪽)이 잘리게 끝에 붙인다 — 파일 이름 · 마지막 단계가 늘 보인다. 넘치지 않으면 너비가 내용만큼이라 차이가 없다 */
+.path-crumbs { display: flex; align-items: center; justify-content: flex-end; min-width: 0; overflow: hidden; }
+.path-sep { color: var(--muted); padding: 0 1px; flex-shrink: 0; user-select: none; }
+.path-bar button.path-seg {
+  border: 0; background: none; padding: 1px 4px; border-radius: 4px;
+  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* 좁으면 앞 단계(루트 · 폴더)부터 줄어 … 로 접힌다 */
+  flex: 0 1 auto; min-width: 2.4em;
+}
+.path-bar button.path-seg.is-file { color: var(--fg); flex-shrink: 0; max-width: 60%; }
+.path-bar button.path-seg.is-tail { color: var(--fg); flex-shrink: 0.3; max-width: 40%; }
+.path-bar button.path-seg.is-empty { color: var(--muted); font-style: italic; }
+.path-bar button.path-seg:hover:not(:disabled), .path-bar button.path-seg.is-open { background: var(--hover); }
+
+.path-pop {
+  position: fixed; z-index: 100; width: 320px; max-width: calc(100vw - 8px);
+  display: flex; flex-direction: column;
+  background: var(--elev); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow);
+}
+.path-pop-head { display: flex; align-items: center; gap: 6px; padding: 5px 8px 3px; color: var(--muted); font-size: 11px; min-width: 0; }
+.path-pop-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path-bar button.path-pop-up { padding: 0 6px; font-size: 11px; }
+.path-pop-input { margin: 2px 8px 6px; padding: 4px 8px; font: inherit; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); }
+.path-pop-list { max-height: min(50vh, 420px); overflow: auto; padding-bottom: 4px; border-top: 1px solid var(--border); }
+.path-item { padding: 4px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.path-item.is-hl { background: var(--accent-soft); }
+.path-item.is-current { font-weight: 600; }
+.path-pop-empty { padding: 6px 12px; color: var(--muted); }
