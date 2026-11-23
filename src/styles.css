@@ -9,7 +9,7 @@
   --panel2: #fafbfc;
   --border: #e3e5e8;
   --fg: #1f2328;
-  --muted: #6e7781;
+  --muted: #59636e;           /* 흐린 글자 — 패널 · 고른 행 바탕에서도 4.5:1 이상 (DESIGN §37, contrast.test) */
   --accent: #0969da;
   --accent-soft: #e4ecfb;
   --danger: #b42318;
@@ -47,7 +47,7 @@
   --panel2: #131820;
   --border: #2a3140;
   --fg: #e4e7ec;
-  --muted: #8c95a3;
+  --muted: #959eac;
   --accent: #6cb0ff;
   --accent-soft: #1f2d45;
   --danger: #ff7b72;
@@ -548,3 +548,36 @@ button.is-primary { background: var(--accent); color: var(--badge-fg); border-co
 .help-body td { padding: 2px 6px 2px 0; vertical-align: top; border-bottom: 1px solid var(--border); }
 .help-keys { white-space: nowrap; width: 1%; }
 @media (max-width: 760px) { .help-body { columns: 1; } }
+
+/* ---- 접근성 설정 존중 (DESIGN §37) ---- */
+/* 움직임 줄이기: 전환 · 애니메이션(flexlayout, 편집기 커서 깜박임)을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* 대비 높이기 (Windows 대비 설정 · Mac 대비 증가): 흐린 글자 · 테두리를 진하게, 포커스 외곽선을 굵게 */
+@media (prefers-contrast: more) {
+  :root { --muted: #3d444d; --border: #8c959f; }
+  :root[data-theme='dark'] { --muted: #c4cad3; --border: #5a6475; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline-width: 3px; }
+  .grid-cell.is-active { outline-width: 3px; outline-offset: -3px; }
+}
+/* 고대비 (Windows 고대비 테마): 바탕색 · 상자 그림자는 시스템 색으로 덮여 사라진다 — 포커스 · 고른 항목을 외곽선과 시스템 색으로 */
+@media (forced-colors: active) {
+  :root .tree-body:focus-visible, :root .empty-pane:focus-visible, :root .preview:focus-visible, :root .outline-list:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+  :root .path-bar button.path-seg:focus-visible, :root .skim-resizer:focus-visible { outline: 2px solid Highlight; outline-offset: 1px; }
+  :root .palette-item.is-hl, :root .path-item.is-hl, :root .grid-dropdown div.is-hl, :root .tree-body:focus .tree-row.is-cursor, :root .outline-item.is-cursor, :root .ctx-menu button:focus, :root .ql-card:focus {
+    forced-color-adjust: none; background: Highlight; color: HighlightText;
+  }
+  :root .tree-row.is-cursor, :root .tree-row.is-active, :root .outline-item.is-active { outline: 1px solid CanvasText; outline-offset: -1px; }
+  :root .ql-card:focus .doc-thumb { outline: 2px solid Highlight; }
+  :root .grid-cell.has-error, :root .tsv-view td.has-error { outline: 1px dashed CanvasText; outline-offset: -2px; }
+  :root .grid-cell.is-selected { outline: 1px dotted Highlight; outline-offset: -1px; }
+  /* 활성 셀이 마지막 — 오류 · 범위 표시보다 앞선다 */
+  :root .grid-cell.is-active { outline: 2px solid Highlight; outline-offset: -2px; }
+  :root .seg button.is-on, :root .pane-bar button.outline-toggle.is-on, :root .pane-bar button.skim-toggle.is-on { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}

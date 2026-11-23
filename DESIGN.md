@@ -1370,6 +1370,28 @@ UI/UX 개편 A6(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(�
 
 - 팔레트의 계산식 파일 · 머리글 행 만들기 · 끝 개행 · 충돌 명령(코드로만).
 
+## 37. 접근성 설정 존중 · 글자 대비 (2026-11-23)
+
+UI/UX 개편 A7(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 6 맞음(Windows 고대비 · 대비 설정, Mac 대비 증가 · 동작 줄이기 모두), 2 맞음(CSS 만 — 비용 없음), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| AX1 | 흐린 글자(`--muted`)를 진하게: 라이트 `#6e7781 → #59636e`, 다크 `#8c95a3 → #959eac`. 흐린 글자가 놓이는 모든 바탕(바탕 · 떠 있는 것 · 패널 · hover · 고른 행 · 코드)에서 4.5:1 이상 — 라이트는 4.9~6.1, 다크는 4.9~6.9 | 예전 라이트는 흰 바탕에서만 4.55 이고 패널 4.24 · 고른 행 3.65 로 AA 아래였다. 다크도 고른 행 4.37 |
+| AX2 | **대비 검사 테스트**(`contrast.test.ts`): `styles.css` 의 테마 변수를 읽어 본문 · 흐린 글자 × 바탕 8가지, 강조 · 수정됨 · 오류 글자 × 바탕 · 패널을 WCAG 식으로 잰다. 4.5 아래면 실패 | 색을 바꾸다 다시 기준 밑으로 가지 않게 |
+| AX3 | `prefers-reduced-motion: reduce` — 모든 전환 · 애니메이션을 끈다(flexlayout 의 전환, 편집기 커서 깜박임은 한 번 뒤 멈춘 채 보인다) | 우리 CSS 에는 움직임이 없고, 들어온 라이브러리의 것이다 |
+| AX4 | `prefers-contrast: more` — 흐린 글자 · 테두리를 더 진하게(라이트 `#3d444d` · `#8c959f`, 다크 `#c4cad3` · `#5a6475`), 포커스 외곽선 3px, 활성 셀 외곽선 3px | Windows 대비 설정 · Mac "대비 증가" |
+| AX5 | `forced-colors: active`(Windows 고대비 테마) — 바탕색 · 상자 그림자는 시스템 색으로 덮여 사라진다. 그것으로만 보이던 표시를 외곽선 · 시스템 색(`Highlight` · `HighlightText` · `CanvasText`)으로: 트리 · 빈 창 · 미리보기 · 목차의 포커스, 경로 막대 포커스, 팔레트 · 경로 목록 · enum 드롭다운의 고른 항목, 트리 커서 · 현재 문서, 목차 지금 절, 문맥 메뉴 포커스, 폴더 격자 카드, 그리드 범위 · 오류 · 활성 셀(활성 셀이 마지막에 이긴다), 켜진 보기 모드 · 목차 · 훑어보기 단추 | 고대비에서 포커스 · 선택을 잃지 않게. 컴포넌트 CSS 가 뒤에 읽혀 더 구체적인 선택자를 쓰므로 이 묶음은 `:root` 를 앞에 붙여 이긴다 |
+
+코드: `styles.css`(변수 · 끝의 세 `@media`), `lib/contrast.test.ts`.
+
+### 37.1 확인한 것
+
+`npm test` — 새 5건(`contrast.test.ts`, 예전 색이면 라이트 패널 4.24 에서 실패). `npm run build`. dev `?opfs` + 내장 브라우저: 세 `@media` 묶음이 읽힘(규칙 1 · 4 · 9개), 다크 `--muted` `#959eac`, 라이트 `#59636e`(트리 머리 글자의 계산된 색 `rgb(89, 99, 110)`), 라이트 화면. 콘솔 오류 없음.
+
+### 37.2 확인하지 못한 것 (TESTCASES §31)
+
+내장 브라우저는 `prefers-reduced-motion` · `prefers-contrast` · `forced-colors` 를 흉내 내지 못한다 — 세 설정을 실제로 켠 화면은 Jay 가 본다(Windows 고대비 테마 · 대비 설정 · 애니메이션 끄기, Mac 대비 증가 · 동작 줄이기).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
