@@ -5,8 +5,9 @@
  *
  * keys 표기: `Ctrl+Shift+P`, `Alt+]`, `F1`, `Ctrl+Alt+=` … Mac 에서는 Ctrl 을 ⌘ 로 읽는다.
  * command 가 있으면 전역 키 처리기가 그 명령을 실행한다. 없으면 그 창(그리드·에디터·트리)이 직접 처리하는 키로, 문서용이다.
+ * palette 는 그 창이 직접 받는 키의 팔레트 명령 id — 팔레트 · 단추 툴팁에 키를 보이기만 하고 전역 키로는 쓰지 않는다 (lib/paneCommands.ts).
  *
- * @typedef {{ keys: string; label: string; command?: string; note?: string }} Shortcut
+ * @typedef {{ keys: string; label: string; command?: string; palette?: string; note?: string }} Shortcut
  * @typedef {{ scope: string; intro?: string; items: Shortcut[] }} ShortcutGroup
  */
 
@@ -153,17 +154,17 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+D', label: '아래로 채우기 (범위의 첫 행을 아래로, 한 행이면 위 행에서)' },
       { keys: 'Ctrl+R', label: '오른쪽으로 채우기' },
       { keys: '채우기 핸들 드래그', label: '범위 오른쪽 아래 네모를 끌어 채우기 — 값 무늬를 되풀이, 끄는 방향으로 숫자 2칸 이상이 등차면 수열을 잇는다' },
-      { keys: 'Ctrl+F', label: '찾기 — 그리드 위에 찾기 막대 (활성 셀 값이 짧으면 미리 채운다)' },
-      { keys: 'Ctrl+H', label: '찾기 / 바꾸기 — 막대의 바꾸기 칸으로' },
+      { keys: 'Ctrl+F', label: '찾기 — 그리드 위에 찾기 막대 (활성 셀 값이 짧으면 미리 채운다)', palette: 'gridFind' },
+      { keys: 'Ctrl+H', label: '찾기 / 바꾸기 — 막대의 바꾸기 칸으로', palette: 'gridReplace' },
       { keys: 'F3 / Shift+F3', label: '다음 / 이전 찾기' },
       { keys: 'Enter / Shift+Enter (찾기 막대)', label: '다음 / 이전 찾기, Esc 로 막대를 닫고 그리드로' },
       { keys: 'Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z', label: '되돌리기 / 다시 실행 (문서 단위, 다시 실행은 둘 중 아무거나)' },
       { keys: 'Space', label: 'bool 셀 켜기 / 끄기' },
-      { keys: 'Ctrl+Alt+=', label: '아래에 행 삽입 (선택한 행 수만큼)' },
-      { keys: 'Ctrl+Alt+-', label: '선택한 행 삭제' },
-      { keys: 'Ctrl+Alt+Shift+=', label: '오른쪽에 열 삽입 (묻지 않는다 — 알림의 되돌리기나 Ctrl+Z)' },
-      { keys: 'Ctrl+Alt+Shift+-', label: '선택한 열 삭제 (묻지 않는다 — 알림의 되돌리기나 Ctrl+Z)' },
-      { keys: 'Ctrl+Shift+D', label: '행 복제' },
+      { keys: 'Ctrl+Alt+=', label: '아래에 행 삽입 (선택한 행 수만큼)', palette: 'gridRowBelow' },
+      { keys: 'Ctrl+Alt+-', label: '선택한 행 삭제', palette: 'gridRowDel' },
+      { keys: 'Ctrl+Alt+Shift+=', label: '오른쪽에 열 삽입 (묻지 않는다 — 알림의 되돌리기나 Ctrl+Z)', palette: 'gridColRight' },
+      { keys: 'Ctrl+Alt+Shift+-', label: '선택한 열 삭제 (묻지 않는다 — 알림의 되돌리기나 Ctrl+Z)', palette: 'gridColDel' },
+      { keys: 'Ctrl+Shift+D', label: '행 복제', palette: 'gridRowDup' },
       { keys: '↓ / ↑ (enum 드롭다운)', label: '후보 고르기, Enter 로 확정' },
       { keys: 'F9', label: '계산식 적용 — 같은 폴더 `X_Calc.tsv` 의 식을 평가해 값 열에 써 넣는다 (바뀔 셀은 미리 노란 밑줄)', command: 'calc' },
       { keys: 'Ctrl+Alt+E', label: 'C# DTO 내보내기 — 표의 머리글로 DTO 클래스(.cs)를 만든다. 정수 열은 int, 실수 열은 float, 나머지는 string. 처음에만 경로를 묻고(파일 이름이 클래스 이름) 그 뒤로는 묻지 않고 덮어쓴다 — 경로를 바꾸려면 팔레트의 "C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기"', command: 'exportDto' },

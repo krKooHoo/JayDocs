@@ -4,7 +4,7 @@ import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
-import { paneAction, requestQuickLook, setOpener } from '../lib/nav'
+import { paneAction, requestQuickLook, sendToPane, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -22,6 +22,7 @@ import { SUMMARY_KEYS, SUMMARY_LABELS, toggleSummaryKey, useSummaryKeys } from '
 import { confirmConvertToUtf8 } from './ReadOnlyBanner'
 import { EditorView } from '@codemirror/view'
 import { revertTextInView } from '../lib/revert'
+import { PANE_COMMANDS } from '../lib/paneCommands'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
@@ -431,6 +432,26 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); const d = path ? store.get(path) : undefined; return !!d && d.status === 'ready' && d.encoding !== 'utf-8' },
     },
   ]), [summaryKeys, activePath])
+
+  // 창 막대 단추의 팔레트 명령 (DESIGN §36) — 활성 탭의 창 하나에만 보낸다. 충돌 배너의 두 선택도 팔레트에
+  useEffect(() => {
+    const activeOf = (scope: 'grid' | 'md') => {
+      const path = activePath()
+      if (!path) return null
+      return (scope === 'grid' ? isTsvPath(path) : isMarkdownPath(path)) ? path : null
+    }
+    const conflictPath = () => { const path = activePath(); return path && store.get(path)?.conflict ? path : null }
+    return registerCommands([
+      ...PANE_COMMANDS.map((c) => ({
+        id: c.id,
+        label: c.label,
+        run: () => { const tab = activeTab(); if (tab && activeOf(c.scope)) sendToPane(tab.getId(), c.id) },
+        enabled: () => { const path = activeOf(c.scope); return !!path && (!c.edits || !store.isReadOnly(path)) },
+      })),
+      { id: 'conflictTakeDisk', label: '충돌: 디스크 내용 받기 (내 수정 버림)', run: () => { const p = conflictPath(); if (p) store.takeDisk(p) }, enabled: () => !!conflictPath() },
+      { id: 'conflictOverwrite', label: '충돌: 내 내용으로 덮어쓰기', run: () => { const p = conflictPath(); if (p) void store.overwrite(p) }, enabled: () => !!conflictPath() },
+    ])
+  }, [activePath, activeTab])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
     const prefix = from + '/'

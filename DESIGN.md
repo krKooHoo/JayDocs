@@ -1343,6 +1343,33 @@ UI/UX 개편 A5(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(�
 
 - 문서가 하나도 없는 실제 폴더를 열었을 때의 트리 안내(OPFS 샘플은 비울 수 없다).
 
+## 36. 막대 단추 = 팔레트 명령 · 툴팁 단축키 (2026-11-23)
+
+UI/UX 개편 A6(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(모든 동작이 팔레트에, 단축키를 툴팁에서 발견), 6 맞음(표기를 한 곳에서 만든다), 나머지 상관없음.
+
+**점검 결과**: ADOPT 가 적은 그리드 `＋위` · `＋끝` · `＋왼쪽` 과 보기 모드 4개만이 아니라, **그리드 툴바의 단추는 하나도 팔레트 명령이 없었다** — 그리드가 키를 직접 받아서다. 충돌 배너의 두 단추도 없었다. 창 막대(저장 · 분할 · 목차 · 훑어보기 · JSON 정렬) · 앱 머리 · 트리 막대는 이미 있었다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| PC1 | 창 막대 · 그리드 툴바 단추의 명령을 한 표(`lib/paneCommands.ts`)에 둔다 — id · 팔레트 이름(`표: 위에 행 삽입` · `보기: 하이브리드` …) · 툴팁 설명 · 고치는 명령인지. 그리드 15개(되돌리기 · 다시 실행 · 행 5 · 열 3 · 찾기 · 바꾸기 · 계산식 파일 · 머리글 행 만들기 · 끝 개행), 보기 모드 4개 | 팔레트가 Mac 메뉴 막대 역할 — 모든 동작이 있어야 한다. 단추와 명령이 같은 처리(`runPane`)를 부른다 |
+| PC2 | 팔레트 명령은 **활성 탭의 창 하나**에만 보낸다(`nav.sendToPane` → 그 탭의 `.pane` 에 이벤트, `usePaneCommands`). 경로로 보내는 `paneAction` 은 같은 문서의 모든 창에 가서, 같은 표를 두 창에 열면 행 넣기가 두 번 된다 | 같은 표를 두 창에 열고 "표: 위에 행 삽입" → 한 번만 들어가는 것을 확인 |
+| PC3 | 툴팁은 `설명 (키)` 한 형식 — `cmdTitle(id)` 가 만든다. 키는 단축키 표에서: 그 창이 직접 받는 키는 표의 줄에 **`palette: 'id'`** 를 달아 팔레트 · 툴팁에 보이기만 한다(전역 키로는 쓰지 않는다). 표에 줄이 없는 되돌리기 · 다시 실행만 `paneCommands.ts` 의 `keys` | 손으로 적은 키가 표와 어긋나지 않게. `command` 로 달면 전역 키 처리기가 그 키를 다른 창에서도 가로챈다 |
+| PC4 | 고치는 명령은 읽기 전용 문서에서 꺼진다. 보기 모드는 마크다운에서만 | 팔레트에 흐리게 보인다 |
+| PC5 | 충돌 배너의 두 선택도 팔레트에 — "충돌: 디스크 내용 받기 (내 수정 버림)" · "충돌: 내 내용으로 덮어쓰기"(충돌 중일 때만) | 배너 단추도 단추다 |
+| PC6 | **빠짐 검사 테스트**(`paneCommands.test.ts`): 앱 머리 · 트리 막대 · 창 막대 · 그리드 툴바 구간의 `<button` 은 모두 `data-command="id"` 를 달아야 하고, 그 id 는 등록된 명령이어야 한다. `paneCommands.ts` 의 명령은 모두 단추가 있어야 한다(찾기 단추가 함께 맡는 바꾸기만 빼고) | ADOPT A6 "빠짐을 다시 막는다" |
+
+하지 않은 것: 맥락 메뉴의 단축키 표기(A6 의 3 — K1 에서), 트리 문맥 메뉴의 항목(이름 바꾸기 · 지우기 · 전체 경로 복사)은 트리 커서에 대한 동작이라 키(`F2` · `Delete` · `Shift+F10`)로 닿고 팔레트에는 넣지 않았다(K1 의 맥락 메뉴에서 다시 본다). 찾기 막대(이전 · 다음 · 바꾸기 · 모두 바꾸기)는 막대 안의 키로 닿는다.
+
+코드: `lib/paneCommands.ts` · `.test.ts`, `lib/commands.ts`(`cmdTitle` · `palette` 키), `lib/nav.ts`(`sendToPane`), `components/usePaneCommands.ts`, `GridPane.tsx`(`runPane` · 툴바), `MarkdownPane.tsx`(보기 모드), `Workbench.tsx`(등록), `shortcuts-table.mjs`(`palette`), `App.tsx` · `FileTree.tsx`(`data-command`).
+
+### 36.1 확인한 것
+
+`npm test` — 새 7건(`paneCommands.test.ts`). dev `?opfs` + 내장 브라우저: 같은 `코드.md` 를 두 창에 연 채 팔레트 "보기: 하이브리드" → 활성 창만 바뀜, 같은 `목록.csv` 를 두 창에 연 채 팔레트 "표: 위에 행 삽입" → 이벤트 한 번 · 행 하나(4 → 5), "표: 되돌리기"(`Ctrl+Z` 표시)로 4, 툴바 툴팁 `선택한 행 아래에 빈 행 — 선택한 행 수만큼 (Ctrl+Alt+=)` 등. 콘솔 오류 없음. (처음엔 "11행 들어감" 으로 보였는데, 머리글 위에 행을 넣어 열 이름이 빈 `A1` 뒤에 `5행` 이 붙은 상태 줄 글을 시험 스크립트가 `15행` 으로 읽은 것이었다 — 앱 문제 아님.)
+
+### 36.2 확인하지 못한 것 (TESTCASES §30)
+
+- 팔레트의 계산식 파일 · 머리글 행 만들기 · 끝 개행 · 충돌 명령(코드로만).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

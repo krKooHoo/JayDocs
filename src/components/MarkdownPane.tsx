@@ -3,7 +3,7 @@ import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
 import { baseExtensions, isMarkdownPath, remote } from '../lib/cm'
-import { runCommand, tip } from '../lib/commands'
+import { cmdTitle, runCommand, tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -17,6 +17,7 @@ import { SkimPanel } from './SkimPanel'
 import { OutlinePanel } from './OutlinePanel'
 import { PathBar, type PathTail } from './PathBar'
 import { DocStatus } from './DocStatus'
+import { usePaneCommands } from './usePaneCommands'
 import { activeIndex, outlineOf } from '../lib/md/outline'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
@@ -84,6 +85,15 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     return () => store.release(path)
   }, [path])
   useEffect(() => { setModeState(loadMode(path)) }, [path])
+
+  // 팔레트의 보기 모드 명령 (DESIGN §36) — 활성 탭의 이 창에만 온다
+  usePaneCommands(root, (id) => {
+    if (!isMarkdownPath(path)) return
+    if (id === 'viewSource') setMode('source')
+    else if (id === 'viewHybrid') setMode('hybrid')
+    else if (id === 'viewSplit') setMode('split')
+    else if (id === 'viewPreview') setMode('preview')
+  })
 
   // 전역 명령(보기 모드 순환 · 포커스)
   useEffect(() => onPaneAction(path, (a) => {
@@ -238,24 +248,26 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
 
   return (
     <div className="pane" ref={root}>
+      {/* 명령 막대 — 단추마다 data-command (lib/paneCommands.ts, paneCommands.test) */}
       <div className="pane-bar">
         <PathBar path={path} tail={pathTail} onExit={focusPane} />
         {isMd && (
           <span className="seg" title={tip('보기 모드 — 순환', 'cycleMdMode')}>
-            <button className={mode === 'source' ? 'is-on' : ''} onClick={() => setMode('source')} title="소스만">소스</button>
-            <button className={mode === 'hybrid' ? 'is-on' : ''} onClick={() => setMode('hybrid')} title="커서 줄은 원문, 나머지는 렌더 (Obsidian 식)">하이브리드</button>
-            <button className={mode === 'split' ? 'is-on' : ''} onClick={() => setMode('split')} title="소스 + 미리보기">분할</button>
-            <button className={mode === 'preview' ? 'is-on' : ''} onClick={() => setMode('preview')} title="미리보기만">미리보기</button>
+            <button data-command="viewSource" className={mode === 'source' ? 'is-on' : ''} onClick={() => setMode('source')} title={cmdTitle('viewSource')}>소스</button>
+            <button data-command="viewHybrid" className={mode === 'hybrid' ? 'is-on' : ''} onClick={() => setMode('hybrid')} title={cmdTitle('viewHybrid')}>하이브리드</button>
+            <button data-command="viewSplit" className={mode === 'split' ? 'is-on' : ''} onClick={() => setMode('split')} title={cmdTitle('viewSplit')}>분할</button>
+            <button data-command="viewPreview" className={mode === 'preview' ? 'is-on' : ''} onClick={() => setMode('preview')} title={cmdTitle('viewPreview')}>미리보기</button>
           </span>
         )}
         {isJson && (
           <>
             <span className={'pane-status' + (jsonErr ? ' is-err' : '')} title={jsonErr ?? 'JSON 문법 이상 없음'}>{jsonErr ? 'JSON 오류' : 'JSON ✓'}</span>
-            <button onClick={formatActive} disabled={readOnly} title="들여쓰기 2칸으로 정렬 (명령 팔레트: JSON 정렬). Ctrl+Z 로 되돌린다">정렬</button>
+            <button data-command="formatJson" onClick={formatActive} disabled={readOnly} title={tip('들여쓰기 2칸으로 정렬 — Ctrl+Z 로 되돌린다', 'formatJson')}>정렬</button>
           </>
         )}
         {isMd && mode === 'hybrid' && (
           <button
+            data-command="toggleOutline"
             className={'outline-toggle' + (outlineOn ? ' is-on' : '')}
             aria-pressed={outlineOn}
             onClick={() => { setOutlineOn(!outlineOn); focusPane() }}
@@ -266,6 +278,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         )}
         {skimmable && (
           <button
+            data-command="toggleSkim"
             className={'skim-toggle' + (skimOn ? ' is-on' : '')}
             aria-pressed={skimOn}
             onClick={() => { runCommand('toggleSkim'); focusPane() }}
@@ -274,14 +287,14 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
             훑어보기
           </button>
         )}
-        <button onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title={tip('저장', 'save')}>저장</button>
-        <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
+        <button data-command="save" onClick={() => void store.save(path)} disabled={!dirty || !!d?.conflict || !!d?.saving} title={tip('저장', 'save')}>저장</button>
+        <button data-command="split" onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
       {d?.conflict && (
         <div className="banner">
           디스크의 파일이 바뀌었습니다. 어느 쪽을 쓸까요?
-          <button onClick={() => store.takeDisk(path)}>디스크 내용 받기 (내 수정 버림)</button>
-          <button onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
+          <button data-command="conflictTakeDisk" onClick={() => store.takeDisk(path)}>디스크 내용 받기 (내 수정 버림)</button>
+          <button data-command="conflictOverwrite" onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
         </div>
       )}
       {readOnly && <ReadOnlyBanner path={path} />}

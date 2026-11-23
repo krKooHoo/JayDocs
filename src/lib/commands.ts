@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { SHORTCUTS } from './shortcuts-table.mjs'
 import { normalizeCombo } from './keys'
+import { PANE_COMMANDS, paneCommand } from './paneCommands'
 
 /**
  * 명령 레지스트리. 단축키 표의 `command` 와 명령 팔레트가 여기서 실행할 것을 찾는다.
@@ -32,12 +33,15 @@ const keysByCommand = new Map<string, string>()
 export const commandByCombo = new Map<string, string>()
 for (const g of SHORTCUTS) {
   for (const s of g.items) {
+    // 창이 직접 받는 키의 팔레트 명령 — 키를 보이기만 한다 (전역 키로는 쓰지 않는다)
+    if (s.palette && !keysByCommand.has(s.palette)) keysByCommand.set(s.palette, s.keys)
     if (!s.command) continue
     if (!keysByCommand.has(s.command)) keysByCommand.set(s.command, s.keys)
     if (!s.keys.includes('…')) commandByCombo.set(normalizeCombo(s.keys), s.command)
   }
 }
 for (let n = 1; n <= 9; n++) commandByCombo.set(`Alt+${n}`, `tab${n}`)
+for (const c of PANE_COMMANDS) if (c.keys && !keysByCommand.has(c.id)) keysByCommand.set(c.id, c.keys)
 
 /** 명령 id 의 단축키 (표의 첫 번째 것). 없으면 undefined */
 export function keysOf(id: string): string | undefined {
@@ -48,6 +52,11 @@ export function keysOf(id: string): string | undefined {
 export function tip(text: string, id: string): string {
   const k = keysByCommand.get(id)
   return k ? `${text} (${k})` : text
+}
+
+/** 창 막대 단추의 툴팁 — `paneCommands.ts` 의 설명 + 키 (DESIGN §36) */
+export function cmdTitle(id: string): string {
+  return tip(paneCommand(id)?.title ?? id, id)
 }
 
 export function registerCommands(cmds: Command[]): () => void {

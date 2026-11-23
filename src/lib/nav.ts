@@ -82,3 +82,14 @@ export function onPaneAction(path: string, l: ActionListener): () => void {
   set.add(l)
   return () => { set!.delete(l) }
 }
+
+// ---- 창 하나에만 보내는 명령 (DESIGN §36). paneAction 은 그 경로의 모든 창에 가서, 같은 표를 두 창에 열면 행 넣기가 두 번 된다
+export const PANE_COMMAND_EVENT = 'jaydocs-pane-command'
+
+/** 탭(id)의 문서 창(`.pane`)에 명령을 보낸다. 창이 없으면 false */
+export function sendToPane(tabId: string, commandId: string): boolean {
+  const el = document.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tabId)}"] > .pane`)
+  if (!el) return false
+  el.dispatchEvent(new CustomEvent(PANE_COMMAND_EVENT, { detail: commandId }))
+  return true
+}

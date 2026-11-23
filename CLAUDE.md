@@ -23,6 +23,7 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭·분할로 편집하는 로컬 PWA. Vite +
 - 가져온 폴더 경로 규칙(`@별칭/…`): `src/lib/roots.mjs`
 - 단축키: `src/lib/shortcuts-table.mjs` → `npm run shortcuts` 가 `SHORTCUTS.md` 를 만든다(테스트가 동기화를 검사).
 - 새 문서 템플릿(형식마다 빈 문서 · 예시): `src/lib/templates.ts` — 형식을 늘리면 여기에도 넣는다(테스트가 검사).
+- 창 막대 · 그리드 툴바 단추의 팔레트 명령: `src/lib/paneCommands.ts` — 막대에 단추를 넣으면 `data-command` 를 달고 여기에도 넣는다(테스트가 검사). 창이 직접 받는 키는 단축키 표의 줄에 `palette: 'id'` 로.
 - 코드 블록에 색을 넣는 언어: `src/lib/code/langs.ts` — 쓰는 언어만 넣는다(문법이 언어마다 청크라 설치 크기가 는다, DESIGN §27).
 - **새 기능을 넣을 때 단축키 표와 팔레트 명령을 같이 넣는다.** 모든 작업이 키보드로 되어야 하고 Sheets · Excel 관행을 따른다. 브라우저가 가로채는 조합(`Ctrl+W` `Ctrl+T` `Ctrl+N` `Ctrl+Tab` `Ctrl+숫자`)과 글자 키 단독 단축키는 쓰지 않는다.
 

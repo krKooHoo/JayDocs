@@ -434,16 +434,17 @@ export function FileTree(p: Props) {
 
   return (
     <div className="tree" ref={setTreeBox}>
-      <button className="tree-search" onClick={() => runCommand('fileSearch')} title={tip('파일 이름으로 찾아 열기', 'fileSearch')}>
+      {/* 명령 막대 — 단추마다 data-command (lib/paneCommands.ts, paneCommands.test) */}
+      <button className="tree-search" data-command="fileSearch" onClick={() => runCommand('fileSearch')} title={tip('파일 이름으로 찾아 열기', 'fileSearch')}>
         <span className="tree-search-icon">🔍</span>
         <span className="tree-search-label">파일 검색</span>
         <kbd>{keysOf('fileSearch')}</kbd>
       </button>
       <div className="tree-bar">
         <span className="tree-dir" title={selectedDir || '(루트)'}>{selectedDir || '(루트)'}</span>
-        <button onClick={() => p.onNewFile(selectedDir)} title={tip('선택한 폴더에 새 파일', 'newFile')}>＋파일</button>
-        <button onClick={() => p.onNewFolder(selectedDir)} title={tip('선택한 폴더에 새 폴더', 'newFolder')}>＋폴더</button>
-        <button onClick={p.onRefresh} title="새로고침">↻</button>
+        <button data-command="newFile" onClick={() => p.onNewFile(selectedDir)} title={tip('선택한 폴더에 새 문서', 'newFile')}>＋파일</button>
+        <button data-command="newFolder" onClick={() => p.onNewFolder(selectedDir)} title={tip('선택한 폴더에 새 폴더', 'newFolder')}>＋폴더</button>
+        <button data-command="refreshTree" onClick={p.onRefresh} title={tip('파일 트리 새로고침', 'refreshTree')}>↻</button>
       </div>
       <div
         className="tree-body"

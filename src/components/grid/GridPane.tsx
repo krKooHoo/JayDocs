@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { onPaneAction, onSelectRequest, openPath } from '../../lib/nav'
-import { tip } from '../../lib/commands'
+import { cmdTitle, tip } from '../../lib/commands'
 import { backend } from '../../lib/backend'
 import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
@@ -11,6 +11,7 @@ import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabi
 import { parseFieldBlocks } from '../../lib/tsv/field'
 import { PathBar, type PathTail } from '../PathBar'
 import { DocStatus } from '../DocStatus'
+import { usePaneCommands } from '../usePaneCommands'
 import { summarizeRange, summaryParts, useSummaryKeys } from '../../lib/tsv/summary'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
@@ -401,6 +402,32 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     }
   }
 
+  // 막대 단추와 팔레트 명령 (DESIGN §36) — 같은 처리. 팔레트 명령은 활성 탭의 창 하나에만 온다
+  const paneRoot = useRef<HTMLDivElement>(null)
+  const runPane = (id: string) => {
+    if (!table) return
+    switch (id) {
+      case 'gridUndo': undo(); refocus(); break
+      case 'gridRedo': redo(); refocus(); break
+      case 'gridRowAbove': rowOp('above', currentRange()); break
+      case 'gridRowBelow': rowOp('below', currentRange()); break
+      case 'gridRowAppend': rowOp('append', currentRange()); break
+      case 'gridRowDup': rowOp('dup', currentRange()); break
+      case 'gridRowDel': rowOp('del', currentRange()); break
+      case 'gridColLeft': colOp('left', currentRange()); break
+      case 'gridColRight': colOp('right', currentRange()); break
+      case 'gridColDel': colOp('del', currentRange()); break
+      case 'gridFind': openFind(false); break
+      case 'gridReplace': openFind(true); break
+      case 'gridCalcFile': if (hasCalc) openPath(calcPath); else void createCalc(); break
+      case 'gridSeedHeader':
+        if (table.rows.length > 0) { showNotice('빈 표에서만 만든다 — 이미 행이 있습니다'); break }
+        edit(table.format === 'csv' ? (t) => seedHeaderTable(t) : seedTypedTable); refocus(); break
+      case 'gridTrailingNewline': edit((t) => ({ ...t, trailingNewline: true })); refocus(); break
+    }
+  }
+  usePaneCommands(paneRoot, runPane)
+
   // 문서 상태 줄 (DESIGN §32): 활성 셀의 이름 · 열 · 타입 · 검증 오류 · Field 설명, 여러 칸을 고르면 선택 요약
   const summaryKeys = useSummaryKeys()
   const summary = useMemo(() => {
@@ -429,11 +456,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
         <span className="ds-item ds-opt">{schemaLabel}</span>
         {hasCalc && calcRules && <span className="ds-item ds-opt" title={calcPath}>계산식 {calcRules.rules.length}개{calcResult?.staleCount ? ` · 바뀔 셀 ${calcResult.staleCount}` : ''}</span>}
         {!table.trailingNewline && (
-          <button
-            className="ds-btn"
-            title="파일 끝에 개행을 넣는다. 끝 개행이 없으면 행을 덧붙일 때마다 마지막 줄이 git diff 에 같이 나온다 (.editorconfig 도 끝 개행을 요구한다)"
-            onClick={() => { edit((t) => ({ ...t, trailingNewline: true })); refocus() }}
-          >
+          <button className="ds-btn" data-command="gridTrailingNewline" title={cmdTitle('gridTrailingNewline')} onClick={() => runPane('gridTrailingNewline')}>
             끝 개행 추가
           </button>
         )}
@@ -442,17 +465,17 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   }
 
   return (
-    <div className="pane">
+    <div className="pane" ref={paneRoot}>
       <div className="pane-bar">
         <PathBar path={path} tail={pathTail} onExit={() => grid.current?.focus()} />
-        <button onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title={tip('저장', 'save')}>저장</button>
-        <button onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
+        <button data-command="save" onClick={() => void store.save(path)} disabled={!dirty || !!doc?.conflict || !!doc?.saving} title={tip('저장', 'save')}>저장</button>
+        <button data-command="split" onClick={onSplit} title={tip('이 문서를 오른쪽 창에도 연다', 'split')}>오른쪽에 분할</button>
       </div>
       {doc?.conflict && (
         <div className="banner">
           디스크의 파일이 바뀌었습니다. 어느 쪽을 쓸까요?
-          <button onClick={() => store.takeDisk(path)}>디스크 내용 받기 (내 수정 버림)</button>
-          <button onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
+          <button data-command="conflictTakeDisk" onClick={() => store.takeDisk(path)}>디스크 내용 받기 (내 수정 버림)</button>
+          <button data-command="conflictOverwrite" onClick={() => void store.overwrite(path)}>내 내용으로 덮어쓰기</button>
         </div>
       )}
       {readOnly && <ReadOnlyBanner path={path} />}
@@ -462,48 +485,48 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       {d?.status === 'loading' && <div className="pane-empty">불러오는 중…</div>}
       {table && schema && validation && (
         <>
+          {/* 명령 막대 — 단추마다 data-command (lib/paneCommands.ts, paneCommands.test) */}
           <div className="grid-toolbar">
-            <button onClick={() => { undo(); refocus() }} disabled={!canUndo} title="되돌리기 (Ctrl+Z)">↶</button>
-            <button onClick={() => { redo(); refocus() }} disabled={!canRedo} title="다시 실행 (Ctrl+Y)">↷</button>
+            <button data-command="gridUndo" onClick={() => runPane('gridUndo')} disabled={!canUndo} title={cmdTitle('gridUndo')}>↶</button>
+            <button data-command="gridRedo" onClick={() => runPane('gridRedo')} disabled={!canRedo} title={cmdTitle('gridRedo')}>↷</button>
             <span className="sep" />
             <span className="grid-toolbar-label">행</span>
-            <button onClick={() => rowOp('above', currentRange())} disabled={!table.rows.length} title="선택한 행 위에 빈 행">＋위</button>
-            <button onClick={() => rowOp('below', currentRange())} disabled={!table.rows.length} title="선택한 행 아래에 빈 행 (Ctrl+Alt+=)">＋아래</button>
-            <button onClick={() => rowOp('append', currentRange())} title="맨 끝에 빈 행">＋끝</button>
-            <button onClick={() => rowOp('dup', currentRange())} disabled={!table.rows.length} title="선택한 행 복제 (Ctrl+Shift+D)">복제</button>
-            <button onClick={() => rowOp('del', currentRange())} disabled={!table.rows.length} title="선택한 행 삭제 (Ctrl+Alt+-)">삭제</button>
+            <button data-command="gridRowAbove" onClick={() => runPane('gridRowAbove')} disabled={!table.rows.length} title={cmdTitle('gridRowAbove')}>＋위</button>
+            <button data-command="gridRowBelow" onClick={() => runPane('gridRowBelow')} disabled={!table.rows.length} title={cmdTitle('gridRowBelow')}>＋아래</button>
+            <button data-command="gridRowAppend" onClick={() => runPane('gridRowAppend')} title={cmdTitle('gridRowAppend')}>＋끝</button>
+            <button data-command="gridRowDup" onClick={() => runPane('gridRowDup')} disabled={!table.rows.length} title={cmdTitle('gridRowDup')}>복제</button>
+            <button data-command="gridRowDel" onClick={() => runPane('gridRowDel')} disabled={!table.rows.length} title={cmdTitle('gridRowDel')}>삭제</button>
             <span className="sep" />
             <span className="grid-toolbar-label">열</span>
-            <button onClick={() => colOp('left', currentRange())} title="선택한 열 왼쪽에 빈 열">＋왼쪽</button>
-            <button onClick={() => colOp('right', currentRange())} title="선택한 열 오른쪽에 빈 열 (Ctrl+Alt+Shift+=)">＋오른쪽</button>
-            <button onClick={() => colOp('del', currentRange())} disabled={table.width <= 1} title="선택한 열 삭제 (Ctrl+Alt+Shift+-)">삭제</button>
+            <button data-command="gridColLeft" onClick={() => runPane('gridColLeft')} title={cmdTitle('gridColLeft')}>＋왼쪽</button>
+            <button data-command="gridColRight" onClick={() => runPane('gridColRight')} title={cmdTitle('gridColRight')}>＋오른쪽</button>
+            <button data-command="gridColDel" onClick={() => runPane('gridColDel')} disabled={table.width <= 1} title={cmdTitle('gridColDel')}>삭제</button>
             <span className="sep" />
-            <button onClick={() => openFind(false)} title="찾기 (Ctrl+F) · 바꾸기 (Ctrl+H)">찾기</button>
+            <button data-command="gridFind" onClick={() => runPane('gridFind')} title={`${cmdTitle('gridFind')} · ${cmdTitle('gridReplace')}`}>찾기</button>
             {schema.typed && calcPath !== path && (
               <>
                 <span className="sep" />
                 {hasCalc ? (
                   <>
                     <button
+                      data-command="calc"
                       onClick={() => { runCalc(); refocus() }}
                       disabled={!calcResult || (calcResult.staleCount === 0 && calcErrors.length === 0)}
-                      title={`${baseName(calcPath)} 의 식을 평가해 값 열에 써 넣는다 (F9). 노란 밑줄 셀이 바뀐다`}
+                      title={tip(`${baseName(calcPath)} 의 식을 평가해 값 열에 써 넣는다. 노란 밑줄 셀이 바뀐다`, 'calc')}
                     >
                       계산{calcResult?.staleCount ? ` (${calcResult.staleCount})` : ''}
                     </button>
-                    <button onClick={() => openPath(calcPath)} title={`${baseName(calcPath)} 열기`}>계산식</button>
+                    <button data-command="gridCalcFile" onClick={() => runPane('gridCalcFile')} title={tip(`${baseName(calcPath)} 열기`, 'gridCalcFile')}>계산식</button>
                   </>
                 ) : (
-                  <button onClick={() => void createCalc()} title={`${baseName(calcPath)} 를 만들어 연다 — 열 값을 식으로 채우는 규칙을 적는 곳`}>계산식 만들기</button>
+                  <button data-command="gridCalcFile" onClick={() => runPane('gridCalcFile')} title={tip(`${baseName(calcPath)} 를 만들어 연다 — 열 값을 식으로 채우는 규칙을 적는 곳`, 'gridCalcFile')}>계산식 만들기</button>
                 )}
               </>
             )}
             {table.rows.length === 0 && (
               <>
                 <span className="sep" />
-                {table.format === 'csv'
-                  ? <button onClick={() => { edit((t) => seedHeaderTable(t)); refocus() }} title="첫 줄은 머리글(열 이름)">머리글 행 만들기</button>
-                  : <button onClick={() => { edit(seedTypedTable); refocus() }}>타입 행·헤더 행 만들기</button>}
+                <button data-command="gridSeedHeader" onClick={() => runPane('gridSeedHeader')} title={cmdTitle('gridSeedHeader')}>{table.format === 'csv' ? '머리글 행 만들기' : '타입 행·헤더 행 만들기'}</button>
               </>
             )}
           </div>

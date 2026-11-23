@@ -772,20 +772,21 @@ function Workspace({ layoutId }: { layoutId: string }) {
     <div className="app">
       <header className="topbar">
         <span className="brand">JayDocs</span>
-        <button className="root" title={`문서 폴더 바꾸기${primary.path ? `\n${primary.path}` : ''}`} onClick={() => void switchFolder()}>{root ? primary.label : '…'}</button>
+        {/* 명령 막대 — 단추마다 data-command (lib/paneCommands.ts, paneCommands.test) */}
+        <button className="root" data-command="switchFolder" title={`문서 폴더 바꾸기${primary.path ? `\n${primary.path}` : ''}`} onClick={() => void switchFolder()}>{root ? primary.label : '…'}</button>
         <span className="spacer" />
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
         <UpdateButton notify={updateNotice} onApply={applyUpdate} />
-        {app.canInstall && <button onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
-        <button onClick={() => setOverlay({ kind: 'import' })} title={tip('폴더 가져오기 — 다른 폴더를 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
+        {app.canInstall && <button data-command="installApp" onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
+        <button data-command="importFolder" onClick={() => setOverlay({ kind: 'import' })} title={tip('폴더 가져오기 — 다른 폴더를 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
         <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>
         {/* 상단의 "저장" · "오른쪽에 분할" 은 뺐다 — 창마다 같은 버튼이 있고(어느 문서인지 분명하다) Ctrl+S · Ctrl+\ · 팔레트로도 된다 (DESIGN §24.7 X10) */}
-        <button onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령</button>
-        <button onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title={tip('모두 저장', 'saveAll')}>
+        <button data-command="palette" onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령</button>
+        <button data-command="saveAll" onClick={() => void store.saveAll()} disabled={dirtyCount === 0} title={tip('모두 저장', 'saveAll')}>
           모두 저장{dirtyCount ? ` (${dirtyCount})` : ''}
         </button>
-        <button onClick={toggleTheme} title={tip('다크 / 라이트', 'toggleTheme')}>{theme === 'dark' ? '☀' : '☾'}</button>
-        <button onClick={() => setOverlay({ kind: 'help' })} title={tip('단축키', 'help')}>?</button>
+        <button data-command="toggleTheme" onClick={toggleTheme} title={tip('다크 / 라이트', 'toggleTheme')}>{theme === 'dark' ? '☀' : '☾'}</button>
+        <button data-command="help" onClick={() => setOverlay({ kind: 'help' })} title={tip('단축키', 'help')}>?</button>
       </header>
       <main className="workbench">
         {root && (
