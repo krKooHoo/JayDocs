@@ -237,11 +237,12 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       {bakeErrors.map((e) => <div key={e} className="banner">{e}</div>)}
       {d?.status === 'loading' && <div className="pane-empty">불러오는 중…</div>}
       <div className={'md-body is-' + mode} ref={bodyRef}>
-        {outlineShown && <OutlinePanel key={path} view={skimView} ping={outlinePing} focusRef={outlineFocus} />}
+        {/* key 는 형제끼리 달라야 한다 — 목차 · 훑어보기가 같은 key(path)면 모드를 바꿀 때마다 목차가 지워지지 않고 쌓였다 */}
+        {outlineShown && <OutlinePanel key={'outline:' + path} view={skimView} ping={outlinePing} focusRef={outlineFocus} />}
         <div className="editor-host" ref={host} style={{ display: mode === 'preview' ? 'none' : undefined }} />
         {/* lines: 미리보기 전용 모드에서 훑어보기 패널이 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다. 그때만 찍는다 */}
         {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}
-        {skimShown && <SkimPanel key={path} path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
+        {skimShown && <SkimPanel key={'skim:' + path}path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
       </div>
     </div>
   )
