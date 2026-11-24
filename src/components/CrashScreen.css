@@ -1,0 +1,15 @@
+/* 오류 화면 · 시작 지연 안내 (DESIGN §22 U11 · U12). CrashScreen.tsx 가 불러온다. 틀은 시작 화면의 .app-message */
+
+/* 앱 화면은 body 의 overflow: hidden 을 믿는다 — 오류 내용이 길면 이 화면만 스크롤한다 */
+.app-message.crash { height: 100%; margin: 0 auto; padding: 80px 16px 40px; overflow: auto; }
+
+.crash-error { padding: 8px 12px; border-left: 3px solid var(--danger); background: var(--code-bg); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.crash-box { margin: 16px 0; padding: 4px 12px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.crash-list { margin: 4px 0 10px; padding-left: 18px; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.crash-list.is-error { margin-top: 10px; color: var(--danger); }
+
+.crash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+
+.crash-detail summary { cursor: pointer; color: var(--muted); }
+.crash-detail pre { max-height: 320px; overflow: auto; padding: 8px 12px; background: var(--code-bg); font-family: var(--mono); font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

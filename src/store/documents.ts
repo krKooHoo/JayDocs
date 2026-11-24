@@ -250,6 +250,20 @@ class DocumentStore {
     })
   }
 
+  private held = new Set<string>()
+  /**
+   * 앱 화면이 오류로 통째로 내려갈 때(DESIGN §22 U11) — 창들이 놓기(`release`) 전에 부른다.
+   * 창의 놓기는 "탭 닫기" 라 dirty 여도 내리는데, 이때는 사용자가 닫은 것이 아니다. 저장 안 한 문서를 하나씩 더 붙잡아
+   * 오류 화면에서 저장할 수 있게 남긴다. 여러 번 불러도 한 번만 붙잡는다.
+   */
+  holdDirty() {
+    for (const path of this.dirtyPaths()) {
+      if (this.held.has(path)) continue
+      this.held.add(path)
+      this.refs.set(path, (this.refs.get(path) ?? 0) + 1)
+    }
+  }
+
   /** 아무 창도 붙잡지 않은 문서인가 (keepDirty 로 남은 문서) */
   isOrphan(path: string) {
     return this.docs.has(path) && !this.refs.has(path)

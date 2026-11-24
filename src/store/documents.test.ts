@@ -89,6 +89,25 @@ describe('그 자리 보기(tsv-view)가 놓은 표 — 저장 안 한 편집을
     expect(store.get(path)).toBeUndefined()
   })
 
+  it('앱 화면이 오류로 내려가면(holdDirty) 창이 놓아도 저장 안 한 문서가 남고, 저장할 수 있다 (DESIGN §22 U11)', async () => {
+    const dirty = freshTsv()
+    const clean = freshTsv()
+    await open(dirty)
+    await open(clean)
+    store.editTable(dirty, (t) => setCell(t, 1, 1, '999'))
+    store.holdDirty()
+    store.holdDirty() // 두 번 불러도 한 번만 붙잡는다
+    store.release(dirty)
+    store.release(clean)
+    await flush()
+    expect(store.get(dirty)).toBeDefined()
+    expect(store.dirtyPaths().has(dirty)).toBe(true)
+    expect(store.get(clean)).toBeUndefined()
+    await store.saveAll()
+    expect(files.get(dirty)?.text).toBe('Key\tV\nA\t999\n')
+    expect(store.dirtyPaths().has(dirty)).toBe(false)
+  })
+
   it('탭(그리드)이 놓으면 — 닫기 확인을 거쳤으므로 — dirty 여도 내린다', async () => {
     const path = freshTsv()
     await open(path)

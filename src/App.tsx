@@ -11,6 +11,7 @@ import { FolderInfoDialog } from './components/FolderInfoDialog'
 import { ImportDialog } from './components/ImportDialog'
 import type { RootAction } from './components/FileTree'
 import { GrantScreen, StartScreen } from './components/StartScreen'
+import { BootWait } from './components/CrashScreen'
 import { NewDocDialog, type NewDocChoice } from './components/NewDocDialog'
 import { fileNameOf, TEMPLATES_DIR, userTemplatePaths } from './lib/templates'
 import { allCommands, commandByCombo, keysOf, registerCommands, runCommand, tip, useCommandsVersion } from './lib/commands'
@@ -84,7 +85,8 @@ export default function App() {
   const screen = () => {
     switch (phase.kind) {
       case 'loading':
-        return null
+        // 오래 걸리면 안내 — 전에는 끝나지 않으면 검은 화면만 남았다 (DESIGN §22 U12)
+        return <BootWait onSkip={() => setPhase({ kind: 'start' })} />
       case 'unsupported':
         return (
           <div className="app-message">

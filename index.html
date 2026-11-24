@@ -9,7 +9,20 @@
     <meta name="theme-color" content="#0f766e" />
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      #root 안의 안내는 앱이 처음 그릴 때 React 가 지운다. 앱 JS 를 받지 못했거나(Pages 가 가끔 503 을 준다)
+      불러오다 오류가 나 끝내 그리지 못하면 10초 뒤에 보인다 — 빈 화면만 남지 않게 (DESIGN §22 U13)
+    -->
+    <div id="root"><div id="boot-fail" hidden style="max-width: 640px; margin: 80px auto; padding: 0 16px; font: 14px/1.7 system-ui, 'Malgun Gothic', sans-serif">
+      <h1>JayDocs</h1>
+      <p>JayDocs 를 시작하지 못했어요. 앱 파일을 받지 못했거나 불러오다 오류가 났어요.</p>
+      <ol>
+        <li><b>Ctrl+Shift+R</b> 로 다시 불러오세요. 잠깐 받지 못한 것이면 이걸로 떠요.</li>
+        <li>인터넷 연결을 확인하세요.</li>
+        <li>계속되면 F12 → Console 의 빨간 오류를 알려 주세요.</li>
+      </ol>
+    </div></div>
+    <script>setTimeout(function () { var e = document.getElementById('boot-fail'); if (e) e.hidden = false }, 10000)</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
