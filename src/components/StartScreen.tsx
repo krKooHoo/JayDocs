@@ -140,6 +140,8 @@ export function GrantScreen({ workspace, onReady, onSwitch, onOpen }: { workspac
     ...workspace.mounts.map((m) => ({ key: m.alias, alias: `@${m.alias}`, path: m.path, note: m.readOnly ? '읽기 전용' : undefined, root: m })),
   ]
   const [granted, setGranted] = useState<Record<string, boolean>>({})
+  /** 권한 확인에 답하지 않은 폴더가 있다 (DESIGN §22 U14) */
+  const [noAnswer, setNoAnswer] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
 
@@ -149,16 +151,26 @@ export function GrantScreen({ workspace, onReady, onSwitch, onOpen }: { workspac
   useEffect(() => {
     let alive = true
     void (async () => {
+      // 한꺼번에 — 답하지 않는 폴더가 있어도 기다림이 폴더 수만큼 늘지 않게
+      const states = await Promise.all(roots.map((r) => queryRoot(r.root.handle, r.root.readOnly)))
       const next: Record<string, boolean> = {}
-      for (const r of roots) next[r.key] = (await queryRoot(r.root.handle, r.root.readOnly)) === 'granted'
-      if (alive) setGranted(next)
+      roots.forEach((r, i) => { next[r.key] = states[i] === 'granted' })
+      if (alive) { setGranted(next); setNoAnswer(states.includes('timeout')) }
     })()
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace])
 
+  /** 권한 창을 띄우고 답을 기다리는 중 — 답이 없으면 단추가 그대로 "묻는 중…" 이고 "다른 폴더 열기" 로 빠져나간다 */
+  const [asking, setAsking] = useState(false)
+
   const allow = async () => {
     setError(null)
+    setAsking(true)
+    try { await allowMissing() } finally { setAsking(false) }
+  }
+
+  const allowMissing = async () => {
     const next = { ...granted }
     for (const r of missing) {
       try {
@@ -189,10 +201,15 @@ export function GrantScreen({ workspace, onReady, onSwitch, onOpen }: { workspac
         ))}
       </div>
       <p className="start-actions">
-        <button className="is-primary" onClick={() => void allow()} disabled={missing.length === 0}>허용{missing.length > 1 ? ` (${missing.length}개)` : ''}</button>
+        <button className="is-primary" onClick={() => void allow()} disabled={missing.length === 0 || asking}>{asking ? '묻는 중…' : `허용${missing.length > 1 ? ` (${missing.length}개)` : ''}`}</button>
         {primaryOk && missing.length > 0 && <button onClick={onReady}>허용한 폴더만 열기</button>}
         <button onClick={onSwitch}>다른 폴더 열기</button>
       </p>
+      {noAnswer && (
+        <div className="banner">
+          이 브라우저가 폴더 권한 확인에 답하지 않았습니다. <b>허용</b>을 눌러 다시 묻고, 그래도 안 되면 <b>다른 폴더 열기</b>로 같은 폴더를 다시 고르세요.
+        </div>
+      )}
       {error && <div className="banner is-error">{error}</div>}
       <RecentFolders title="다른 최근 폴더" exclude={workspace.id} onOpen={onOpen} onError={setError} />
       <AppFooter />

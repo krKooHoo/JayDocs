@@ -52,10 +52,11 @@ export default function App() {
     setPhase({ kind: 'ready', layoutId: ws.id })
   }, [])
 
-  /** 권한이 모두 있으면 바로, 아니면 허용 화면으로 */
+  /** 권한이 모두 있으면 바로, 아니면 허용 화면으로. 권한 확인이 답하지 않아도(`'timeout'`) 허용 화면으로 (DESIGN §22 U14) */
   const open = useCallback(async (ws: WorkspaceData) => {
     const roots = [{ handle: ws.primary, readOnly: false }, ...ws.mounts]
     const states = await Promise.all(roots.map((r) => queryRoot(r.handle, r.readOnly)))
+    if (states.includes('timeout')) console.warn('폴더 권한 확인이 답하지 않습니다 — 허용 화면으로 갑니다:', states)
     if (states.every((s) => s === 'granted')) enter(ws)
     else setPhase({ kind: 'grant', ws })
   }, [enter])

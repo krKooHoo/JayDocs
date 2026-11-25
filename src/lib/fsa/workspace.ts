@@ -86,13 +86,15 @@ export function forgetWorkspace(id: string) {
 
 /** 고른 폴더의 작업 공간. 전에 연 폴더면 그때의 가져온 폴더·레이아웃을 이어 간다 */
 export async function workspaceFor(handle: FileSystemDirectoryHandle): Promise<Workspace> {
-  for (const w of await listWorkspaces()) {
-    if (await w.primary.isSameEntry(handle)) {
-      // 핸들을 새것으로 바꿔 둔다 (폴더가 지워졌다 다시 만들어진 경우에도 맞게)
-      w.primary = handle
-      await saveWorkspace(w)
-      return w
-    }
+  const list = await listWorkspaces()
+  // 한꺼번에 비교한다. 저장된 핸들이 답하지 않으면(U14) 다른 폴더로 본다 — 같은 폴더가 최근 목록에 한 번 더 생길 뿐, 열기는 된다
+  const same = await Promise.all(list.map((w) => within(w.primary.isSameEntry(handle), QUERY_TIMEOUT_MS).catch(() => false)))
+  const known = list.find((_, i) => same[i] === true)
+  if (known) {
+    // 핸들을 새것으로 바꿔 둔다 (폴더가 지워졌다 다시 만들어진 경우에도 맞게)
+    known.primary = handle
+    await saveWorkspace(known)
+    return known
   }
   const w: Workspace = { id: crypto.randomUUID(), primary: handle, mounts: [], recent: [] }
   await saveWorkspace(w)
@@ -101,8 +103,28 @@ export async function workspaceFor(handle: FileSystemDirectoryHandle): Promise<W
 
 const modeOf = (readOnly: boolean) => ({ mode: readOnly ? 'read' : 'readwrite' }) as const
 
-export function queryRoot(handle: FileSystemHandle, readOnly: boolean) {
-  return handle.queryPermission(modeOf(readOnly))
+/** 권한 확인이 이만큼(ms) 안에 답하지 않으면 `'timeout'` (DESIGN §22 U14) */
+export const QUERY_TIMEOUT_MS = 3000
+
+/**
+ * 권한이 지금 있는지 (묻는 창은 띄우지 않는다).
+ * 어떤 PC 의 Chrome 은 IndexedDB 에서 꺼낸 핸들의 `queryPermission` 에 끝내 답하지 않았다 — 시작이 그것을 기다리며
+ * 검은 화면으로 멈췄다. 시간 안에 답이 없으면 `'timeout'` 을 돌려준다. 부르는 쪽은 "허용 안 됨" 으로 다룬다
+ * (허용 화면에서 클릭으로 다시 묻거나 폴더를 새로 고른다).
+ */
+export function queryRoot(handle: FileSystemHandle, readOnly: boolean, timeoutMs = QUERY_TIMEOUT_MS): Promise<PermissionState | 'timeout'> {
+  return within(handle.queryPermission(modeOf(readOnly)), timeoutMs)
+}
+
+/** `ms` 안에 끝나면 그 값, 아니면 `'timeout'` */
+export async function within<T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), ms) })
+  try {
+    return await Promise.race([p, late])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** 권한을 묻는다. 사용자 동작(클릭·키) 안에서만 창이 뜬다 */
