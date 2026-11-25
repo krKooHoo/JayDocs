@@ -18,6 +18,8 @@ import { isDocName } from '../lib/filetypes.mjs'
 import { codeLangOf } from '../lib/code/langs'
 import { minCellWidth } from '../lib/cellWidth'
 import { CodeBlock } from './CodeBlock'
+import { EditorView } from '@codemirror/view'
+import { FIT, ZOOM_STEP, diagramKey, isFit, loadDiagramView, panBy, panKey, saveDiagramView, zoomAt, zoomKey, type DiagramView } from '../lib/md/diagramZoom'
 
 /**
  * 마크다운 미리보기 (DESIGN D2 v1). 스토어의 텍스트를 react-markdown 으로 그린다.
@@ -67,7 +69,8 @@ function rememberMermaid(key: string, id: string, svg: string) {
   while (mermaidCache.size > MERMAID_CACHE_MAX) mermaidCache.delete(mermaidCache.keys().next().value!)
 }
 
-export function Mermaid({ code }: { code: string }) {
+/** docPath: 이 다이어그램이 든 문서 — 확대 상태를 그 문서 · 글로 기억한다 (DESIGN §39 MZ8). 없으면 기억하지 않는다 */
+export function Mermaid({ code, docPath }: { code: string; docPath?: string }) {
   const theme = useTheme()
   const key = `${theme}\n${code}`
   const [state, setState] = useState<{ svg: string } | { error: string } | null>(() => {
@@ -109,7 +112,125 @@ export function Mermaid({ code }: { code: string }) {
       </div>
     )
   }
-  return <div className="mermaid-box" dangerouslySetInnerHTML={{ __html: state.svg }} />
+  return <MermaidView svg={state.svg} saveKey={docPath ? diagramKey(docPath, code) : null} />
+}
+
+/**
+ * 그린 다이어그램 — 확대 · 축소 · 끌어 옮기기 · 맞춤 (ADOPT A9 · DESIGN §39). 계산은 `lib/md/diagramZoom.ts`.
+ *
+ * - 상자는 `Tab` · 클릭으로 포커스를 받는다. 포커스가 있을 때: `Ctrl+=` · `Ctrl+-` 확대 · 축소(상자 가운데 기준), 방향키 옮기기
+ *   (Shift 면 크게), `Home` 맞춤, `Esc` 편집기 · 미리보기로. `Ctrl+휠` 은 포커스가 있을 때만 가로챈다(포인터 자리 기준) —
+ *   아니면 브라우저의 페이지 확대 그대로.
+ * - 확대한 동안은 끌어서 옮긴다. 맞춤 상태에서는 끌지 않는다(다 보인다).
+ * - 상자 높이는 맞춤일 때의 높이 그대로 — 확대하면 그 틀 안에서 본다(문서가 아래로 밀리지 않게).
+ * - 오른쪽 위의 `− 100% ＋` 는 마우스용. 포커스를 받지 않는다. 썸네일 · 훑어보기 패널(inert)에서는 숨는다.
+ * - 하이브리드 위젯 안에서도 같다(위젯은 편집기가 이벤트를 무시한다 — `BlockWidget.ignoreEvent`).
+ */
+function MermaidView({ svg, saveKey }: { svg: string; saveKey: string | null }) {
+  const [v, setV] = useState<DiagramView>(FIT)
+  const [dragging, setDragging] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null)
+  const fit = isFit(v)
+  /** 이 상자의 확대를 기억하는가 — 열쇠가 있고, 읽기만 하는 곳(썸네일 · 훑어보기, inert)이 아닐 때 */
+  const persist = useRef(false)
+  // 그림 · 열쇠가 바뀌면 기억한 상태로(없으면 맞춤). 글을 고치면 열쇠가 달라져 맞춤이 된다.
+  // 상자 크기는 맞춤일 때의 크기 그대로다(transform 은 배치에 들지 않는다) — 비율로 남긴 자리를 이 크기로 되살린다
+  useLayoutEffect(() => {
+    const el = box.current
+    persist.current = !!saveKey && !!el && !el.closest('[inert]')
+    setV(persist.current && el && saveKey ? loadDiagramView(saveKey, el.clientWidth, el.clientHeight) : FIT)
+  }, [svg, saveKey])
+  // 바뀐 상태를 남긴다 — 끌거나 키를 누르는 동안 매번 쓰지 않고 멈춘 뒤에
+  useEffect(() => {
+    const el = box.current
+    if (!persist.current || !saveKey || !el) return
+    const t = window.setTimeout(() => saveDiagramView(saveKey, v, el.clientWidth, el.clientHeight), 300)
+    return () => window.clearTimeout(t)
+  }, [v, saveKey])
+
+  const zoomCenter = (dir: 1 | -1) => {
+    const el = box.current
+    if (!el) return
+    setV((cur) => zoomAt(cur, dir > 0 ? ZOOM_STEP : 1 / ZOOM_STEP, el.clientWidth / 2, el.clientHeight / 2))
+  }
+
+  // Ctrl+휠 — 포커스가 있을 때만. passive 가 아니어야 페이지 확대를 막을 수 있다
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || !el.contains(document.activeElement)) return
+      e.preventDefault()
+      const r = el.getBoundingClientRect()
+      setV((cur) => zoomAt(cur, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, e.clientX - r.left, e.clientY - r.top))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  /** Esc — 이 다이어그램을 품은 편집기(하이브리드) 또는 미리보기로 */
+  const leave = () => {
+    const el = box.current
+    const editor = el?.closest<HTMLElement>('.cm-editor')
+    if (editor) { EditorView.findFromDOM(editor)?.focus(); return }
+    el?.parentElement?.closest<HTMLElement>('.preview, [tabindex]')?.focus()
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return
+    const z = zoomKey(e)
+    if (z) { e.preventDefault(); e.stopPropagation(); zoomCenter(z); return }
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    const pan = panKey(e.key, e.shiftKey)
+    if (pan) { e.preventDefault(); e.stopPropagation(); setV((cur) => panBy(cur, pan[0], pan[1])); return }
+    if (e.key === 'Home') { e.preventDefault(); e.stopPropagation(); setV(FIT); return }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); leave() }
+  }
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || fit || (e.target as Element).closest('.mermaid-tools')) return
+    e.preventDefault()
+    box.current?.focus({ preventScroll: true })
+    box.current?.setPointerCapture(e.pointerId)
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY }
+    setDragging(true)
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current
+    if (!d || d.id !== e.pointerId) return
+    const dx = e.clientX - d.x
+    const dy = e.clientY - d.y
+    drag.current = { id: d.id, x: e.clientX, y: e.clientY }
+    setV((cur) => panBy(cur, dx, dy))
+  }
+  const endDrag = (e: React.PointerEvent) => {
+    if (drag.current?.id !== e.pointerId) return
+    drag.current = null
+    setDragging(false)
+  }
+
+  return (
+    <div
+      ref={box}
+      className={'mermaid-box is-zoomable' + (fit ? '' : ' is-zoomed') + (dragging ? ' is-dragging' : '')}
+      tabIndex={0}
+      role="img"
+      aria-label="다이어그램 — Ctrl+= · Ctrl+- 확대 · 축소, 방향키로 옮기기, Home 맞춤, Esc 나가기"
+      onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      <div className="mermaid-tools" onMouseDown={(e) => e.preventDefault()}>
+        <button type="button" tabIndex={-1} onClick={() => zoomCenter(-1)} title="축소 (Ctrl+-)" aria-label="축소">−</button>
+        <button type="button" tabIndex={-1} onClick={() => setV(FIT)} title="맞춤 (Home)">{Math.round(v.s * 100)}%</button>
+        <button type="button" tabIndex={-1} onClick={() => zoomCenter(1)} title="확대 (Ctrl+=)" aria-label="확대">＋</button>
+      </div>
+      <div className="mermaid-stage" style={fit ? undefined : { transform: `translate(${v.x}px, ${v.y}px) scale(${v.s})` }} dangerouslySetInnerHTML={{ __html: svg }} />
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------- tsv-view
@@ -321,7 +442,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
         !generated ? <div className="tsv-view-gen is-error">render: mermaid 에는 template 이 필요합니다</div>
         : 'error' in generated ? <div className="tsv-view-gen is-error">템플릿 오류: {generated.error}</div>
         : showGen ? <pre className="tsv-view-gen">{generated.code}</pre>
-        : <Mermaid code={generated.code} />
+        : <Mermaid code={generated.code} docPath={mdPath} />
       ) : (
         <div className="tsv-view-wrap" ref={wrap}>
           <table>
@@ -463,7 +584,7 @@ export function mdComponents(mdPath: string, weight: MdWeight = 'rich'): Compone
     code: ({ node, className, children, ...rest }) => {
       const m = /language-([\w-]+)/.exec(className ?? '')
       const src = String(children ?? '').replace(/\n$/, '')
-      if (m?.[1] === 'mermaid') return weight === 'light' ? <div className="doc-stub">다이어그램</div> : <Mermaid code={src} />
+      if (m?.[1] === 'mermaid') return weight === 'light' ? <div className="doc-stub">다이어그램</div> : <Mermaid code={src} docPath={mdPath} />
       if (m?.[1] === 'tsv-view') {
         if (weight === 'light') return <div className="doc-stub">⊞ {parseTsvViewSpec(src).file ?? 'tsv-view'}</div>
         return <TsvView body={src} mdPath={mdPath} />

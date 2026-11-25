@@ -308,7 +308,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         <div className="editor-host" ref={host} style={{ display: mode === 'preview' ? 'none' : undefined }} />
         {/* lines: 미리보기 전용 모드에서 훑어보기 패널이 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다. 그때만 찍는다 */}
         {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}
-        {skimShown && <SkimPanel key={'skim:' + path}path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
+        {skimShown && <SkimPanel key={'skim:' + path} path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
       </div>
       <DocStatus path={path} />
     </div>

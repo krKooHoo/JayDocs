@@ -329,6 +329,18 @@ button.tree-search {
 .mermaid-box.is-loading { color: var(--muted); font-size: 13px; }
 .mermaid-box.is-error { color: var(--danger); font-size: 13px; }
 .mermaid-box.is-error pre { color: var(--fg); }
+.mermaid-box.is-zoomable { position: relative; overflow: hidden; border-radius: 4px; }
+.mermaid-stage { transform-origin: 0 0; }
+.mermaid-box.is-zoomed { cursor: grab; box-shadow: inset 0 0 0 1px var(--border); }
+.mermaid-box.is-dragging { cursor: grabbing; }
+/* 확대 단추 — 마우스를 올리거나 포커스 · 확대 중일 때만. 썸네일 · 훑어보기 패널(inert)에서는 숨는다 */
+.mermaid-tools {
+  position: absolute; top: 4px; right: 4px; z-index: 1; display: flex; gap: 2px; opacity: 0;
+  background: var(--elev); border: 1px solid var(--border); border-radius: 5px; padding: 1px;
+}
+.mermaid-box:hover .mermaid-tools, .mermaid-box:focus-within .mermaid-tools, .mermaid-box.is-zoomed .mermaid-tools { opacity: 1; }
+.mermaid-tools button { padding: 0 6px; font-size: 11px; line-height: 18px; border: 0; }
+[inert] .mermaid-tools, .doc-thumb .mermaid-tools { display: none; }
 
 /* ---- 훑어보기 (PLAN-skim) — DocView · DocThumb ---- */
 .doc-view { box-sizing: border-box; min-width: 0; color: var(--fg); }

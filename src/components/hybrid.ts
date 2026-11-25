@@ -30,7 +30,7 @@ import { appendRowChange, cellChange, insertColChanges, parseTable, tableOpChang
 type BlockKind = 'mermaid' | 'tsv-view' | 'table'
 
 function renderBlock(kind: BlockKind, code: string, mdPath: string): ReactNode {
-  if (kind === 'mermaid') return createElement(Mermaid, { code })
+  if (kind === 'mermaid') return createElement(Mermaid, { code, docPath: mdPath })
   if (kind === 'tsv-view') return createElement(TsvView, { body: code, mdPath })
   return createElement('div', { className: 'preview-body is-inline' }, createElement(ReactMarkdown, { remarkPlugins: REMARK_PLUGINS }, code))
 }
