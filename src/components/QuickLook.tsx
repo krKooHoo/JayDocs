@@ -6,7 +6,7 @@ import { PAGE_RATIO, useSkimText } from '../lib/skim'
 import { CARD_GAP, CARD_MIN_WIDTH, folderCounts, gridColumns, gridMove, isGridKey, pageRowsOf } from '../lib/skim/grid'
 import { LOOK_MIN_HEIGHT, LOOK_MIN_WIDTH, LOOK_ZOOM_MAX, LOOK_ZOOM_MIN, fitLookSize, lookPrefs, lookResizeKey, lookZoomKey, setLookPrefs, stepLookZoom, useLookPrefs, type LookPrefs } from '../lib/skim/look'
 import { DocFileView, DocThumb } from './DocView'
-import { keysOf } from '../lib/commands'
+import { keysOf, tip } from '../lib/commands'
 import { store } from '../store/documents'
 import './QuickLook.css'
 
@@ -58,6 +58,8 @@ export interface QuickLookProps {
   onBack?: () => void
   /** 문서가 없는 폴더의 "새 문서" (DESIGN §35) — 그 폴더 아래에 새 문서 창 */
   onNewFile?: (dir: string) => void
+  /** 머리의 "열기" · "오른쪽에 열기", 격자 문서 카드의 `Ctrl+Enter` (DESIGN §38). side 면 오른쪽 창에 */
+  onOpenFile?: (path: string, side: boolean) => void
 }
 
 /** React 18 은 inert 를 모르는 속성으로 넘긴다 — 빈 문자열이어야 붙는다 (DocView 의 DocThumb 과 같다) */
@@ -133,7 +135,7 @@ function useLagging(entry: TreeEntry, immediate: boolean): [TreeEntry, () => voi
   return [now ? entry : lagged, jump]
 }
 
-export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function QuickLook({ entry, anchor, onFocusOut, onPick, onUp, onBack, onNewFile }, ref) {
+export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function QuickLook({ entry, anchor, onFocusOut, onPick, onUp, onBack, onNewFile, onOpenFile }, ref) {
   /** 포커스가 창 안(격자)에 있는가 */
   const [inside, setInside] = useState(false)
   const [shown, jump] = useLagging(entry, inside)
@@ -269,9 +271,9 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
         else if (size) resizeBy(size[0], size[1])
       }}
     >
-      <QuickLookHeader entry={shown} zoom={zoom} onZoom={zoomBy} onZoomReset={() => setLookPrefs(isDir ? { gridZoom: 1 } : { zoom: 1 })} />
+      <QuickLookHeader entry={shown} zoom={zoom} onZoom={zoomBy} onZoomReset={() => setLookPrefs(isDir ? { gridZoom: 1 } : { zoom: 1 })} onOpenFile={onOpenFile} />
       <div className="quicklook-scroll" ref={scroller}>
-        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} zoom={zoom} onPick={pick} onUp={up} onBack={onBack} onNewFile={onNewFile} /> : <QuickLookFile path={shown.path} zoom={zoom} />}
+        {isDir ? <QuickLookFolder entry={shown} focusToken={focusToken} zoom={zoom} onPick={pick} onUp={up} onBack={onBack} onNewFile={onNewFile} onOpenFile={onOpenFile} /> : <QuickLookFile path={shown.path} zoom={zoom} />}
       </div>
       <div className="quicklook-resize is-e" title="끌어서 너비 바꾸기 (Shift+← →) · 두 번 누르면 처음 너비" onPointerDown={startResize('e')} onDoubleClick={resetSize('e')} />
       <div className="quicklook-resize is-s" title="끌어서 높이 바꾸기 (Shift+↑ ↓) · 두 번 누르면 처음 높이" onPointerDown={startResize('s')} onDoubleClick={resetSize('s')} />
@@ -281,9 +283,9 @@ export const QuickLook = forwardRef<QuickLookHandle, QuickLookProps>(function Qu
   )
 })
 
-interface HeaderProps { entry: TreeEntry; zoom: number; onZoom: (dir: 1 | -1) => void; onZoomReset: () => void }
+interface HeaderProps { entry: TreeEntry; zoom: number; onZoom: (dir: 1 | -1) => void; onZoomReset: () => void; onOpenFile?: (path: string, side: boolean) => void }
 
-function QuickLookHeader({ entry, zoom, onZoom, onZoomReset }: HeaderProps) {
+function QuickLookHeader({ entry, zoom, onZoom, onZoomReset, onOpenFile }: HeaderProps) {
   const isDir = entry.type === 'dir'
   const type = isDir ? null : fileTypeOf(entry.path)
   // 디스크 인코딩 — 읽기는 DocFileView 와 같은 캐시라 한 번만 읽는다
@@ -294,6 +296,13 @@ function QuickLookHeader({ entry, zoom, onZoom, onZoomReset }: HeaderProps) {
       <span className="quicklook-path" title={entry.path || '(루트)'}>{entry.path || '(루트)'}</span>
       <span className="quicklook-kind">{isDir ? '폴더' : type?.label ?? '지원하지 않는 형식'}</span>
       {encoding && <span className="quicklook-enc" title="UTF-8 이 아닌 파일 — 읽기 전용으로 열린다">{encoding}</span>}
+      {/* 열기 (DESIGN §38) — 트리의 Enter · Ctrl+Enter 를 단추로. 포커스를 받지 않는다 (누르면 창이 닫히고 문서 창으로) */}
+      {!isDir && type && onOpenFile && (
+        <span className="quicklook-open">
+          <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => onOpenFile(entry.path, false)} title="열기 — 편집기로 (Enter)">열기</button>
+          <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => onOpenFile(entry.path, true)} title={tip('오른쪽 창에 열기 — 분할한 옆 창(없으면 새로 나눈다)', 'openTreeCursorSide')}>오른쪽에 열기</button>
+        </span>
+      )}
       {/* 확대 · 축소 — 버튼은 포커스를 받지 않는다 (포커스는 트리에 남는다). 키는 Ctrl+= · Ctrl+-, Ctrl+휠 */}
       <span className="quicklook-zoom" title={isDir ? '카드 크기' : '글자 크기'}>
         <button type="button" tabIndex={-1} disabled={zoom <= LOOK_ZOOM_MIN} onClick={() => onZoom(-1)} title="축소 (Ctrl+-)" aria-label="축소">−</button>
@@ -314,6 +323,8 @@ export function QuickLookFile({ path, zoom = 1 }: { path: string; zoom?: number 
 }
 
 export interface QuickLookFolderProps {
+  /** 문서 카드의 `Ctrl+Enter` — 오른쪽 창에 (DESIGN §38) */
+  onOpenFile?: (path: string, side: boolean) => void
   /** 폴더 항목 (트리의 TreeEntry — `children` 이 바로 아래 항목). 주 폴더 루트는 path '' */
   entry: TreeEntry
   /** 올라가면 첫 카드로 포커스 (카드가 없으면 격자 상자로) */
@@ -345,7 +356,7 @@ const pathOf = (e: IntersectionObserverEntry) => (e.target as HTMLElement).datas
  * - 열 수는 너비로 정한다(`gridColumns`). 방향키 · `PageUp/PageDown` · `Home/End` 로 카드를 옮긴다(`gridMove`).
  * - 카드는 `[tabindex]` 라 클릭으로 포커스를 받는다(틀이 막지 않는다). 포커스 받은 카드 = 고른 카드.
  */
-export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack, onNewFile }: QuickLookFolderProps) {
+export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack, onNewFile, onOpenFile }: QuickLookFolderProps) {
   const items = entry.children ?? []
   const { dirs, files } = folderCounts(items)
   const box = useRef<HTMLDivElement>(null)
@@ -448,6 +459,13 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+Enter — 문서 카드를 오른쪽 창에 (폴더 카드는 아무것도 하지 않는다)
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      const it = items[current()]
+      if (!e.repeat && it?.type === 'file') onOpenFile?.(it.path, true)
+      return
+    }
     if (e.nativeEvent.isComposing || e.ctrlKey || e.altKey || e.metaKey) return
     if (isGridKey(e.key) && !e.shiftKey) {
       e.preventDefault()

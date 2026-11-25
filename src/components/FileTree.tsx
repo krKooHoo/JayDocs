@@ -3,7 +3,7 @@ import type { MountInfo, TreeEntry } from '../lib/backend'
 import { keysOf, runCommand, tip } from '../lib/commands'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
-import { onQuickLookRequest, onTreeCursor, type QuickLookMode } from '../lib/nav'
+import { onQuickLookRequest, onTreeCursor, onTreeOpenSide, type QuickLookMode } from '../lib/nav'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
 import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
@@ -19,6 +19,8 @@ interface Props {
   dirtyPaths: ReadonlySet<string>
   /** focus: 연 문서의 편집기로 포커스 (훑어보기 창에서 열 때) */
   onOpen: (path: string, focus?: boolean) => void
+  /** 오른쪽 창에 열기 (`Ctrl+Enter`, DESIGN §38) — 포커스는 연 창으로 */
+  onOpenSide?: (path: string) => void
   onNewFile: (dir: string) => void
   onNewFolder: (dir: string) => void
   onRename: (path: string, isDir: boolean) => void
@@ -256,6 +258,17 @@ export function FileTree(p: Props) {
     setSelectedDir(parentOf(en.path))
     p.onOpen(en.path, true)
   }
+  /** 훑어보기 창 머리의 "열기" · "오른쪽에 열기", 트리 · 격자의 Ctrl+Enter — 창을 닫고 그 문서 창으로 (DESIGN §38) */
+  const openFrom = (path: string, side: boolean) => {
+    setQuickLook(false)
+    setSelectedDir(parentOf(path))
+    if (side && p.onOpenSide) p.onOpenSide(path)
+    else p.onOpen(path, true)
+  }
+  // 팔레트 "트리 커서의 파일을 오른쪽 창에 열기" — 커서가 파일일 때만 (폴더면 알리지 않고 그대로)
+  const sideRef = useRef<() => void>(() => {})
+  sideRef.current = () => { if (cursorRow?.entry.type === 'file') openFrom(cursorRow.entry.path, true) }
+  useEffect(() => onTreeOpenSide(() => sideRef.current()), [])
   /** 격자에서 Backspace — 상위 폴더로. 맨 위 단계의 폴더에서는 루트로, 루트에서는 그대로 */
   const onLookUp = (): boolean => {
     if (lookRoot || !cursorRow || cursorRow.entry.type !== 'dir') return false
@@ -329,6 +342,11 @@ export function FileTree(p: Props) {
       }
       case 'Enter':
         e.preventDefault()
+        // Ctrl+Enter — 파일을 오른쪽 창에 (훑어보기 창이 떠 있으면 닫는다). 폴더는 그냥 Enter 와 같다
+        if (cursorRow && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && cursorRow.entry.type === 'file') {
+          openFrom(cursorRow.entry.path, true)
+          return
+        }
         // 훑어보기 창에서 파일을 열면 창을 닫고 편집기로 간다 (폴더는 펼치기 · 접기라 그대로). 창이 없으면 지금처럼 포커스는 트리에
         if (cursorRow && quickLook && cursorRow.entry.type === 'file') {
           setQuickLook(false)
@@ -474,7 +492,7 @@ export function FileTree(p: Props) {
         {rows.map(renderRow)}
       </div>
       {quickLook && lookEntry && (
-        <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} onNewFile={p.onNewFile} />
+        <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} onNewFile={p.onNewFile} onOpenFile={openFrom} />
       )}
       {menu && (() => {
         const { mount, isRoot } = mountOf(menu.path)

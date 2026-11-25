@@ -1392,6 +1392,28 @@ UI/UX 개편 A7(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 6 맞음(Wi
 
 내장 브라우저는 `prefers-reduced-motion` · `prefers-contrast` · `forced-colors` 를 흉내 내지 못한다 — 세 설정을 실제로 켠 화면은 Jay 가 본다(Windows 고대비 테마 · 대비 설정 · 애니메이션 끄기, Mac 대비 증가 · 동작 줄이기).
 
+## 38. 오른쪽 창에 열기 · 훑어보기 창의 열기 단추 (2026-11-23)
+
+UI/UX 개편 A8(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(이미 있는 키를 단추로 드러내고 `Ctrl+Enter` 를 더함), 3 맞음(보던 문서를 옆 창에 바로), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| OS1 | **오른쪽 창에 열기**(`Workbench.openFileSide`): 다른 탭 묶음이 있으면 거기에 — 활성 묶음 다음 것(오른쪽) 먼저, 없으면 앞의 것. 그 묶음에 이미 열려 있으면 그 탭을 고른다. 다른 묶음이 없으면 오른쪽에 새로 나눈다. 포커스는 연 창 | VS Code 의 "옆에 열기" 와 같다. 나눌 때마다 묶음이 늘지 않게 |
+| OS2 | 키 **`Ctrl+Enter`** — 트리(파일 커서) · 훑어보기 창(트리에 포커스가 있을 때) · 폴더 격자의 문서 카드. 폴더에서는 아무것도 하지 않는다(트리는 그냥 `Enter` 와 같다). 훑어보기 창은 닫힌다 | ADOPT A8 · 단축키 표 "새 단축키 한눈에". tsv-view 셀의 `Ctrl+Enter`(그리드로 열기)와 뜻이 이어진다. 파일 검색의 `Ctrl+Enter` 는 B1 에서 |
+| OS3 | 훑어보기 창 머리(파일을 볼 때)에 **열기** · **오른쪽에 열기** 단추. 포커스를 받지 않는다 — 누르면 창이 닫히고 그 문서 창으로 | Quick Look 의 "다음 앱으로 열기" 단추. 키를 모르는 사람도 닿는다 |
+| OS4 | 팔레트 **파일 트리 커서의 파일을 오른쪽 창에 열기**(키 표시 `Ctrl+Enter` — 단축키 표의 `palette`, 트리가 키를 직접 받는다) | 새 기능은 팔레트 명령과 함께 |
+
+코드: `Workbench.tsx`(`openFileSide` · 명령 `openTreeCursorSide`), `FileTree.tsx`(`onOpenSide` · `openFrom` · `Ctrl+Enter`), `QuickLook.tsx`(머리 단추 · 격자 `Ctrl+Enter` · `onOpenFile`), `QuickLook.css`, `lib/nav.ts`(`requestTreeOpenSide`), `shortcuts-table.mjs`.
+
+### 38.1 확인한 것
+
+`npm test` · `npm run build`. dev `?opfs` + 내장 브라우저(`Ctrl+Enter` 는 이벤트로도): 문서 하나만 연 채 `목록.csv` 를 훑어보기 → 머리의 **오른쪽에 열기** → 오른쪽에 새 묶음, 그리드에 포커스, 창 닫힘. 트리 커서 `표.tsv` 에서 `Ctrl+Enter` → 새로 나누지 않고 다른 묶음에. `docs` 폴더 격자의 `개요.md` 카드에서 `Ctrl+Enter` → 다른 묶음에, 편집기에 포커스. 팔레트 명령(`Ctrl+Enter` 표시) → 다른 묶음에. 폴더를 볼 때는 열기 단추가 없다. 콘솔 오류 없음.
+
+### 38.2 확인하지 못한 것 (TESTCASES §32)
+
+- 설치한 Edge 앱에서 트리의 `Ctrl+Enter`(브라우저가 가로채지 않는지).
+- 묶음이 셋 이상일 때의 고르는 차례.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

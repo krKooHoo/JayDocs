@@ -4,7 +4,7 @@ import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
-import { paneAction, requestQuickLook, sendToPane, setOpener } from '../lib/nav'
+import { paneAction, requestQuickLook, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -227,6 +227,33 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     return () => setOpener(null)
   }, [openFile])
 
+  /**
+   * 오른쪽 창에 열기 (DESIGN §38, `Ctrl+Enter`). 다른 탭 묶음이 있으면 거기에(활성 묶음의 오른쪽 · 다음 것 먼저), 없으면 오른쪽에 새 묶음.
+   * 그 묶음에 이미 열려 있으면 그 탭을 고른다. 포커스는 연 창으로
+   */
+  const openFileSide = useCallback((path: string) => {
+    recordRecentFile(p.layoutId, path)
+    const active = activeTabSet()
+    if (!active) { openFile(path, true); return }
+    const sets: TabSetNode[] = []
+    model.visitNodes((n: Node) => { if (n.getType() === 'tabset') sets.push(n as TabSetNode) })
+    const i = sets.indexOf(active)
+    const target = sets.slice(i + 1)[0] ?? sets.slice(0, Math.max(0, i)).reverse()[0]
+    let tab: TabNode | undefined
+    if (target) {
+      tab = target.getChildren().find((t) => DOC_COMPONENTS.has((t as TabNode).getComponent() ?? '') && (t as TabNode).getConfig()?.path === path) as TabNode | undefined
+      if (tab) selectTab(tab)
+      else tab = model.doAction(Actions.addNode(tabJson(path), target.getId(), DockLocation.CENTER, -1, true)) as TabNode | undefined
+    } else {
+      tab = model.doAction(Actions.addNode(tabJson(path), active.getId(), DockLocation.RIGHT, -1, true)) as TabNode | undefined
+    }
+    if (tab) {
+      const parent = tab.getParent()
+      if (parent?.getType() === 'tabset') model.doAction(Actions.setActiveTabset(parent.getId()))
+      focusTabPane(tab.getId(), 25)
+    }
+  }, [model, activeTabSet, openFile, selectTab, p.layoutId])
+
   const splitActive = useCallback(() => {
     const path = activePath()
     const ts = activeTabSet()
@@ -392,6 +419,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     // 트리에 포커스가 있을 때 접으면 포커스가 body 로 빠진다 — 문서 창(없으면 빈 화면 안내)으로 보낸다
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
+    { id: 'openTreeCursorSide', label: '파일 트리 커서의 파일을 오른쪽 창에 열기', run: requestTreeOpenSide },
     { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
     { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
@@ -493,6 +521,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
             activePath={activeDoc}
             dirtyPaths={dirtyPaths}
             onOpen={openFile}
+            onOpenSide={openFileSide}
             onRefresh={p.onRefresh}
             onNewFile={p.onNewFile}
             onNewFolder={p.onNewFolder}

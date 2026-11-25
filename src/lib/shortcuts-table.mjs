@@ -88,6 +88,7 @@ export const SHORTCUTS = [
       { keys: '→', label: '폴더 펼치기 (파일이면 열기)' },
       { keys: '←', label: '폴더 접기 (접혀 있으면 상위 폴더로)' },
       { keys: 'Enter', label: '열기 / 폴더 펼치기·접기' },
+      { keys: 'Ctrl+Enter', label: '오른쪽 창에 열기 — 분할한 옆 창에(없으면 오른쪽으로 나눈다), 포커스는 그 창. 훑어보기 창 · 폴더 격자의 문서 카드에서도 같고, 훑어보기 창 머리의 "열기" · "오른쪽에 열기" 단추도 같다. 팔레트 "파일 트리 커서의 파일을 오른쪽 창에 열기"', palette: 'openTreeCursorSide' },
       { keys: 'Home / End', label: '처음 / 끝' },
       { keys: 'F2', label: '파일 이름 바꾸기 / 옮기기' },
       { keys: 'Delete', label: '삭제' },

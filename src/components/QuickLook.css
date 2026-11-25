@@ -57,3 +57,6 @@
 .ql-dir { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel); color: var(--muted); }
 .ql-dir-icon { font-size: 40px; line-height: 1; }
 .ql-dir-count { font-size: 12px; text-align: center; }
+/* 열기 단추 (DESIGN §38) */
+.quicklook-open { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.quicklook-open button { padding: 1px 8px; font-size: 12px; }

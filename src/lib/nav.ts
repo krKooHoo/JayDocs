@@ -93,3 +93,15 @@ export function sendToPane(tabId: string, commandId: string): boolean {
   el.dispatchEvent(new CustomEvent(PANE_COMMAND_EVENT, { detail: commandId }))
   return true
 }
+
+// ---- 트리 커서의 파일을 오른쪽 창에 (팔레트 명령, DESIGN §38). 커서는 트리 안의 state 라 이 길로 보낸다
+const treeSideListeners = new Set<() => void>()
+
+export function requestTreeOpenSide() {
+  for (const l of treeSideListeners) l()
+}
+
+export function onTreeOpenSide(l: () => void): () => void {
+  treeSideListeners.add(l)
+  return () => { treeSideListeners.delete(l) }
+}
