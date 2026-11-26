@@ -43,6 +43,26 @@
 .quicklook-folder-new { display: inline-flex; gap: 8px; align-items: center; }
 .quicklook-folder-new kbd { font-size: 11px; color: var(--muted); }
 .ql-grid { display: grid; align-items: start; }
+/* 보기 · 정렬 단추 (DESIGN §51) — 머리 오른쪽, 포커스는 받지 않는다 */
+.quicklook-folder-tools { margin-left: auto; display: inline-flex; gap: 6px; flex: none; }
+.ql-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.ql-seg button { border: 0; border-radius: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; line-height: 18px; padding: 0 7px; cursor: pointer; }
+.ql-seg button + button { border-left: 1px solid var(--border); }
+.ql-seg button.is-on { background: var(--accent-soft); color: var(--fg); }
+/* 묶음 머리 (수정 시각 정렬) — 격자에서는 한 줄을 다 차지한다 */
+.ql-section { grid-column: 1 / -1; padding: 6px 2px 2px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); }
+.ql-section:first-child { padding-top: 0; }
+/* 목록 보기 — 아이콘 · 이름 · 수정 시각 · 크기 */
+.ql-list { display: flex; flex-direction: column; }
+.ql-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 128px 96px; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: 4px; outline: none; cursor: default; }
+.ql-row:hover { background: var(--hover); }
+.ql-row:focus { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.ql-row-icon { text-align: center; color: var(--muted); }
+.ql-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ql-row.is-dir .ql-row-name { font-weight: 600; }
+.ql-row-time, .ql-row-size { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ql-row-size { text-align: right; }
+.ql-list .ql-section { margin-top: 4px; }
 .ql-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 4px; border-radius: 6px; cursor: default; outline: none; }
 .ql-card:hover .doc-thumb { border-color: var(--muted); }
 /* 고른 카드 (포커스) — 테두리를 굵게 강조색으로. 라이트 · 다크 모두 --accent */

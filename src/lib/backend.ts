@@ -93,8 +93,8 @@ export interface Backend {
   /** 앱 경로('' 은 주 폴더)의 전체 경로. 그 폴더의 상세 경로를 넣지 않았으면 full 이 null */
   localPath(path: string): { root: RootDetail; full: string | null }
   read(path: string): Promise<FileData>
-  /** 수정 시각만 (내용은 읽지 않는다) — 바깥에서 바뀌었는지 볼 때. 파일이 없으면 거부 */
-  stat(path: string): Promise<{ mtime: number }>
+  /** 수정 시각 · 크기만 (내용은 읽지 않는다) — 바깥에서 바뀌었는지 볼 때, 폴더 격자의 목록 보기 (DESIGN §51). 파일이 없으면 거부 */
+  stat(path: string): Promise<{ mtime: number; size?: number }>
   /** convert: UTF-8 이 아닌 파일을 UTF-8 로 바꿔 쓸 때만 true (그 외엔 덮어쓰기를 막는다) */
   write(path: string, text: string, baseMtime: number | null, opts?: { convert?: boolean }): Promise<{ mtime: number }>
   mkdir(path: string): Promise<void>

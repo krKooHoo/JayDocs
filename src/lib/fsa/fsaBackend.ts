@@ -448,10 +448,11 @@ export class FsaBackend implements Backend {
     }
   }
 
-  async stat(path: string): Promise<{ mtime: number }> {
+  async stat(path: string): Promise<{ mtime: number; size: number }> {
     const l = await this.locate(path)
     try {
-      return { mtime: (await (await this.fileOf(l)).getFile()).lastModified }
+      const file = await (await this.fileOf(l)).getFile()
+      return { mtime: file.lastModified, size: file.size }
     } catch (e) {
       throw fsFail(e, '읽지 못했습니다')
     }

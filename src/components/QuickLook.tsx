@@ -1,9 +1,11 @@
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type HTMLAttributes } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import type { TreeEntry } from '../lib/backend'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { PAGE_RATIO, useSkimText } from '../lib/skim'
-import { CARD_GAP, CARD_MIN_WIDTH, folderCounts, gridColumns, gridMove, isGridKey, pageRowsOf } from '../lib/skim/grid'
+import { CARD_GAP, CARD_MIN_WIDTH, folderCounts, gridColumns, isGridKey, pageRowsOf } from '../lib/skim/grid'
+import { folderSections, formatSize, formatTime, sectionMove, sectionRows, setFolderSort, setFolderView, useFolderPrefs, type FileStat, type FolderSort, type FolderView } from '../lib/skim/folderView'
+import { backend } from '../lib/backend'
 import { LOOK_MIN_HEIGHT, LOOK_MIN_WIDTH, LOOK_ZOOM_MAX, LOOK_ZOOM_MIN, fitLookSize, lookPrefs, lookResizeKey, lookZoomKey, setLookPrefs, stepLookZoom, useLookPrefs, type LookPrefs } from '../lib/skim/look'
 import { DocFileView, DocThumb } from './DocView'
 import { keysOf, tip } from '../lib/commands'
@@ -349,29 +351,72 @@ const FAR_MARGIN = '300% 0px'
 const pathOf = (e: IntersectionObserverEntry) => (e.target as HTMLElement).dataset.path ?? ''
 
 /**
- * 폴더 훑어보기 (PLAN-skim Phase E · SK12) — 바로 아래 항목의 썸네일 격자. 순서는 트리와 같다.
+ * 폴더 훑어보기 (PLAN-skim Phase E · SK12, 보기 · 정렬은 DESIGN §51) — 바로 아래 항목의 썸네일 격자 또는 목록.
  *
  * - 문서는 `DocThumb`(light), 하위 폴더는 폴더 카드(안의 폴더 · 문서 수).
  * - 화면 가까이 온 카드만 썸네일을 그린다(읽기도 그때). 멀어지면 빈 틀로 돌린다 — `NEAR_MARGIN` · `FAR_MARGIN`.
- * - 열 수는 너비로 정한다(`gridColumns`). 방향키 · `PageUp/PageDown` · `Home/End` 로 카드를 옮긴다(`gridMove`).
+ * - 열 수는 너비로 정한다(`gridColumns`). 방향키 · `PageUp/PageDown` · `Home/End` 로 카드를 옮긴다(`sectionMove` — 묶음마다 새 줄).
  * - 카드는 `[tabindex]` 라 클릭으로 포커스를 받는다(틀이 막지 않는다). 포커스 받은 카드 = 고른 카드.
+ * - 보기(격자 ↔ 목록, `Ctrl+Shift+V`) · 정렬(이름 ↔ 수정 시각)은 `lib/skim/folderView.ts`. 수정 시각 · 크기는 목록이나 시각 정렬일 때만 읽는다.
  */
 export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp, onBack, onNewFile, onOpenFile }: QuickLookFolderProps) {
   const items = entry.children ?? []
   const { dirs, files } = folderCounts(items)
+  const { view, sort } = useFolderPrefs()
   const box = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(1)
   const [active, setActive] = useState(0)
   /** 썸네일을 그리는 카드 (경로) */
   const [live, setLive] = useState<ReadonlySet<string>>(() => new Set())
+  /** 읽은 수정 시각 · 크기 (null = 못 읽음) */
+  const [stats, setStats] = useState<ReadonlyMap<string, FileStat | null>>(() => new Map())
   // 다른 폴더로 바뀌면 처음부터
   const [forPath, setForPath] = useState(entry.path)
   if (forPath !== entry.path) {
     setForPath(entry.path)
     setActive(0)
     setLive(new Set())
+    setStats(new Map())
   }
+
+  // 수정 시각 · 크기 — 목록 보기나 시각 정렬일 때만, 6개씩 나눠 읽는다 (원칙 2)
+  const needStats = view === 'list' || sort === 'time'
+  useEffect(() => {
+    if (!needStats) return
+    const todo = items.filter((it) => it.type === 'file' && !stats.has(it.path)).map((it) => it.path)
+    if (!todo.length) return
+    let alive = true
+    let next = 0
+    const got = new Map<string, FileStat | null>()
+    let flushAt = 0
+    const flush = (force = false) => {
+      if (!alive || !got.size) return
+      const now = performance.now()
+      if (!force && now - flushAt < 120) return
+      flushAt = now
+      const add = new Map(got)
+      got.clear()
+      setStats((s) => { const n = new Map(s); for (const [k, v] of add) n.set(k, v); return n })
+    }
+    const worker = async () => {
+      while (alive && next < todo.length) {
+        const path = todo[next++]
+        try { const st = await backend().stat(path); got.set(path, { mtime: st.mtime, size: st.size }) } catch { got.set(path, null) }
+        flush()
+      }
+    }
+    void Promise.all(Array.from({ length: 6 }, worker)).then(() => flush(true))
+    return () => { alive = false }
+    // stats 는 넣지 않는다 — 읽은 것을 넣을 때마다 다시 돌지 않게 (읽을 것은 todo 로 그때 고른다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needStats, items, forPath])
+
+  const now = Date.now()
+  const { sections, pending } = useMemo(() => folderSections(items, sort, stats, now), [items, sort, stats]) // eslint-disable-line react-hooks/exhaustive-deps
+  const ordered = useMemo(() => sections.flatMap((s) => s.items), [sections])
+  const lineCols = view === 'list' ? 1 : cols
+  const rows = useMemo(() => sectionRows(sections.map((s) => s.items.length), lineCols), [sections, lineCols])
 
   const hasItems = items.length > 0
   /** 문서가 없는 폴더에서 새 문서를 못 만드는 이유 (DESIGN §35) — 읽기 전용으로 가져온 폴더 · 파일 하나만 가져온 곳 */
@@ -392,19 +437,19 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
   // 열 수 = 격자 너비로
   useLayoutEffect(() => {
     const g = grid.current
-    if (!g) return
+    if (!g || view !== 'grid') return
     const update = () => setCols(gridColumns(g.clientWidth, CARD_MIN_WIDTH * zoom))
     update()
     if (typeof ResizeObserver !== 'function') return
     const ro = new ResizeObserver(update)
     ro.observe(g)
     return () => ro.disconnect()
-  }, [hasItems, zoom])
+  }, [hasItems, zoom, view])
 
-  // 보이는 카드만 그린다 (root = 창의 스크롤 상자)
+  // 보이는 카드만 그린다 (root = 창의 스크롤 상자). 목록 보기는 썸네일이 없다
   useEffect(() => {
     const g = grid.current
-    if (!g || typeof IntersectionObserver !== 'function') return
+    if (!g || view !== 'grid' || typeof IntersectionObserver !== 'function') return
     const root = box.current?.closest('.quicklook-scroll') ?? null
     const change = (add: string[], remove: string[]) => {
       if (!add.length && !remove.length) return
@@ -419,7 +464,7 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     const far = new IntersectionObserver((es) => change([], es.filter((e) => !e.isIntersecting).map(pathOf)), { root, rootMargin: FAR_MARGIN })
     for (const c of g.querySelectorAll<HTMLElement>('[data-card="file"]')) { near.observe(c); far.observe(c) }
     return () => { near.disconnect(); far.disconnect() }
-  }, [items])
+  }, [ordered, view])
 
   const cardAt = (i: number) => grid.current?.querySelector<HTMLElement>(`[data-index="${i}"]`) ?? null
   const focusCard = (i: number) => {
@@ -428,15 +473,15 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     setActive(i)
     el.focus({ preventScroll: true })
     // 첫 줄이면 머리(폴더 이름 · 수)까지 보이게 맨 위로
-    const view = box.current?.closest('.quicklook-scroll')
-    if (view && i < cols) view.scrollTop = 0
+    const scroller = box.current?.closest('.quicklook-scroll')
+    if (scroller && rows[0]?.includes(i)) scroller.scrollTop = 0
     else el.scrollIntoView({ block: 'nearest' })
   }
   /** 지금 고른 카드 — 포커스된 카드에서 읽는다 (키 반복이 다시 그리기보다 빠르면 state 가 늦다) */
   const current = () => {
     const el = document.activeElement as HTMLElement | null
     const i = el && grid.current?.contains(el) && el.dataset.index !== undefined ? Number(el.dataset.index) : active
-    return i >= 0 && i < items.length ? i : 0
+    return i >= 0 && i < ordered.length ? i : 0
   }
 
   // 들어올 때 (트리의 Tab · 폴더를 옮겼을 때) 첫 카드로
@@ -446,6 +491,33 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     else box.current?.focus({ preventScroll: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusToken])
+
+  // 보기 · 순서가 바뀌면 고른 카드를 경로로 따라간다 — 보기를 바꾸면 카드가 새로 그려져 포커스가 빠지므로 다시 준다
+  const follow = useRef<{ path: string; focus: boolean } | null>(null)
+  useLayoutEffect(() => {
+    const f = follow.current
+    if (!f) return
+    follow.current = null
+    const i = ordered.findIndex((it) => it.path === f.path)
+    if (i < 0) return
+    if (f.focus) focusCard(i)
+    else setActive(i)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordered, view])
+  const keepActive = () => {
+    const it = ordered[current()]
+    if (!it) return
+    const focus = !!grid.current?.contains(document.activeElement)
+    follow.current = { path: it.path, focus }
+    if (focus) hold()
+  }
+  // 순서가 바뀌면 (시각을 다 읽어 정렬될 때) 고른 카드를 따라간다
+  const lastOrder = useRef(ordered)
+  if (lastOrder.current !== ordered) {
+    const prev = lastOrder.current[active]
+    lastOrder.current = ordered
+    if (prev && ordered[active]?.path !== prev.path && !follow.current) follow.current = { path: prev.path, focus: !!grid.current?.contains(document.activeElement) }
+  }
 
   /** 고른 카드가 사라지기 전에 포커스를 격자 상자로 옮겨 둔다 — 포커스가 body 로 빠지면 창이 닫힌다 */
   const hold = () => box.current?.focus({ preventScroll: true })
@@ -457,12 +529,21 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     const el = (t as Element).closest?.('[data-index]') as HTMLElement | null
     return el ? Number(el.dataset.index) : -1
   }
+  const changeView = (v: FolderView) => { if (v === view) return; keepActive(); setFolderView(v) }
+  const changeSort = (s: FolderSort) => { if (s === sort) return; keepActive(); setFolderSort(s) }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+Shift+V — 격자 ↔ 목록 (마크다운의 보기 전환과 같은 뜻). 뒤의 마크다운 창 모드가 바뀌지 않게 여기서 멈춘다
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.code === 'KeyV' || e.key.toLowerCase() === 'v')) {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!e.repeat) changeView(view === 'grid' ? 'list' : 'grid')
+      return
+    }
     // Ctrl+Enter — 문서 카드를 오른쪽 창에 (폴더 카드는 아무것도 하지 않는다)
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      const it = items[current()]
+      const it = ordered[current()]
       if (!e.repeat && it?.type === 'file') onOpenFile?.(it.path, true)
       return
     }
@@ -470,11 +551,11 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     if (isGridKey(e.key) && !e.shiftKey) {
       e.preventDefault()
       if (!hasItems) return
-      const view = box.current?.closest('.quicklook-scroll')
+      const scroller = box.current?.closest('.quicklook-scroll')
       const i = current()
       const card = cardAt(i)
-      const rows = pageRowsOf(view?.clientHeight ?? 0, card ? card.offsetHeight + CARD_GAP : 0)
-      focusCard(gridMove(i, items.length, cols, e.key, rows))
+      const pageRows = pageRowsOf(scroller?.clientHeight ?? 0, card ? card.offsetHeight + (view === 'grid' ? CARD_GAP : 0) : 0)
+      focusCard(sectionMove(i, rows, e.key, pageRows))
       return
     }
     switch (e.key) {
@@ -482,7 +563,7 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
         e.preventDefault()
         // 빈 폴더는 Enter 가 새 문서 — 고를 카드가 없다
         if (!hasItems) { if (!e.repeat && canCreate) onNewFile?.(entry.path); return }
-        const it = items[current()]
+        const it = ordered[current()]
         if (!e.repeat && it) choose(it)
         return
       }
@@ -508,39 +589,95 @@ export function QuickLookFolder({ entry, focusToken = 0, zoom = 1, onPick, onUp,
     }
   }
 
+  // 머리의 보기 · 정렬 단추 — 포커스는 받지 않는다(키는 Ctrl+Shift+V · 팔레트)
+  const seg = (label: string, on: boolean, cmd: string, title: string, run: () => void) => (
+    <button type="button" tabIndex={-1} data-command={cmd} className={on ? 'is-on' : undefined} aria-pressed={on} title={cmd === 'folderViewToggle' ? `${title} (Ctrl+Shift+V)` : title} onMouseDown={(e) => e.preventDefault()} onClick={run}>{label}</button>
+  )
+  let index = 0
   return (
     <div
-      className="quicklook-folder"
+      className={'quicklook-folder' + (view === 'list' ? ' is-list' : '')}
       ref={box}
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onFocus={(e) => { const i = indexOf(e.target); if (i >= 0) setActive(i) }}
-      onDoubleClick={(e) => { const i = indexOf(e.target); if (i >= 0 && items[i]) choose(items[i]) }}
+      onDoubleClick={(e) => { const i = indexOf(e.target); if (i >= 0 && ordered[i]) choose(ordered[i]) }}
     >
       <div className="quicklook-folder-head">
         <span className="quicklook-folder-name">📁 {entry.path ? entry.name : '(루트)'}</span>
-        <span className="quicklook-folder-count">폴더 {dirs} · 문서 {files}</span>
+        <span className="quicklook-folder-count">폴더 {dirs} · 문서 {files}{pending > 0 && ` · 수정 시각 읽는 중 ${files - pending} / ${files}`}</span>
+        {hasItems && (
+          <span className="quicklook-folder-tools">
+            <span className="ql-seg">
+              {seg('격자', view === 'grid', 'folderViewToggle', '격자 보기 — 썸네일 카드', () => changeView('grid'))}
+              {seg('목록', view === 'list', 'folderViewToggle', '목록 보기 — 이름 · 수정 시각 · 크기', () => changeView('list'))}
+            </span>
+            <span className="ql-seg">
+              {seg('이름', sort === 'name', 'folderSortName', '이름 순서 (트리와 같다)', () => changeSort('name'))}
+              {seg('수정 시각', sort === 'time', 'folderSortTime', '수정 시각 순서 — 새것부터, 오늘 · 어제 · 지난 7일 · 그 전으로 묶는다', () => changeSort('time'))}
+            </span>
+          </span>
+        )}
       </div>
       {!hasItems ? (
         emptyNote('이 폴더는 비어 있습니다')
       ) : (
         <>
           {files === 0 && emptyNote('이 폴더 바로 아래에는 문서가 없습니다')}
-          <div
-            className="ql-grid"
-            ref={grid}
-            role="listbox"
-            aria-label={`${entry.path || '(루트)'} 의 항목`}
-            // 100% 는 너비를 고르게 채운다. 그 밖의 배율은 카드 너비를 배율대로 고정한다 — 채우면 열 수가 바뀔 때만 크기가 달라져 한 단계가 눈에 안 보인다
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, ${zoom === 1 ? '1fr' : `min(${Math.round(CARD_MIN_WIDTH * zoom)}px, 100%)`}))`, gap: CARD_GAP }}
-          >
-            {items.map((it, i) => <GridCard key={it.path} item={it} index={i} active={i === active} live={live.has(it.path)} />)}
-          </div>
+          {view === 'grid' ? (
+            <div
+              className="ql-grid"
+              ref={grid}
+              role="listbox"
+              aria-label={`${entry.path || '(루트)'} 의 항목`}
+              // 100% 는 너비를 고르게 채운다. 그 밖의 배율은 카드 너비를 배율대로 고정한다 — 채우면 열 수가 바뀔 때만 크기가 달라져 한 단계가 눈에 안 보인다
+              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, ${zoom === 1 ? '1fr' : `min(${Math.round(CARD_MIN_WIDTH * zoom)}px, 100%)`}))`, gap: CARD_GAP }}
+            >
+              {sections.flatMap((s) => [
+                ...(s.title ? [<div key={'h:' + s.title} className="ql-section" role="presentation">{s.title}</div>] : []),
+                ...s.items.map((it) => { const i = index++; return <GridCard key={it.path} item={it} index={i} active={i === active} live={live.has(it.path)} /> }),
+              ])}
+            </div>
+          ) : (
+            <div className="ql-list" ref={grid} role="listbox" aria-label={`${entry.path || '(루트)'} 의 항목`}>
+              {sections.flatMap((s) => [
+                ...(s.title ? [<div key={'h:' + s.title} className="ql-section" role="presentation">{s.title}</div>] : []),
+                ...s.items.map((it) => { const i = index++; return <ListRow key={it.path} item={it} index={i} active={i === active} stat={stats.get(it.path)} now={now} /> }),
+              ])}
+            </div>
+          )}
         </>
       )}
     </div>
   )
 }
+
+interface ListRowProps { item: TreeEntry; index: number; active: boolean; stat: FileStat | null | undefined; now: number }
+
+/** 목록 보기의 한 줄 — 아이콘 · 이름 · 수정 시각 · 크기 (폴더는 안의 수) */
+const ListRow = memo(function ListRow({ item, index, active, stat, now }: ListRowProps) {
+  const isDir = item.type === 'dir'
+  const m = item.mount
+  const icon = isDir ? (m ? (m.readOnly ? '🔒' : '🔗') : '📁') : fileTypeOf(item.name)?.icon ?? '·'
+  const { dirs, files } = isDir ? folderCounts(item.children) : { dirs: 0, files: 0 }
+  return (
+    <div
+      className={'ql-row' + (isDir ? ' is-dir' : '')}
+      role="option"
+      aria-selected={active}
+      tabIndex={active ? 0 : -1}
+      data-index={index}
+      data-path={item.path}
+      data-card={isDir ? 'dir' : 'file'}
+      title={item.path}
+    >
+      <span className="ql-row-icon">{icon}</span>
+      <span className="ql-row-name">{item.name}</span>
+      <span className="ql-row-time">{isDir ? '' : stat ? formatTime(stat.mtime, now) : stat === null ? '—' : '…'}</span>
+      <span className="ql-row-size">{isDir ? `${dirs ? `폴더 ${dirs} · ` : ''}문서 ${files}` : formatSize(stat?.size)}</span>
+    </div>
+  )
+})
 
 interface GridCardProps { item: TreeEntry; index: number; active: boolean; live: boolean }
 

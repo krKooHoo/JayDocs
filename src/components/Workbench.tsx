@@ -12,6 +12,7 @@ import { fileTypeOf } from '../lib/filetypes.mjs'
 import { dismissNotice, notify } from '../lib/notices'
 import { SKIM_WIDTH_BIG_STEP, isSkimPath, nudgeSkimPanelWidth, refreshSkimPanels, skimPanelState, toggleSkimPanel } from '../lib/skim/panel'
 import { isLookDefault, resetLookPrefs } from '../lib/skim/look'
+import { folderPrefs, setFolderSort, toggleFolderView } from '../lib/skim/folderView'
 import { outlineOn, setOutlineOn } from '../lib/md/outlineState'
 import { DocPaneCountContext } from './docPanes'
 import { FileTree, type RootAction } from './FileTree'
@@ -467,6 +468,10 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'treeFilterDirty', label: '파일 트리: 저장 안 한 것만 보기 켜기 / 끄기', run: () => { focusTree(); requestTreeFilter('dirty') } },
     { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
+    // 폴더 격자의 보기 · 정렬 (DESIGN §51) — 격자 안의 Ctrl+Shift+V 는 격자가 받는다. 팔레트에서는 다음에 열 때부터
+    { id: 'folderViewToggle', label: '폴더 격자: 격자 ↔ 목록 보기 (목록은 이름 · 수정 시각 · 크기)', run: () => { const v = toggleFolderView(); notify(v === 'list' ? '폴더 격자를 목록으로 봅니다' : '폴더 격자를 썸네일 격자로 봅니다', { key: 'folderView' }) } },
+    { id: 'folderSortName', label: '폴더 격자: 이름 순서로', run: () => { setFolderSort('name'); notify('폴더 격자를 이름 순서로 봅니다', { key: 'folderView' }) }, enabled: () => folderPrefs().sort !== 'name' },
+    { id: 'folderSortTime', label: '폴더 격자: 수정 시각 순서로 (오늘 · 어제 · 지난 7일 · 그 전)', run: () => { setFolderSort('time'); notify('폴더 격자를 수정 시각 순서로 봅니다', { key: 'folderView' }) }, enabled: () => folderPrefs().sort !== 'time' },
     { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
     { id: 'focusEditor', label: '문서 창으로 포커스', run: focusEditor },
     { id: 'revertToSaved', label: '마지막 저장 상태로 되돌리기 — 저장 안 한 수정 버림 (Ctrl+Z 로 다시)', run: revertActive, enabled: canRevert },

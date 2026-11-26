@@ -1733,6 +1733,29 @@ UI/UX 개편 B5(`docs/research/apple-uiux/ADOPT.md`). 표와 문서를 오가며
 - 목차 패널의 클릭 · `Enter`(dev 샘플에 제목이 하나뿐이고 소스 모드라 목차가 숨어 있었다 — 코드는 경로 막대와 같은 길), 분할한 두 창 사이 전환, 탭 닫기 뒤 뒤로.
 - 설치한 Edge 앱 · Mac(⌥, · ⌥.) 에서 키가 앱에 오는지, 한글 자판에서 `Alt+,`.
 
+## 51. 폴더 격자 보기 전환 · 정렬 (2026-11-26)
+
+UI/UX 개편 B6(`docs/research/apple-uiux/ADOPT.md`). 폴더 훑어보기(§25 Phase E)를 격자 ↔ 목록으로, 이름 ↔ 수정 시각으로 본다(Finder 의 보기, 메모의 날짜 묶음). 원칙 확인: 5 맞음(최근에 손댄 것부터 모아 본다), 2 주의 → 수정 시각 · 크기는 **목록 보기나 시각 정렬일 때만** 6개씩 나눠 읽고, 다 읽기 전에는 이름 순서 그대로(FV4), 1 맞음(키 · 팔레트), 3 · 4 · 6 · 7 상관없음(보기 설정은 브라우저에).
+
+| # | 결정 | 근거 |
+|---|---|---|
+| FV1 | 폴더 격자 안에서 **`Ctrl+Shift+V`** → 격자 ↔ 목록(마크다운의 보기 전환과 같은 뜻). 격자가 키를 받아 멈춘다 — 뒤의 마크다운 창 모드는 바뀌지 않는다. 팔레트 **폴더 격자: 격자 ↔ 목록 보기**, 창 머리의 **격자 · 목록** 단추도 같다 | ADOPT B6 |
+| FV2 | **목록**은 줄마다 아이콘 · 이름 · 수정 시각(오늘이면 `14:05`, 아니면 `2026-11-20 14:05`) · 크기(`812 B` · `12 KB` · `1.2 MB`), 폴더는 안의 폴더 · 문서 수. 키는 격자와 같다(`↑ / ↓` 한 줄, `Enter` 열기 · 들어가기, `Backspace` 위로, `Ctrl+Enter` 오른쪽 창에) | Finder 목록 보기 |
+| FV3 | **정렬** — 창 머리의 **이름 · 수정 시각** 단추, 팔레트 **폴더 격자: 이름 순서로 · 수정 시각 순서로**. 이름은 트리 순서 그대로. 수정 시각은 폴더(시각이 없다)를 맨 앞 "폴더" 묶음에, 파일은 새것부터 **오늘 · 어제 · 지난 7일 · 그 전** 묶음 머리 아래에(이 컴퓨터의 자정 기준), 시각을 못 읽은 파일은 끝. 키는 주지 않는다 | ADOPT B6 "정렬은 팔레트" · 메모의 날짜 묶음 |
+| FV4 | 수정 시각 · 크기는 `backend.stat`(파일 내용은 읽지 않는다 — `File.size` · `lastModified`)으로 목록 보기나 시각 정렬일 때만 읽는다. 다 읽기 전에는 이름 순서 그대로 두고 머리에 "수정 시각 읽는 중 n / m" — 순서가 흔들리지 않게. 다 읽어 순서가 바뀌면 고른 카드를 따라간다 | 원칙 2 |
+| FV5 | 묶음 머리는 격자에서 한 줄을 다 차지하고, 카드는 묶음마다 새 줄에서 시작한다. `↑ / ↓` 는 줄 단위로 같은 칸(짧은 줄이면 마지막 카드), `← / →` 는 순서대로 — `lib/skim/folderView.ts` `sectionRows` · `sectionMove`(묶음이 하나면 `gridMove` 와 같다, 테스트) | |
+| FV6 | 보기 · 정렬은 앱 전체에 하나, 이 브라우저의 localStorage `jaydocs.folderView` 에 남긴다. 보기를 바꿔도 고른 항목에 포커스가 남는다(카드가 새로 그려져도 경로로 따라간다 — 포커스가 빠지면 훑어보기 창이 닫히므로) | |
+
+코드: `lib/skim/folderView.ts`(설정 · 날짜 묶음 · 순서 · 묶음 격자 이동 · 표시) · `.test.ts`, `components/QuickLook.tsx`(`QuickLookFolder` 의 보기 · 정렬 · 시각 읽기, `ListRow`), `QuickLook.css`, `lib/backend.ts` · `lib/fsa/fsaBackend.ts`(`stat` 이 크기도), `Workbench.tsx`(팔레트 `folderViewToggle` · `folderSortName` · `folderSortTime`), `shortcuts-table.mjs`(`Ctrl+Shift+V (폴더 격자)`, 안내 창 `hint`).
+
+### 51.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 키): 트리 docs 에서 `Space` → `Tab` → `→`(목록.csv) → `Ctrl+Shift+V` → 목록(이름 · 시각 · 크기 다섯 줄), 포커스는 목록.csv 그대로, 마크다운 창 모드는 그대로(하이브리드). "수정 시각" 단추 → "오늘" 묶음, 새것부터. `↓` → 다음 줄. `Ctrl+Shift+V` → 격자, 묶음 머리 "오늘", 포커스 그대로. `Backspace` → 루트: "폴더" 묶음(data · docs · @가져온폴더) + "오늘"(설정.json · 메모.txt), `Home` `↓` → 설정.json, `↑` → data. 콘솔 오류 없음.
+
+### 51.2 확인하지 못한 것 (TESTCASES §45)
+
+- dev 샘플은 모두 오늘 만든 파일이라 "어제 · 지난 7일 · 그 전" 묶음은 단위 테스트로만 봤다. 실제 폴더(수강생 제출물 — 수백 개)에서 시각을 읽는 속도, 가져온 폴더의 시각, 목록 보기의 좁은 창.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
