@@ -1483,6 +1483,30 @@ dev `?opfs` + 내장 브라우저(키는 이벤트로): `Ctrl+Shift+O` → 가�
 
 - 실제 폴더 · 파일 선택 창(자동화가 못 누른다)과 그 뒤의 가져오기, 파일 탐색기에서 끌어다 놓기.
 
+## 45. 마크다운에서도 `Ctrl+H` 로 바꾸기 (2026-11-26)
+
+UI/UX 개편 K6(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 4 — 그리드의 `Ctrl+H` 와 같은 뜻, 규칙 5 — Word · VS Code(Windows) · Sheets 의 바꾸기 키), 3 맞음(글과 표가 같은 키), 나머지 상관없음.
+
+**지금까지의 `Ctrl+H`(확인)**: 편집기 keymap(`lib/cm.ts`)에 `Mod-h` 가 없었다. CodeMirror 의 `Ctrl-h`(글자 지우기)는 Mac 전용 emacs 키라 Windows 에서는 편집기가 받지 않고, 키가 브라우저로 가 **방문 기록**이 열렸다(Edge · Chrome 의 `Ctrl+H`). 코드와 CodeMirror 소스로 확인했다 — 자동화의 이벤트로는 브라우저 동작이 일어나지 않아 화면으로는 못 봤다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RP1 | 편집기에서 `Ctrl+H` → 찾기 패널을 열고 **바꾸기 칸**에 포커스(`openReplacePanel`). 찾을 말은 `Ctrl+F` 와 같이 선택한 글로 채운다. 패널 안(찾기 · 바꾸기 칸)에서 눌러도 같다. 브라우저 기본 동작(방문 기록)은 막힌다 | ADOPT K6. 그리드 `Ctrl+H`(`gridReplace`) 와 같은 뜻 |
+| RP2 | `baseExtensions` 에 넣어 **소스 · 하이브리드 · 분할**, **.txt · .json** 편집기가 모두 같다. 읽기 전용 편집기는 바꾸기 칸이 없어 찾기 칸에 둔다 | 같은 편집기, 한 곳에서 |
+| RP3 | 팔레트 **편집기: 찾기**(`Ctrl+F`) · **편집기: 바꾸기**(`Ctrl+H`) — 새 창 명령 범위 `editor`(.md · .txt · .json). 창 막대에 단추는 두지 않는다(`noButton` — 막대 단추 검사에서 뺀다). 미리보기 전용 모드면 알림 줄에 이유 | 새 기능은 팔레트 명령과 함께. 막대는 좁고 키 · 팔레트로 닿는다 |
+| RP4 | Mac 에서는 `Mod-h` = ⌘H 다. ⌘H 는 macOS 가 앱 가리기로 먼저 받을 수 있다 — 그리드의 `Ctrl+H` 와 같은 처지 | 키 처리 규칙(⌘ 를 Ctrl 로)과 같게 둔다. Mac 확인은 아직 |
+
+코드: `lib/cm.ts`(`openReplacePanel` · keymap), `lib/paneCommands.ts`(범위 `editor` · `noButton` · 두 명령) · `.test.ts`, `Workbench.tsx`(범위 판단), `MarkdownPane.tsx`(명령 받기), `shortcuts-table.mjs`, `docs/guide/markdown.md`.
+
+### 45.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(키는 이벤트로): `개요.md` 소스 · 하이브리드, `메모.txt`, `설정.json` 에서 `Ctrl+H` → 키가 막히고(`defaultPrevented`) 패널이 열려 포커스가 바꾸기 칸. 찾기 칸에서 `Ctrl+H` → 바꾸기 칸. 팔레트 "편집기: 바꾸기" → 바꾸기 칸, "편집기: 찾기" → 찾기 칸, 키 표시 `Ctrl+F` · `Ctrl+H`. 미리보기 전용 모드에서 팔레트 → 알림. 콘솔 오류 없음.
+
+### 45.2 확인하지 못한 것 (TESTCASES §39)
+
+- 실제 키(브라우저 방문 기록이 더는 열리지 않는지)와 설치한 Edge 앱, Mac 의 ⌘H.
+- **하이브리드 표 칸을 편집하는 중**(`HybridTable` 의 textarea)에는 편집기가 키를 받지 않아(위젯 `ignoreEvent`) `Ctrl+H` 가 여전히 브라우저로 간다 — `Ctrl+F` 도 전부터 같다. 표 칸 키는 K2 와 같은 파일이라 이 절에서는 고치지 않았다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

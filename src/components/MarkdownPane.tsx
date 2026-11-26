@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
-import { baseExtensions, isMarkdownPath, remote } from '../lib/cm'
+import { openSearchPanel } from '@codemirror/search'
+import { baseExtensions, isMarkdownPath, openReplacePanel, remote } from '../lib/cm'
 import { cmdTitle, runCommand, tip } from '../lib/commands'
 import { onPaneAction } from '../lib/nav'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
@@ -88,6 +89,15 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
 
   // 팔레트의 보기 모드 명령 (DESIGN §36) — 활성 탭의 이 창에만 온다
   usePaneCommands(root, (id) => {
+    // 찾기 · 바꾸기 (DESIGN §45) — .md · .txt · .json 모두. 미리보기 전용 모드는 편집기가 숨어 있다
+    if (id === 'editorFind' || id === 'editorReplace') {
+      const view = viewRef.current
+      if (!view) return
+      if (modeRef.current === 'preview') { notify('미리보기 전용 모드에서는 찾기 · 바꾸기를 열 수 없습니다 — 보기 모드 순환은 Ctrl+Shift+V', { key: 'find' }); return }
+      if (id === 'editorFind') openSearchPanel(view)
+      else openReplacePanel(view)
+      return
+    }
     if (!isMarkdownPath(path)) return
     if (id === 'viewSource') setMode('source')
     else if (id === 'viewHybrid') setMode('hybrid')

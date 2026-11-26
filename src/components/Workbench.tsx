@@ -22,7 +22,7 @@ import { SUMMARY_KEYS, SUMMARY_LABELS, toggleSummaryKey, useSummaryKeys } from '
 import { confirmConvertToUtf8 } from './ReadOnlyBanner'
 import { EditorView } from '@codemirror/view'
 import { revertTextInView } from '../lib/revert'
-import { PANE_COMMANDS } from '../lib/paneCommands'
+import { PANE_COMMANDS, type PaneScope } from '../lib/paneCommands'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
@@ -463,10 +463,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
 
   // 창 막대 단추의 팔레트 명령 (DESIGN §36) — 활성 탭의 창 하나에만 보낸다. 충돌 배너의 두 선택도 팔레트에
   useEffect(() => {
-    const activeOf = (scope: 'grid' | 'md') => {
+    const activeOf = (scope: PaneScope) => {
       const path = activePath()
       if (!path) return null
-      return (scope === 'grid' ? isTsvPath(path) : isMarkdownPath(path)) ? path : null
+      const kind = fileTypeOf(path)?.kind
+      const ok = scope === 'grid' ? isTsvPath(path) : scope === 'md' ? isMarkdownPath(path) : kind === 'md' || kind === 'text'
+      return ok ? path : null
     }
     const conflictPath = () => { const path = activePath(); return path && store.get(path)?.conflict ? path : null }
     return registerCommands([

@@ -9,7 +9,8 @@
  * - 막대에 단추를 더하면 여기에도 넣는다 — `paneCommands.test.ts` 가 막대마다 빠진 단추를 찾는다.
  */
 
-export type PaneScope = 'grid' | 'md'
+/** grid: 표(그리드) · md: 마크다운 창 · editor: 글 편집기(CodeMirror — .md · .txt · .json) */
+export type PaneScope = 'grid' | 'md' | 'editor'
 
 export interface PaneCommand {
   id: string
@@ -22,6 +23,8 @@ export interface PaneCommand {
   edits?: boolean
   /** 단축키 표에 줄이 없는 키 */
   keys?: string
+  /** 막대에 단추가 없다 — 창이 받는 키와 팔레트로만 닿는다 (편집기의 찾기 · 바꾸기, DESIGN §45) */
+  noButton?: true
 }
 
 export const PANE_COMMANDS: readonly PaneCommand[] = [
@@ -46,6 +49,9 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'viewHybrid', label: '보기: 하이브리드', title: '커서 줄은 원문, 나머지는 렌더 (Obsidian 식)', scope: 'md' },
   { id: 'viewSplit', label: '보기: 분할', title: '소스 + 미리보기', scope: 'md' },
   { id: 'viewPreview', label: '보기: 미리보기', title: '미리보기만', scope: 'md' },
+  // ---- 글 편집기 (막대 단추 없음 — 키는 편집기가 직접 받는다, DESIGN §45)
+  { id: 'editorFind', label: '편집기: 찾기', title: '찾기', scope: 'editor', noButton: true },
+  { id: 'editorReplace', label: '편집기: 바꾸기', title: '바꾸기', scope: 'editor', noButton: true },
 ]
 
 export const PANE_COMMAND_IDS: ReadonlySet<string> = new Set(PANE_COMMANDS.map((c) => c.id))
