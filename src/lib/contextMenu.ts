@@ -48,6 +48,8 @@ export interface TreeSpot extends SpotBase {
   fileMount: boolean
   /** 읽기 전용으로 가져온 폴더 안이 아니다 */
   writable: boolean
+  /** 고정한 항목 (DESIGN §49) — 메뉴의 "고정" 이 "고정 해제" 로 읽힌다 */
+  pinned?: boolean
 }
 
 /** 마크다운 · 글 문서 (편집기 · 미리보기 · 목차) */
@@ -86,7 +88,7 @@ export type ContextZone = ContextSpot['zone']
 // ---------------------------------------------------------------- 자리 판단 함수
 
 /** 문서 어디서나 (맨 아래) — 저장 · 되돌리기 · 분할 · 경로 복사 · 인코딩 */
-export const DOC_TAIL_IDS = ['save', 'revertToSaved', 'split', 'copyActivePath', 'convertUtf8'] as const
+export const DOC_TAIL_IDS = ['save', 'revertToSaved', 'split', 'pinActive', 'copyActivePath', 'convertUtf8'] as const
 
 /** 표 · 글을 고치는 명령 — 읽기 전용 문서에서는 뺀다 (등록부의 `enabled()` 도 끄지만, K7 처럼 등록부 없이 볼 때를 위해 여기서도) */
 const EDIT_IDS = new Set([
@@ -119,12 +121,12 @@ export function treeContextIds(s: TreeSpot): string[] {
   const make = s.writable && !s.fileMount ? ['newFile', 'newFolder'] : []
   if (s.isMountRoot && s.mountAlias !== null) {
     const a = s.mountAlias
-    return ['quickLook', 'quickLookFolder', ...make, 'treeCopyPath', `editRoot:${a}`, `toggleReadOnly:${a}`, 'refreshTree', `unmount:${a}`, ...TREE_TAIL]
+    return ['quickLook', 'quickLookFolder', 'treePin', ...make, 'treeCopyPath', `editRoot:${a}`, `toggleReadOnly:${a}`, 'refreshTree', `unmount:${a}`, ...TREE_TAIL]
   }
   const change = s.writable ? ['treeRename'] : []
   const del = s.writable ? ['treeDelete'] : []
-  if (s.isDir) return ['quickLook', 'quickLookFolder', ...make, ...change, 'treeCopyPath', ...del, ...TREE_TAIL]
-  return ['openTreeCursorSide', 'quickLook', ...change, 'treeCopyPath', ...make, ...del, ...TREE_TAIL]
+  if (s.isDir) return ['quickLook', 'quickLookFolder', 'treePin', ...make, ...change, 'treeCopyPath', ...del, ...TREE_TAIL]
+  return ['openTreeCursorSide', 'quickLook', 'treePin', ...change, 'treeCopyPath', ...make, ...del, ...TREE_TAIL]
 }
 
 const VIEW_IDS: Record<MarkdownSpot['mode'], string> = { source: 'viewSource', hybrid: 'viewHybrid', split: 'viewSplit', preview: 'viewPreview' }
@@ -200,7 +202,10 @@ export function availableContextCommands(s: ContextSpot): Command[] {
   const out: Command[] = []
   for (const id of contextIds(s)) {
     const c = getCommand(id)
-    if (c && !c.hidden && (!c.enabled || c.enabled())) out.push(c)
+    if (!c || c.hidden || (c.enabled && !c.enabled())) continue
+    // 고정한 항목이면 "고정 해제" 로 (DESIGN §49)
+    if (id === 'treePin' && s.zone === 'tree') out.push({ ...c, label: s.pinned ? '파일 트리: 커서 항목 고정 해제' : '파일 트리: 커서 항목 고정 (트리 맨 위 "고정" 구역)' })
+    else out.push(c)
   }
   return out
 }

@@ -39,6 +39,7 @@ import { useTreeDrop } from './lib/treeDrop'
 import { copyText } from './lib/copyText'
 import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
+import { forgetPinned, movePinned, togglePinned, usePins } from './lib/pins'
 import { anchorOf, availableContextCommands, spotAt, type SpotAnchor } from './lib/contextMenu'
 
 type Phase =
@@ -194,6 +195,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
   const app = usePwa()
   const [root, setRoot] = useState<string | null>(null)
   const [tree, setTree] = useState<TreeEntry[]>([])
+  /** 고정 (DESIGN §49) — 파일 검색 빈 입력 맨 위 */
+  const pins = usePins(layoutId)
   /** 가져온 폴더들 (트리를 읽을 때마다 갱신). null = 아직 모름 */
   const [mounts, setMounts] = useState<MountInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -542,10 +545,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
     if (!moved.to) return
     dismissNotice(FILE_NOTICE)
     bench.current?.renamePaths(path, moved.to, false)
+    movePinned(layoutId, path, moved.to) // 고정은 새 경로로 (DESIGN §49)
     await refreshTree()
     // 트리 커서를 바뀐 파일에 둔다 — 안 그러면 커서가 사라져 ↓ 가 맨 위부터 간다 (TC-807)
     setTreeCursor(moved.to)
-  }, [refreshTree])
+  }, [refreshTree, layoutId])
 
   const remove = useCallback(async (path: string, isDir: boolean) => {
     const blocked = () => {
@@ -569,11 +573,12 @@ function Workspace({ layoutId }: { layoutId: string }) {
       await backend().remove(path, isDir)
       dismissNotice(FILE_NOTICE)
       bench.current?.closePaths(path, isDir)
+      forgetPinned(layoutId, path) // 지운 것은 고정에서도 뺀다 (DESIGN §49)
       await refreshTree()
     } catch (e) {
       notifyError(`지우지 못했습니다: ${(e as Error).message}`, { key: FILE_NOTICE })
     }
-  }, [refreshTree])
+  }, [refreshTree, layoutId])
 
   // ---- 가져온 폴더
   const unmount = useCallback(async (alias: string) => {
@@ -752,6 +757,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'importFile', label: '파일 가져오기… (파일 하나를 원래 자리에서 열기)', run: () => setOverlay({ kind: 'import', pick: 'file' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
     { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
+    { id: 'pinActive', label: '현재 문서 고정 / 해제 (트리 맨 위 "고정" 구역 · 파일 검색 맨 위)', run: () => { const p = bench.current?.activePath(); if (!p) return; const on = togglePinned(layoutId, p); notify(on ? `고정했습니다 — ${p.split('/').pop()}` : `고정을 풀었습니다 — ${p.split('/').pop()}`, { key: 'pin' }) }, enabled: () => !!bench.current?.activePath() },
     { id: 'copyActivePath', label: '현재 문서의 전체 경로 복사', run: () => { const p = bench.current?.activePath(); if (p) copyPathOf(p) }, enabled: () => !!bench.current?.activePath() },
     { id: 'copyRootPath', label: '문서 폴더의 전체 경로 복사', run: () => copyPathOf('') },
     { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
@@ -773,7 +779,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'exportDtoAs', label: 'C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기…', run: () => void exportDto(true), enabled: tableActive },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
-  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, copyPathOf, contextMenuHere])
+  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, copyPathOf, contextMenuHere, layoutId])
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
 
@@ -870,11 +876,13 @@ function Workspace({ layoutId }: { layoutId: string }) {
       })
     }
     if (overlay?.kind === 'files') {
+      // 고정한 문서가 맨 위 (DESIGN §49), 그다음 최근 순
       const ranks = recentRanks(recentFiles(layoutId))
-      return allFiles(tree).map((path) => ({ id: path, label: path.split('/').pop() ?? path, hint: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', recent: ranks.get(path) }))
+      const pinRanks = recentRanks(pins)
+      return allFiles(tree).map((path) => ({ id: path, label: path.split('/').pop() ?? path, hint: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', recent: ranks.get(path), pinned: pinRanks.get(path) }))
     }
     return []
-  }, [overlay, tree, layoutId])
+  }, [overlay, tree, layoutId, pins])
 
   // ---- 빠른 열기 확장 · 전체 검색 (ADOPT B1 · B2, DESIGN §47)
   /** 그 문서를 열고 줄 · 셀로. side: 오른쪽 창에 (Ctrl+Enter). 표는 줄 → 행 (TSV 는 파일 한 줄이 한 행) */

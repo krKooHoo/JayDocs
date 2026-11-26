@@ -278,6 +278,10 @@ button.tree-search {
 .tree-mount-icon { font-size: 11px; }
 .tree-warn { color: var(--dirty); font-size: 11px; margin-left: 4px; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
+/* 고정 구역 (DESIGN §49) — 트리 맨 위, 이름 옆에 폴더 */
+.tree-pin-head { padding: 2px 8px; font-size: 11px; color: var(--muted); user-select: none; }
+.tree-pin-sep { margin: 4px 8px; border-top: 1px solid var(--border); }
+.tree-pin-where { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--muted); }
 
 /* ---- flexlayout 보정 ---- */
 .flexlayout__layout { font-family: var(--font); font-size: 13px; }

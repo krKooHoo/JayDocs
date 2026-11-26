@@ -1683,6 +1683,30 @@ UI/UX 개편 B3(`docs/research/apple-uiux/ADOPT.md`). `Ctrl+P` 는 이름 목록
 
 - 실제 큰 폴더(수강생 제출물 — 항목 수천 개)에서 치는 동안의 속도, 설치한 Edge 앱 · Mac 의 `Ctrl+F` / ⌘F 가 브라우저 찾기 대신 칸을 여는지, 한글 IME 조합 중의 `Enter` · `Esc`.
 
+## 49. 고정 (2026-11-26)
+
+UI/UX 개편 B4(`docs/research/apple-uiux/ADOPT.md`). 자주 쓰는 문서 · 폴더를 트리 맨 위 "고정" 구역과 `Ctrl+P` 빈 입력 맨 위에 올린다(메모의 고정, Finder 즐겨찾기). 원칙 확인: 1 맞음(팔레트 · 맥락 메뉴, 고정 구역은 트리 키로 다닌다), 2 맞음(경로 목록 하나), 4 · 5 맞음(흩어진 폴더의 자주 쓰는 곳을 한 줄로 — 가져온 폴더 포함), 7 맞음(목록은 브라우저에 두는 화면 상태, 파일은 그대로), 3 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| PN1 | **키는 주지 않는다.** 팔레트 **현재 문서 고정 / 해제**(문서 맥락 메뉴의 아래쪽에도), 트리 맥락 메뉴 **고정**(고정한 항목이면 **고정 해제**) · 팔레트 **파일 트리: 커서 항목 고정 / 해제**. 하면 "고정했습니다 — 이름" 알림 | ADOPT B4 · 단축키 규칙 2 |
+| PN2 | 트리 맨 위 **📌 고정** 구역 — 고정한 순서대로(새로 고정한 것이 끝), 이름 옆에 폴더. 트리의 같은 항목과 따로 커서가 선다(`↑ / ↓` · `Home` 로 들어온다). 파일은 `Enter` · `→` · 클릭이 열기, 폴더는 **트리의 그 폴더로**(상위 폴더와 그 폴더를 편다). `Space` 훑어보기 · `F2` · `Delete` · `Ctrl+Enter` 는 트리 항목과 같다. 필터(§48) 중에는 숨긴다 | 메모의 고정 구역 |
+| PN3 | `Ctrl+P` 빈 입력은 **고정한 문서 → 최근 순**, 고정한 문서에는 "📌 고정". 글자를 치면 같은 점수 안에서 고정한 것이 먼저. 폴더 고정은 `Ctrl+P` 에 없다(파일 목록이라) | ADOPT B1 · B4 |
+| PN4 | 문서 폴더마다 `localStorage` `jaydocs.pins:<id>` 에 앱 경로 목록(최대 50). 가져온 폴더는 `@별칭/…` 라 주 폴더의 같은 이름과 섞이지 않는다. 지금 트리에 없는 것은 건너뛰고 지우지 않는다(가져온 폴더가 잠깐 빠졌다 돌아올 수 있다 — `recents.ts` 와 같다) | 원칙 7 |
+| PN5 | 앱에서 **이름 바꾸기 · 옮기기**(`F2`)는 고정을 새 경로로 옮기고 자리는 그대로, **지우기**는 고정에서도 뺀다(폴더면 그 아래도) | ADOPT B4 "주의" |
+
+코드: `lib/pins.ts`(목록 규칙 · 저장 · 구독 `usePins`) · `.test.ts`, `components/FileTree.tsx`(고정 구역 줄 `pin` · 커서 열쇠 `keyOf` · `revealDir` · 명령 `treePin`), `App.tsx`(`pinActive`, 이름 바꾸기 · 지우기 따라가기, 파일 검색 순서), `components/Palette.tsx`(`pinned`), `lib/contextMenu.ts`(`treePin` · 문서 끝 `pinActive` · "고정 해제" 이름), `styles.css`.
+
+### 49.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: 팔레트 "현재 문서 고정" → 트리 맨 위 "📌 고정" 에 아이템.md(docs). 트리 `data/Item` 에서 `Alt+Enter` → "고정" → 구역에 Item(data). 고정 구역의 Item 에서 `Alt+Enter` → "고정 해제" 로 보임. `data` 를 접은 채 고정 구역의 Item 에서 `Enter` → 트리의 `data/Item` 으로 커서, 펼침. `Ctrl+P` 빈 입력 → 맨 위 "아이템.md 📌 고정", 그다음 최근. 고정 구역에서 `F2` 로 이름을 바꾸면 고정이 새 경로로, 되돌려도 따라옴. 새로고침해도 남음. 콘솔 오류 없음.
+
+### 49.2 확인하지 못한 것 · 알려진 한계 (TESTCASES §43)
+
+- 탐색기에서 바꾼 이름 · 옮긴 파일은 앱이 알 수 없어 고정이 그 자리에서 보이지 않게 된다(목록에는 남는다 — 다시 고정하면 된다). 지우는 명령은 아직 없다 — 고정 구역에서 해제하려면 그 항목이 트리에 있어야 한다.
+- 고정 순서는 바꿀 수 없다(해제했다 다시 고정하면 끝으로).
+- 실제 폴더 · 가져온 폴더의 해제 · 재가져오기 뒤의 고정, 고정이 많을 때의 트리.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

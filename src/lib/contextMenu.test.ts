@@ -85,7 +85,7 @@ describe('자리 판단 함수', () => {
   })
 
   it('파일 트리 — 예전 Shift+F10 메뉴의 항목 + 오른쪽 창에 열기', () => {
-    expect(treeContextIds(tree())).toEqual(['openTreeCursorSide', 'quickLook', 'treeRename', 'treeCopyPath', 'newFile', 'newFolder', 'treeDelete', 'treeFilter', 'treeFilterDirty'])
+    expect(treeContextIds(tree())).toEqual(['openTreeCursorSide', 'quickLook', 'treePin', 'treeRename', 'treeCopyPath', 'newFile', 'newFolder', 'treeDelete', 'treeFilter', 'treeFilterDirty'])
     // 가져온 폴더의 루트: 상세 경로 · 읽기 전용 · 새로 고침 · 해제. 이름 바꾸기 · 삭제는 없다
     const root = treeContextIds(tree({ path: '@Lib', isDir: true, mountAlias: 'Lib', isMountRoot: true }))
     expect(root).toEqual(expect.arrayContaining(['editRoot:Lib', 'toggleReadOnly:Lib', 'refreshTree', 'unmount:Lib']))

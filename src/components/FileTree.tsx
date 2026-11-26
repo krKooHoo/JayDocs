@@ -6,6 +6,8 @@ import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
 import { onQuickLookRequest, onTreeCursor, onTreeFilterRequest, onTreeOpenSide, type QuickLookMode } from '../lib/nav'
 import { filterActive, filterTree } from '../lib/treeFilter'
+import { togglePinned, usePins } from '../lib/pins'
+import { notify } from '../lib/notices'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
 import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
@@ -37,6 +39,19 @@ interface FlatRow {
   entry: TreeEntry
   depth: number
   parent: string
+  /** 맨 위 "고정" 구역의 줄 (DESIGN §49) — 같은 항목이 트리에도 있다 */
+  pin?: true
+}
+
+/** 고정 구역 줄의 커서 열쇠 — 트리의 같은 항목과 구별한다 */
+const PIN_KEY = '\u0001pin/'
+/** 줄의 커서 열쇠 (트리 줄은 경로 그대로) */
+const keyOf = (r: FlatRow) => (r.pin ? PIN_KEY + r.entry.path : r.entry.path)
+
+/** 경로 → 항목 (고정 구역이 트리의 항목을 찾는다) */
+function indexEntries(entries: TreeEntry[], out = new Map<string, TreeEntry>()) {
+  for (const e of entries) { out.set(e.path, e); if (e.children) indexEntries(e.children, out) }
+  return out
 }
 
 function allDirs(entries: TreeEntry[], out: string[] = []) {
@@ -166,8 +181,17 @@ export function FileTree(p: Props) {
     for (const d of filterClosed) s.delete(d)
     return s
   }, [filtering, expanded, filtered.open, filterClosed])
-  const rows = useMemo(() => flatten(filtered.entries, shownOpen), [filtered.entries, shownOpen])
-  const cursorRow = rows.find((r) => r.entry.path === cursor) ?? null
+  /** 고정 (ADOPT B4 · DESIGN §49) — 트리 맨 위 구역. 지금 트리에 없는 것은 건너뛴다. 필터 중에는 숨긴다 */
+  const pins = usePins(p.stateKey)
+  const byPath = useMemo(() => indexEntries(p.entries), [p.entries])
+  const pinRows = useMemo<FlatRow[]>(() => filtering ? [] : pins.flatMap((path) => {
+    const entry = byPath.get(path)
+    return entry ? [{ entry, depth: 0, parent: parentOf(path), pin: true as const }] : []
+  }), [filtering, pins, byPath])
+  const treeRows = useMemo(() => flatten(filtered.entries, shownOpen), [filtered.entries, shownOpen])
+  const rows = useMemo(() => [...pinRows, ...treeRows], [pinRows, treeRows])
+  const pinSet = useMemo(() => new Set(pins), [pins])
+  const cursorRow = rows.find((r) => keyOf(r) === cursor) ?? null
 
   /** 앱이 커서를 옮기라고 한 경로 (이름을 바꾼 파일) — 트리를 다시 읽기 전이면 아직 행이 없다. 행이 생기면 보이게 스크롤하고 비운다 */
   const awaited = useRef<string | null>(null)
@@ -189,9 +213,9 @@ export function FileTree(p: Props) {
   // 커서가 보이게. 커서의 항목이 사라졌으면(지워짐 · 바깥에서 없어짐) 같은 자리의 항목으로 — ↓ 가 맨 위부터 다시 가지 않게 (TC-807)
   useEffect(() => {
     if (!cursor || !body.current) return
-    const i = rows.findIndex((r) => r.entry.path === cursor)
+    const i = rows.findIndex((r) => keyOf(r) === cursor)
     if (i < 0) {
-      if (awaited.current !== cursor && initialized && rows.length) setCursor(rows[Math.min(lastIndex.current, rows.length - 1)].entry.path)
+      if (awaited.current !== cursor && initialized && rows.length) setCursor(keyOf(rows[Math.min(lastIndex.current, rows.length - 1)]))
       return
     }
     lastIndex.current = i
@@ -224,7 +248,7 @@ export function FileTree(p: Props) {
     setFilterQuery('')
     setFilterDirty(false)
     setFilterShown(false)
-    if (cursor) {
+    if (cursor && !cursor.startsWith(PIN_KEY)) {
       const up = ancestorDirs(cursor)
       setExpanded((s) => (up.every((d) => s.has(d)) ? s : new Set([...s, ...up])))
       shown.current = null
@@ -267,16 +291,26 @@ export function FileTree(p: Props) {
   }
 
   /** 오른쪽 클릭한 항목으로 커서 · 고른 폴더를 옮긴다 — 맥락 메뉴의 명령이 그 항목에 돈다 */
-  const pointAt = (path: string, isDir: boolean) => {
+  const pointAt = (path: string, isDir: boolean, key = path) => {
     setLookRoot(false)
-    if (path) setCursor(path)
+    if (path) setCursor(key)
     setSelectedDir(isDir ? path : parentOf(path))
+  }
+
+  /** 고정 구역의 폴더 → 트리의 그 폴더로 (상위 폴더와 그 폴더를 편다) */
+  const revealDir = (path: string) => {
+    setLookRoot(false)
+    setCursor(path)
+    setSelectedDir(path)
+    const want = [...ancestorDirs(path), path]
+    setExpanded((s) => (want.every((d) => s.has(d)) ? s : new Set([...s, ...want])))
   }
 
   const activate = (row: FlatRow) => {
     const e = row.entry
     setLookRoot(false)
-    setCursor(e.path)
+    if (row.pin && e.type === 'dir') { revealDir(e.path); return }
+    setCursor(keyOf(row))
     if (e.type === 'dir') { toggle(e.path); setSelectedDir(e.path) }
     else { p.onOpen(e.path); setSelectedDir(parentOf(e.path)) }
   }
@@ -345,16 +379,18 @@ export function FileTree(p: Props) {
   const readSpot = (target: Element, point: { x: number; y: number } | null): TreeSpot => {
     let path: string | null = cursorRow?.entry.path ?? null
     let isDir = cursorRow?.entry.type === 'dir'
+    let rowKey = cursorRow ? keyOf(cursorRow) : ''
     if (point && body.current?.contains(target)) {
       const rowEl = target.closest<HTMLElement>('[data-path]')
-      const hit = rowEl ? rows.find((r) => r.entry.path === rowEl.dataset.path) : undefined
+      const hit = rowEl ? rows.find((r) => keyOf(r) === rowEl.dataset.path) : undefined
       path = hit ? hit.entry.path : ''
       isDir = hit ? hit.entry.type === 'dir' : true
-      pointAt(path, isDir)
+      pointAt(path, isDir, hit ? keyOf(hit) : path)
+      rowKey = hit ? keyOf(hit) : path
     }
     if (path === null) { path = ''; isDir = true }
     const { mount, isRoot } = mountOf(path)
-    const rowEl = path ? body.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`) : null
+    const rowEl = rowKey ? body.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(rowKey)}"]`) : null
     const rect = rowEl?.getBoundingClientRect()
     return {
       zone: 'tree',
@@ -366,6 +402,7 @@ export function FileTree(p: Props) {
       isMountRoot: isRoot,
       fileMount: !!mount?.file,
       writable: !mount?.readOnly,
+      pinned: path !== '' && pinSet.has(path),
     }
   }
   const spotRef = useRef<SpotReader>(() => null)
@@ -377,6 +414,8 @@ export function FileTree(p: Props) {
   cursorRef.current = cursorRow
   const actRef = useRef(p)
   actRef.current = p
+  const stateKeyRef = useRef(p.stateKey)
+  stateKeyRef.current = p.stateKey
   useEffect(() => {
     const cur = () => cursorRef.current?.entry ?? null
     const changeable = () => { const e = cur(); return !!e && !e.mount && !mountOfRef.current(e.path).mount?.readOnly }
@@ -384,13 +423,25 @@ export function FileTree(p: Props) {
       { id: 'treeRename', label: '파일 트리: 커서 항목 이름 바꾸기 / 옮기기', run: () => { const e = cur(); if (e && !e.mount) { setQuickLook(false); actRef.current.onRename(e.path, e.type === 'dir') } }, enabled: changeable },
       { id: 'treeDelete', label: '파일 트리: 커서 항목 삭제', run: () => { const e = cur(); if (e && !e.mount) { setQuickLook(false); actRef.current.onDelete(e.path, e.type === 'dir') } }, enabled: changeable },
       { id: 'treeCopyPath', label: '파일 트리: 커서 항목의 전체 경로 복사', run: () => { const e = cur(); if (e) actRef.current.onRootAction('copyPath', e.path) }, enabled: () => !!cur() },
+      // 고정 (DESIGN §49) — 트리 맨 위 "고정" 구역 · Ctrl+P 빈 입력 맨 위
+      {
+        id: 'treePin',
+        label: '파일 트리: 커서 항목 고정 / 해제 (트리 맨 위 "고정" 구역)',
+        run: () => {
+          const e = cur()
+          if (!e) return
+          const on = togglePinned(stateKeyRef.current, e.path)
+          notify(on ? `고정했습니다 — ${e.name}` : `고정을 풀었습니다 — ${e.name}`, { key: 'pin' })
+        },
+        enabled: () => !!cur(),
+      },
     ])
   }, [])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
     const idx = cursorRow ? rows.indexOf(cursorRow) : -1
-    const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setLookRoot(false); setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
+    const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setLookRoot(false); setCursor(keyOf(r)); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
     // 훑어보기 창이 떠 있으면 Ctrl+↑ · Ctrl+↓ 는 커서를 두고 창 안을 조금씩 스크롤한다 (누르고 있으면 이어진다).
     // 창이 없을 때는 지금처럼 커서를 옮긴다
     if (quickLook && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -426,14 +477,16 @@ export function FileTree(p: Props) {
       case 'ArrowRight':
         e.preventDefault()
         if (!cursorRow) { go(0); return }
+        // 고정 구역의 폴더 → 트리의 그 폴더로
+        if (cursorRow.pin && cursorRow.entry.type === 'dir') { revealDir(cursorRow.entry.path); return }
         if (cursorRow.entry.type === 'dir') { if (!shownOpen.has(cursorRow.entry.path)) toggle(cursorRow.entry.path); else go(idx + 1) }
         else { p.onOpen(cursorRow.entry.path, quickLook); setQuickLook(false) }
         return
       case 'ArrowLeft': {
         e.preventDefault()
-        if (!cursorRow) return
+        if (!cursorRow || cursorRow.pin) return
         if (cursorRow.entry.type === 'dir' && shownOpen.has(cursorRow.entry.path)) { toggle(cursorRow.entry.path); return }
-        const parentIdx = rows.findIndex((r) => r.entry.path === cursorRow.parent)
+        const parentIdx = rows.findIndex((r) => !r.pin && r.entry.path === cursorRow.parent)
         if (parentIdx >= 0) go(parentIdx)
         return
       }
@@ -496,8 +549,32 @@ export function FileTree(p: Props) {
     }
   }
 
+  /** 고정 구역의 줄 — 이름과 폴더. 클릭 · Enter 는 파일이면 열고, 폴더면 트리의 그 폴더로 */
+  const renderPin = (row: FlatRow) => {
+    const e = row.entry
+    const k = keyOf(row)
+    const dir = e.type === 'dir'
+    const where = e.mount ? '' : row.parent || '(루트)'
+    return (
+      <div
+        key={k}
+        data-path={k}
+        className={'tree-row is-pin' + (dir ? ' is-dir' : ' is-file') + (!dir && p.activePath === e.path ? ' is-active' : '') + (cursor === k ? ' is-cursor' : '')}
+        style={{ paddingLeft: '8px' }}
+        title={`${e.path}${dir ? ' — 트리의 그 폴더로' : ''}`}
+        onClick={() => activate(row)}
+      >
+        <span className="tree-icon">{dir ? (e.mount ? '🔗' : '▸') : fileIcon(e.name)}</span>
+        <span className="tree-name">{e.name}</span>
+        {where && <span className="tree-pin-where">{where}</span>}
+        {!dir && p.dirtyPaths.has(e.path) && <span className="dirty-dot">●</span>}
+      </div>
+    )
+  }
+
   const renderRow = (row: FlatRow) => {
     const e = row.entry
+    if (row.pin) return renderPin(row)
     const indent = { paddingLeft: `${8 + row.depth * 14}px` }
     const isCursor = cursor === e.path
     if (e.type === 'dir') {
@@ -607,7 +684,10 @@ export function FileTree(p: Props) {
             <p className="tree-empty-hint">Esc 로 필터를 지웁니다</p>
           </div>
         )}
-        {rows.map(renderRow)}
+        {pinRows.length > 0 && <div className="tree-pin-head" aria-hidden>📌 고정</div>}
+        {pinRows.map(renderRow)}
+        {pinRows.length > 0 && <div className="tree-pin-sep" aria-hidden />}
+        {treeRows.map(renderRow)}
       </div>
       {quickLook && lookEntry && (
         <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} onNewFile={p.onNewFile} onOpenFile={openFrom} />
