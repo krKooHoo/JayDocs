@@ -24,3 +24,6 @@
 
 /* 문서 창 막대의 켬 · 끔 버튼 */
 .pane-bar button.outline-toggle.is-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+/* 접힌 절 (DESIGN §52) */
+.outline-folded { color: var(--muted); }
+.outline-item.is-folded { color: var(--muted); }

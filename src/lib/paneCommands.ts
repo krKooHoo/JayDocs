@@ -53,6 +53,11 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'viewHybrid', label: '보기: 하이브리드', title: '커서 줄은 원문, 나머지는 렌더 (Obsidian 식)', scope: 'md' },
   { id: 'viewSplit', label: '보기: 분할', title: '소스 + 미리보기', scope: 'md' },
   { id: 'viewPreview', label: '보기: 미리보기', title: '미리보기만', scope: 'md' },
+  // ---- 제목 접기 (DESIGN §52) — 키는 편집기가 직접 받는다. 화면 상태라 읽기 전용에서도 된다
+  { id: 'mdFold', label: '마크다운: 커서가 든 절 접기 (거듭 누르면 바깥 절)', title: '절 접기', scope: 'md', noButton: true },
+  { id: 'mdUnfold', label: '마크다운: 커서가 든 절 펴기', title: '절 펴기', scope: 'md', noButton: true },
+  { id: 'mdFoldAll', label: '마크다운: 모든 절 접기 (개요처럼)', title: '모두 접기', scope: 'md', noButton: true },
+  { id: 'mdUnfoldAll', label: '마크다운: 모든 절 펴기', title: '모두 펴기', scope: 'md', noButton: true },
   // ---- 글 편집기 (막대 단추 없음 — 키는 편집기가 직접 받는다, DESIGN §45)
   { id: 'editorFind', label: '편집기: 찾기', title: '찾기', scope: 'editor', noButton: true },
   { id: 'editorReplace', label: '편집기: 바꾸기', title: '바꾸기', scope: 'editor', noButton: true },

@@ -7,6 +7,7 @@ import { baseExtensions, isMarkdownPath, openReplacePanel, remote } from '../lib
 import { cmdTitle, runCommand, tip } from '../lib/commands'
 import { onLineRequest, onPaneAction } from '../lib/nav'
 import { noteLineJump, registerLineSource } from '../lib/navHistory'
+import { foldAllSections, foldSectionAtCursor, foldedKeys, hasFoldEffects, loadFolds, restoreFolds, saveFolds, unfoldAllSections, unfoldSectionAtCursor } from '../lib/md/folding'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -102,6 +103,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       return
     }
     if (!isMarkdownPath(path)) return
+    // 제목 접기 (DESIGN §52)
+    if (id === 'mdFold' || id === 'mdUnfold' || id === 'mdFoldAll' || id === 'mdUnfoldAll') {
+      const view = viewRef.current
+      if (!view) return
+      if (modeRef.current === 'preview') { notify('미리보기 전용 모드에서는 접을 수 없습니다 — 보기 모드 순환은 Ctrl+Shift+V', { key: 'fold' }); return }
+      const done = id === 'mdFold' ? foldSectionAtCursor(view) : id === 'mdUnfold' ? unfoldSectionAtCursor(view) : id === 'mdFoldAll' ? foldAllSections(view) : unfoldAllSections(view)
+      if (!done) notify(id === 'mdFold' || id === 'mdFoldAll' ? '접을 절이 없습니다 — 커서가 제목 아래에 있어야 합니다' : '펼 절이 없습니다', { key: 'fold' })
+      view.focus()
+      return
+    }
     if (id === 'viewSource') setMode('source')
     else if (id === 'viewHybrid') setMode('hybrid')
     else if (id === 'viewSplit') setMode('split')
@@ -158,6 +169,13 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     const doc = store.get(path)
     if (!doc || doc.kind !== 'text') return
     const source = Symbol(path)
+    let foldTimer: number | undefined
+    let foldPending: EditorState | null = null
+    const saveFoldsSoon = (st: EditorState) => {
+      foldPending = st
+      window.clearTimeout(foldTimer)
+      foldTimer = window.setTimeout(() => { if (foldPending) saveFolds(path, foldedKeys(foldPending)); foldPending = null }, 300)
+    }
     const view = new EditorView({
       state: EditorState.create({
         doc: doc.text,
@@ -168,7 +186,10 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           EditorView.updateListener.of((u) => {
             if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
             const treeMoved = u.docChanged || syntaxTree(u.state) !== syntaxTree(u.startState)
-            if (outlinePing.current && treeMoved) outlinePing.current()
+            // 제목 접기 (DESIGN §52) — 접고 펼 때 목차의 ▸ 를 바꾸고, 문서마다 남긴다
+            const folded = isMd && u.transactions.some((tr) => hasFoldEffects(tr.effects))
+            if (folded) saveFoldsSoon(u.state)
+            if (outlinePing.current && (treeMoved || folded)) outlinePing.current()
             if (pathPing.current && (treeMoved || u.selectionSet)) pathPing.current()
             if (!u.docChanged) return
             for (const tr of u.transactions) {
@@ -196,12 +217,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       // 창을 여는 쪽(Workbench)도 포커스를 옮긴다 — 그 뒤에 편집기로
       window.setTimeout(() => { if (view.dom.isConnected) view.focus() }, 60)
     })
+    // 제목 접기 (DESIGN §52) — 이 문서에서 접어 둔 절을 다시 접는다
+    if (isMd) restoreFolds(view, loadFolds(path))
     // 뒤로 · 앞으로 (DESIGN §50) — 문서를 떠날 때 커서 줄을 적는다
     const unSource = registerLineSource(path, {
       line: () => view.state.doc.lineAt(view.state.selection.main.head).number,
       focused: () => view.hasFocus,
     })
     return () => {
+      window.clearTimeout(foldTimer)
+      if (foldPending) saveFolds(path, foldedKeys(foldPending)) // 닫기 직전에 접은 것도 남긴다
       unSource()
       unLine()
       unsubscribe()

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { EditorView } from '@codemirror/view'
 import { activeIndex, outlineOf, sameOutline, type OutlineItem } from '../lib/md/outline'
 import { noteLineJump } from '../lib/navHistory'
+import { foldHeading, foldedHeadingLines, parentHeading, unfoldHeading } from '../lib/md/folding'
 import { mdViewPathOf } from './mdContext'
 import './OutlinePanel.css'
 
@@ -35,6 +36,8 @@ const PAGE = 10
 
 export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
   const [items, setItems] = useState<OutlineItem[]>([])
+  /** 접힌 제목의 줄 (DESIGN §52) — ▸ 로 보인다 */
+  const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set())
   const [active, setActive] = useState(-1)
   /** 키보드로 고른 항목. 목차에 포커스가 있을 때만 보인다 */
   const [cursor, setCursor] = useState(0)
@@ -51,6 +54,8 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
       timer = null
       const next = outlineOf(view.state)
       setItems((prev) => (sameOutline(prev, next) ? prev : next))
+      const f = foldedHeadingLines(view.state, next)
+      setFolded((prev) => (prev.size === f.size && [...f].every((l) => prev.has(l)) ? prev : f))
     }
     recompute()
     ping.current = () => { if (timer === null) timer = setTimeout(recompute, THROTTLE_MS) }
@@ -135,6 +140,20 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
       case 'Enter': if (e.altKey) break; e.preventDefault(); go(cursor, true); break // Alt+Enter 는 맥락 메뉴
       case ' ': e.preventDefault(); go(cursor, false); break
       case 'Escape': e.preventDefault(); e.stopPropagation(); view?.focus(); break
+      // 절 접기 · 펴기 (DESIGN §52) — 트리의 ← / → 와 같다. 접혀 있으면 ← 는 위 단계 제목으로
+      case 'ArrowLeft': {
+        e.preventDefault()
+        const it = items[cursor]
+        if (!view || !it) break
+        if (!foldHeading(view, it)) { const up = parentHeading(items, cursor); if (up >= 0) setCursor(up) }
+        break
+      }
+      case 'ArrowRight': {
+        e.preventDefault()
+        const it = items[cursor]
+        if (view && it) unfoldHeading(view, it)
+        break
+      }
     }
   }
 
@@ -146,7 +165,7 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
         className="outline-list"
         tabIndex={0}
         role="listbox"
-        aria-label="목차 — ↑ ↓ 로 고르고 Enter 로 이동"
+        aria-label="목차 — ↑ ↓ 로 고르고 Enter 로 이동, ← → 로 절 접기 · 펴기"
         aria-activedescendant={focused && items.length ? `outline-${cursor}` : undefined}
         onKeyDown={onKeyDown}
         onFocus={() => { setFocused(true); setCursor((c) => (active >= 0 ? active : Math.min(c, Math.max(0, items.length - 1)))) }}
@@ -162,13 +181,14 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
               data-i={i}
               role="option"
               aria-selected={i === active}
-              className={'outline-item' + (depth === 0 ? ' is-top' : '') + (i === active ? ' is-active' : '') + (focused && i === cursor ? ' is-cursor' : '')}
+              className={'outline-item' + (depth === 0 ? ' is-top' : '') + (i === active ? ' is-active' : '') + (focused && i === cursor ? ' is-cursor' : '') + (folded.has(it.line) ? ' is-folded' : '')}
               style={{ paddingLeft: 10 + depth * INDENT }}
               title={it.text}
               // 누를 때 목차가 포커스를 가져가지 않게 — 포커스는 편집기로 간다
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { setCursor(i); go(i, true) }}
             >
+              {folded.has(it.line) && <span className="outline-folded" aria-label="접힘">▸ </span>}
               {it.text || '(빈 제목)'}
             </div>
           )

@@ -9,6 +9,7 @@ import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { linter, lintGutter } from '@codemirror/lint'
 import { fileTypeOf } from './filetypes.mjs'
 import { codeColors } from './code/cmColors'
+import { foldSectionAtCursor, mdFolding, unfoldSectionAtCursor } from './md/folding'
 
 /** CodeMirror 공통 설정 — 마크다운 창과 평문/JSON 창이 같이 쓴다. */
 
@@ -124,6 +125,15 @@ export function openReplacePanel(view: EditorView): boolean {
   return true
 }
 
+/**
+ * 제목 접기 (DESIGN §52) — `Ctrl+Alt+[` 접기 · `Ctrl+Alt+]` 펴기 (Mac ⌘⌥[ · ⌘⌥] — CodeMirror 의 Mac 기본과 같다).
+ * CodeMirror 기본 `Ctrl+Shift+[` 는 쓰지 않는다 — Mac 에서 ⌘⇧[ 는 브라우저의 이전 탭. 읽기 전용에서도 된다(화면 상태)
+ */
+const FOLD_KEYS = keymap.of([
+  { key: 'Mod-Alt-[', run: (v) => { foldSectionAtCursor(v); return true } },
+  { key: 'Mod-Alt-]', run: (v) => { unfoldSectionAtCursor(v); return true } },
+])
+
 export interface EditorOptions {
   readOnly?: boolean
   save?: () => void
@@ -142,7 +152,7 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
     highlightSelectionMatches(),
     bracketMatching(),
     commonTheme,
-    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), codeColors(), EditorView.lineWrapping, proseTheme] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
+    ...(isMd ? [markdown({ base: markdownLanguage }), syntaxHighlighting(mdHighlight), codeColors(), EditorView.lineWrapping, proseTheme, mdFolding(), FOLD_KEYS] : [plainTheme, ...languageExtensions(path, !!opts.readOnly)]),
     EditorState.phrases.of(KO_PHRASES),
     search({ top: true }),
   ]

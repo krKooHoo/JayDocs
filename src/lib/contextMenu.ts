@@ -146,6 +146,8 @@ export function markdownContextIds(s: MarkdownSpot): string[] {
   if (s.markdown) {
     ids.push(...(['source', 'hybrid', 'split', 'preview'] as const).filter((m) => m !== s.mode).map((m) => VIEW_IDS[m]))
     if (s.mode === 'hybrid') ids.push('focusOutline', 'toggleOutline')
+    // 제목 접기 (DESIGN §52) — 편집기가 보일 때
+    if (s.mode !== 'preview') ids.push('mdFold', 'mdUnfold', 'mdFoldAll', 'mdUnfoldAll')
   }
   ids.push('toggleSkim', ...DOC_TAIL_IDS, 'saveAsTemplate')
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids

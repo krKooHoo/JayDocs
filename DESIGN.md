@@ -1756,6 +1756,31 @@ UI/UX 개편 B6(`docs/research/apple-uiux/ADOPT.md`). 폴더 훑어보기(§25 P
 
 - dev 샘플은 모두 오늘 만든 파일이라 "어제 · 지난 7일 · 그 전" 묶음은 단위 테스트로만 봤다. 실제 폴더(수강생 제출물 — 수백 개)에서 시각을 읽는 속도, 가져온 폴더의 시각, 목록 보기의 좁은 창.
 
+## 52. 제목 접기 (Ctrl+Alt+[ · Ctrl+Alt+]) (2026-11-26)
+
+UI/UX 개편 C1(`docs/research/apple-uiux/ADOPT.md`). 긴 메모를 개요처럼 본다(메모의 접는 제목). 원칙 확인: 5 맞음(구조 잡기), 7 맞음(화면에서만 접는다 — 파일은 그대로), 1 맞음(키 · 팔레트 · 맥락 메뉴 · 목차의 `← / →`), 6 맞음(Mac ⌘⌥[ 는 CodeMirror 의 Mac 기본과 같다), 2 맞음(접기는 구문 트리에서 범위만 계산), 3 · 4 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| FD1 | 마크다운 편집기에서 **`Ctrl+Alt+[`** → 커서가 든 절(제목 줄 끝 ~ 같거나 높은 단계의 다음 제목 앞)을 접는다, **거듭 누르면 바깥 절**. **`Ctrl+Alt+]`** → 커서가 든 절을 편다(접혀 있지 않으면 그 절 안의 접힌 것을 모두). 접히면 커서는 제목 줄로(접힌 안에 남지 않게). 접힌 자리에는 `…` — 누르면 편다 | ADOPT C1. CodeMirror 기본 `Ctrl+Shift+[` 는 Mac 의 ⌘⇧[(브라우저 이전 탭)라 쓰지 않는다 |
+| FD2 | 팔레트 **마크다운: 커서가 든 절 접기 · 펴기 · 모든 절 접기 · 모든 절 펴기**, 맥락 메뉴(편집기가 보일 때). 모두 접기는 모든 제목을 접어 개요처럼 — 바깥을 펴면 안은 접힌 채 | ADOPT C1 "모두 접기 · 펴기는 팔레트" |
+| FD3 | **목차**(하이브리드)에서 `←` 접기 · `→` 펴기 — 트리와 같다. 이미 접혀 있으면 `←` 는 위 단계 제목으로. 접힌 제목은 ▸ 와 흐린 글 | ADOPT C1 |
+| FD4 | 절의 범위는 `@codemirror/lang-markdown` 의 제목 접기(구문 트리)를 쓴다 — 코드 펜스 안의 `#` 은 절을 끊지 않는다. 표 · 목록 · 코드 블록 자체는 접지 않는다(제목만) | 테스트 `lib/md/folding.test.ts` |
+| FD5 | 접힌 제목은 **문서마다 이 브라우저에 남겨** 다시 열면 접힌 채로(`jaydocs.folds:<경로>`, 보기 모드와 같은 자리). 제목을 단계 · 글 · 같은 제목 중 몇 번째로 찾는다 — 제목 글을 바꾸면 그 접힘은 잊는다. 파일에는 아무것도 쓰지 않는다 | ADOPT C1 "문서별로 복원" 권고 · 원칙 7 |
+| FD6 | 미리보기 · 분할의 미리보기 쪽은 접지 않는다(편집기만). 미리보기 전용 모드에서 팔레트로 부르면 그렇다고 알린다. 접기는 되돌리기(`Ctrl+Z`) 기록에 들어가지 않는다 | |
+
+안내 창(§46)의 마크다운 자리가 8줄을 넘어 "줄 복제" 줄을 "줄 옮기기 (Shift 면 복제)" 에 합쳤다.
+
+코드: `lib/md/folding.ts`(접기 · 펴기 · 모두 · 남기기 · 복원) · `.test.ts`, `lib/cm.ts`(마크다운에 `codeFolding` · 키), `lib/paneCommands.ts`(`mdFold` · `mdUnfold` · `mdFoldAll` · `mdUnfoldAll` — 단추 없음), `MarkdownPane.tsx`(명령 · 복원 · 저장 · 목차 갱신), `OutlinePanel.tsx` · `.css`(`← / →` · ▸), `lib/contextMenu.ts`, `shortcuts-table.mjs`.
+
+### 52.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 키): 새 문서에 `# top` · `## one` · `## two` 를 쓰고 저장, `body one` 줄에서 `Ctrl+Alt+[` → `## one…`, 커서는 제목 줄. 다시 `Ctrl+Alt+[` → `# top…`(바깥 절). 새로고침 → 접힌 채로 열림. `Ctrl+Alt+]` → top 이 펴지고 one 은 접힌 채. 하이브리드 목차에 "▸ one", 목차에서 `→` → one 이 펴짐, two 에서 `←` → 접힘 "▸ two", 다시 `←` → 목차 커서가 top 으로. 콘솔 오류 없음. (시험 문서는 지웠다)
+
+### 52.2 확인하지 못한 것 (TESTCASES §46)
+
+- Mac ⌘⌥[ · ⌘⌥], 설치한 Edge 앱, 한글 자판의 `Ctrl+Alt+[`(일부 자판은 AltGr), 큰 문서의 모두 접기 속도, 분할한 두 창에서 같은 문서를 접을 때(문서마다 하나를 남겨 마지막 것이 남는다).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
