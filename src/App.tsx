@@ -40,6 +40,7 @@ import { copyText } from './lib/copyText'
 import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
 import { forgetPinned, movePinned, togglePinned, usePins } from './lib/pins'
+import { noteLineJump } from './lib/navHistory'
 import { anchorOf, availableContextCommands, spotAt, type SpotAnchor } from './lib/contextMenu'
 
 type Phase =
@@ -894,7 +895,11 @@ function Workspace({ layoutId }: { layoutId: string }) {
       bench.current?.openFileSide(path)
     } else if (!line) bench.current?.openFile(path, true)
     else if (table) openPath(path, cell, true)
-    else openAtLine(path, line)
+    else {
+      // 지금 문서 안에서 그 줄로 — 뒤로 · 앞으로에 적는다 (다른 문서면 문서가 바뀔 때 적힌다, DESIGN §50)
+      if (path === bench.current?.activePath()) noteLineJump(path, line.line)
+      openAtLine(path, line)
+    }
   }, [])
   /** `#제목` (지금 문서) · `이름:12` 는 목록을 직접 만든다. 그냥 이름이면 null — 팔레트가 거른다 */
   const quickSource = useCallback((query: string): PaletteItem[] | null => {

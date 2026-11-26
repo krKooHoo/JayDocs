@@ -4,7 +4,8 @@ import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
-import { paneAction, requestQuickLook, requestTreeFilter, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
+import { paneAction, requestLine, requestQuickLook, requestTreeFilter, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
+import { navCan, navGo, navHistory, noteDocChange, noteRename, resetNavHistory } from '../lib/navHistory'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -193,6 +194,14 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   const [paneCount, setPaneCount] = useState(() => countDocPanes(model))
   const onActiveDocChange = p.onActiveDocChange
   useEffect(() => { onActiveDocChange?.(activeDoc) }, [activeDoc, onActiveDocChange])
+  // 뒤로 · 앞으로 (DESIGN §50) — 지금 문서가 바뀔 때마다 떠난 자리를 적는다. 문서 폴더를 바꾸면 비운다
+  const prevDoc = useRef<string | null>(null)
+  useEffect(() => { resetNavHistory(); prevDoc.current = null }, [p.layoutId])
+  useEffect(() => {
+    if (!activeDoc) return
+    noteDocChange(prevDoc.current, activeDoc)
+    prevDoc.current = activeDoc
+  }, [activeDoc])
 
   /** 훑어보기 패널 켜기 / 끄기. 켰는데 지금 화면에는 안 보이는 경우(분할 중 · md · txt 가 아닌 문서)에는 이유를 알린다 */
   const toggleSkim = useCallback(() => {
@@ -230,6 +239,20 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     setOpener(openFile)
     return () => setOpener(null)
   }, [openFile])
+
+  /** 뒤로(-1) · 앞으로(+1) — 그 문서를 열고(탭이 있으면 그 탭), 글 문서면 그 줄로. 없어진 문서는 건너뛴다 */
+  const treeRef = useRef(p.tree)
+  treeRef.current = p.tree
+  const goNav = useCallback((dir: -1 | 1) => {
+    const files = new Set<string>()
+    const walk = (list: TreeEntry[]) => { for (const e of list) { if (e.type === 'file') files.add(e.path); else walk(e.children ?? []) } }
+    walk(treeRef.current)
+    const ok = navGo(dir, activePath(), (path) => files.has(path), (loc, sameDoc) => {
+      if (!sameDoc) openFile(loc.path, true)
+      if (loc.line) requestLine(loc.path, { line: loc.line })
+    })
+    if (!ok) notify(dir < 0 ? '더 뒤로 갈 곳이 없습니다' : '더 앞으로 갈 곳이 없습니다', { key: 'nav' })
+  }, [activePath, openFile])
 
   /**
    * 오른쪽 창에 열기 (DESIGN §38, `Ctrl+Enter`). 다른 탭 묶음이 있으면 거기에(활성 묶음의 오른쪽 · 다음 것 먼저), 없으면 오른쪽에 새 묶음.
@@ -437,6 +460,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     // 트리에 포커스가 있을 때 접으면 포커스가 body 로 빠진다 — 문서 창(없으면 빈 화면 안내)으로 보낸다
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
+    { id: 'navBack', label: '뒤로 — 앞에 있던 문서 · 자리로 (파일 열기 · 탭 · 제목 이동을 되짚는다)', run: () => goNav(-1), enabled: () => navCan(navHistory(), -1) },
+    { id: 'navForward', label: '앞으로 — 뒤로 오기 전의 문서 · 자리로', run: () => goNav(1), enabled: () => navCan(navHistory(), 1) },
     { id: 'openTreeCursorSide', label: '파일 트리 커서의 파일을 오른쪽 창에 열기', run: requestTreeOpenSide },
     { id: 'treeFilter', label: '파일 트리: 이름으로 거르기 (트리 위 필터 칸)', run: () => { focusTree(); requestTreeFilter('focus') } },
     { id: 'treeFilterDirty', label: '파일 트리: 저장 안 한 것만 보기 켜기 / 끄기', run: () => { focusTree(); requestTreeFilter('dirty') } },
@@ -463,7 +488,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim, goNav])
 
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()
@@ -504,6 +529,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   }, [activePath, activeTab])
 
   const renamePaths = useCallback((from: string, to: string, isDir: boolean) => {
+    noteRename(from, to)
+    if (prevDoc.current === from) prevDoc.current = to
     const prefix = from + '/'
     for (const tab of findTabs(model, () => true)) {
       const cfg = (tab.getConfig() ?? {}) as Record<string, unknown>

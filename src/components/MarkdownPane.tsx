@@ -6,6 +6,7 @@ import { openSearchPanel } from '@codemirror/search'
 import { baseExtensions, isMarkdownPath, openReplacePanel, remote } from '../lib/cm'
 import { cmdTitle, runCommand, tip } from '../lib/commands'
 import { onLineRequest, onPaneAction } from '../lib/nav'
+import { noteLineJump, registerLineSource } from '../lib/navHistory'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -195,7 +196,13 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       // 창을 여는 쪽(Workbench)도 포커스를 옮긴다 — 그 뒤에 편집기로
       window.setTimeout(() => { if (view.dom.isConnected) view.focus() }, 60)
     })
+    // 뒤로 · 앞으로 (DESIGN §50) — 문서를 떠날 때 커서 줄을 적는다
+    const unSource = registerLineSource(path, {
+      line: () => view.state.doc.lineAt(view.state.selection.main.head).number,
+      focused: () => view.hasFocus,
+    })
     return () => {
+      unSource()
       unLine()
       unsubscribe()
       view.destroy()
@@ -272,6 +279,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
           // 목차 띠와 같다 — 제목을 편집기 맨 위로, 커서는 제목 글 앞
           run: () => {
             const len = view.state.doc.length
+            noteLineJump(path, view.state.doc.lineAt(Math.min(it.textFrom, len)).number, view.state.doc.lineAt(view.state.selection.main.head).number)
             view.dispatch({ selection: { anchor: Math.min(it.textFrom, len) }, effects: EditorView.scrollIntoView(Math.min(it.from, len), { y: 'start', yMargin: 4 }) })
             view.focus()
           },

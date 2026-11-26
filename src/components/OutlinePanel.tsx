@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject } from 'react'
 import { EditorView } from '@codemirror/view'
 import { activeIndex, outlineOf, sameOutline, type OutlineItem } from '../lib/md/outline'
+import { noteLineJump } from '../lib/navHistory'
+import { mdViewPathOf } from './mdContext'
 import './OutlinePanel.css'
 
 /**
@@ -111,6 +113,9 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
     const it = items[i]
     if (!view || !it) return
     const pos = Math.min(it.textFrom, view.state.doc.length)
+    // 뒤로 · 앞으로 (DESIGN §50) — 제목으로 뛴 것을 적는다
+    const path = mdViewPathOf(view)
+    if (path) noteLineJump(path, view.state.doc.lineAt(pos).number, view.state.doc.lineAt(view.state.selection.main.head).number)
     view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(Math.min(it.from, view.state.doc.length), { y: 'start', yMargin: 4 }) })
     setActive(i)
     if (focusEditor) view.focus()

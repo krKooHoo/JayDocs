@@ -1707,6 +1707,32 @@ UI/UX 개편 B4(`docs/research/apple-uiux/ADOPT.md`). 자주 쓰는 문서 · �
 - 고정 순서는 바꿀 수 없다(해제했다 다시 고정하면 끝으로).
 - 실제 폴더 · 가져온 폴더의 해제 · 재가져오기 뒤의 고정, 고정이 많을 때의 트리.
 
+## 50. 뒤로 · 앞으로 (Alt+, · Alt+.) (2026-11-26)
+
+UI/UX 개편 B5(`docs/research/apple-uiux/ADOPT.md`). 표와 문서를 오가며 확인한 뒤 원래 자리로(Xcode 이동 기록, Freeform 장면의 뒤로 · 앞으로). 원칙 확인: 1 맞음(키 · 팔레트), 3 · 5 맞음(글 ↔ 표를 오가고 돌아온다 — 표는 탭이 제 활성 셀을 지닌다), 2 맞음(경로 · 줄 몇 개), 6 맞음(키는 `code` 로 읽어 Mac 의 Option+, 도 같다), 7 상관없음(저장하지 않는다), 4 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| NV1 | **`Alt+,` 뒤로 · `Alt+.` 앞으로**(팔레트 **뒤로 — …** · **앞으로 — …**). 갈 곳이 없으면 "더 뒤로 갈 곳이 없습니다" 알림 | ADOPT B5. `Alt+← / →` 는 Windows 브라우저의 뒤로 · Mac 편집기의 단어 이동, `Ctrl+[ / ]` 는 Mac 의 ⌘[ 브라우저 뒤로. 탭 이동 `Alt+[ / ]` 와 같은 Alt 가족 |
+| NV2 | **적는 때**: 지금 문서가 바뀔 때(파일 열기 · 트리 · `Ctrl+P` · 탭 · 분할한 창 사이 · 탭 닫기 — Workbench 의 활성 문서), 문서 안에서 줄로 뛸 때(목차 · 경로 막대의 제목 · `Ctrl+P` 의 `#제목` · `이름:12` · 전체 검색 결과가 지금 문서일 때). 그냥 커서를 옮기거나 스크롤하는 것은 적지 않는다 | ADOPT B5 "파일 열기 · 제목 점프마다" |
+| NV3 | 떠나는 자리(문서 + 글 문서의 커서 줄)를 정확히 적고, 간 자리는 대강 — 거기서 다시 떠날 때(새로 뛰거나 뒤로 · 앞으로 갈 때) 그때의 줄로 고쳐 적는다. 그래서 뒤로 갔다 앞으로 오면 떠났던 줄로 온다 | VS Code 와 같다 |
+| NV4 | 되짚어 갈 때 다른 문서면 탭을 열고(있으면 그 탭) 그 창으로 포커스, 글 문서는 그 줄로. **표는 줄을 적지 않는다** — 탭이 활성 셀을 지닌다(원칙 3). 없어진 문서(지웠거나 가져오기를 해제)는 건너뛴다 | |
+| NV5 | 뒤로 간 뒤 새로 뛰면 앞쪽은 버린다(브라우저와 같다). 50개까지. 같은 자리로 뛴 것은 적지 않는다. 뒤로 · 앞으로가 연 문서는 새로 뛴 것으로 적지 않는다 | |
+| NV6 | 앱에서 이름을 바꾸면(`F2`) 기록도 새 경로로, 탭 경로가 바뀐 것은 뛴 것이 아니다. 화면 상태라 저장하지 않는다 — 새로고침 · 문서 폴더를 바꾸면 비운다 | 원칙 7 |
+
+코드: `lib/navHistory.ts`(기록 규칙 `navJump` · `navStep` · `navRename`, 앱의 기록 · 편집기 줄 `registerLineSource`) · `.test.ts`, `Workbench.tsx`(활성 문서가 바뀔 때 `noteDocChange`, 명령 `navBack` · `navForward`, 이름 바꾸기), `MarkdownPane.tsx`(줄 · 경로 막대 제목), `OutlinePanel.tsx`(목차), `mdContext.ts`(`mdViewPathOf`), `App.tsx`(`#제목` · `이름:12` · 검색이 지금 문서일 때), `shortcuts-table.mjs`(`Alt+,` · `Alt+.`, 안내 창 `hint`).
+
+### 50.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 키): 아이템.md → `Ctrl+P` `코드:3` → 4줄 내려 7줄 → `Ctrl+P` 표.tsv → `Alt+,` 코드.md 7줄 → `Alt+,` 아이템.md → `Alt+.` 코드.md 7줄 → `Alt+.` 표.tsv(그리드 칸에 포커스) → 그리드에서 `Alt+,` 코드.md 7줄. 코드.md 에서 `Ctrl+P` `코드:14` → `Alt+,` 7줄 → `Alt+.` 14줄. 개요.md 끝 줄에서 경로 막대(`Ctrl+Shift+.`)의 제목 → 1줄, `Alt+,` → 끝 줄. 트리 포커스에서도 받는다. 콘솔 오류 없음.
+
+자동화 메모: 내장 브라우저의 키 이름 `comma` · `period` 는 key · code 가 빈 이벤트를 보낸다 — `alt+,` · `alt+.` 로 보내야 한다.
+
+### 50.2 확인하지 못한 것 (TESTCASES §44)
+
+- 목차 패널의 클릭 · `Enter`(dev 샘플에 제목이 하나뿐이고 소스 모드라 목차가 숨어 있었다 — 코드는 경로 막대와 같은 길), 분할한 두 창 사이 전환, 탭 닫기 뒤 뒤로.
+- 설치한 Edge 앱 · Mac(⌥, · ⌥.) 에서 키가 앱에 오는지, 한글 자판에서 `Alt+,`.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

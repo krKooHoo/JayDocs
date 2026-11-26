@@ -18,6 +18,9 @@ const viewPaths = new WeakMap<EditorView, string>()
 export function setMdViewPath(view: EditorView, path: string) {
   viewPaths.set(view, path)
 }
+export function mdViewPathOf(view: EditorView): string | undefined {
+  return viewPaths.get(view)
+}
 
 /** 링크 주소 → 앱 안 문서 경로. 바깥 주소 · 문서 안 `#제목` · 문서가 아닌 파일은 null */
 export function docLinkTarget(rawHref: string, mdPath: string): string | null {

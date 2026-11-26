@@ -64,6 +64,8 @@ export const SHORTCUTS = [
       { hint: { at: 'tab', keys: 'Alt+] / [', label: '다음 · 이전 탭' }, keys: 'Alt+]', label: '다음 탭', command: 'nextTab' },
       { keys: 'Alt+[', label: '이전 탭', command: 'prevTab' },
       { keys: 'Alt+1 … Alt+9', label: 'n번째 탭', command: 'tabN' },
+      { hint: { at: ['app', 'tab'], keys: 'Alt+, / .', label: '뒤로 · 앞으로 (문서 · 제목 자리)' }, keys: 'Alt+,', label: '뒤로 — 앞에 있던 문서 · 자리로. 파일 열기 · 탭 · 창 전환과 문서 안의 제목 이동(목차 · 경로 막대의 제목 · Ctrl+P 의 #제목 · 이름:12 · 전체 검색 결과)을 적어 두고 되짚는다. 글 문서는 그 줄로, 표는 그 탭으로(활성 셀은 탭이 지닌다). 없어진 문서는 건너뛴다', command: 'navBack' },
+      { keys: 'Alt+.', label: '앞으로 — 뒤로 오기 전의 문서 · 자리로. 뒤로 간 뒤 새로 뛰면 앞쪽은 지워진다', command: 'navForward' },
       { hint: { at: 'tab', label: '탭 닫기' }, keys: 'Alt+W', label: '탭 닫기', command: 'closeTab' },
       { hint: { at: 'app', label: '파일 트리 접기 / 펴기' }, keys: 'Ctrl+B', label: '파일 트리 접기 / 펴기', command: 'toggleTree' },
       { hint: { at: 'app', label: '파일 트리로' }, keys: 'Ctrl+Shift+E', label: '파일 트리로 포커스', command: 'focusTree' },
