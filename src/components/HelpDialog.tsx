@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SHORTCUTS } from '../lib/shortcuts-table.mjs'
+import { tip } from '../lib/commands'
+import { toggleKeyHints, useKeyHintsState } from '../lib/keyHints'
 
 /** F1 — 단축키 표. SHORTCUTS.md 와 같은 데이터다. 위 입력 칸에 치면 키 · 설명으로 거른다. */
 export function HelpDialog({ onClose }: { onClose: () => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
+  const hints = useKeyHintsState().on
   useEffect(() => { input.current?.focus() }, [])
 
   const groups = useMemo(() => {
@@ -36,6 +39,10 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
           <span>단축키</span>
           <span className="muted">SHORTCUTS.md 와 같다 · Esc 로 닫기</span>
           <span className="spacer" />
+          {/* 단축키 안내 창 (DESIGN §46) — 자리마다 자주 쓰는 키를 문서 창 왼쪽 아래에 */}
+          <button data-command="toggleKeyHints" onClick={toggleKeyHints} title={tip('단축키 안내 창 — 지금 자리에서 자주 쓰는 키를 문서 창 왼쪽 아래에 보인다', 'toggleKeyHints')}>
+            {hints ? '안내 창 끄기' : '안내 창 켜기'}
+          </button>
           <button onClick={onClose}>닫기</button>
         </div>
         <div className="help-search">

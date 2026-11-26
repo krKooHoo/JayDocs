@@ -24,6 +24,8 @@ import { dirOf, loadDtoPrefs, rememberDtoTarget } from './lib/codegen/dtoPrefs'
 import { Workbench, type WorkbenchHandle } from './components/Workbench'
 import { Palette, type PaletteItem } from './components/Palette'
 import { HelpDialog } from './components/HelpDialog'
+import { KeyHints } from './components/KeyHints'
+import { toggleKeyHints } from './lib/keyHints'
 import { DialogHost } from './components/DialogHost'
 import { NoticeHost } from './components/NoticeHost'
 import { askConfirm, askText, dialogOpen } from './lib/dialogs'
@@ -752,6 +754,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'contextMenu', label: '맥락 메뉴 — 지금 자리(셀 · 트리 항목 · 커서 · 탭)에서 쓸 수 있는 명령', run: contextMenuHere },
     { id: 'fileSearch', label: '파일 검색', run: () => setOverlay({ kind: 'files' }) },
     { id: 'help', label: '단축키 도움말', run: () => setOverlay({ kind: 'help' }) },
+    { id: 'toggleKeyHints', label: '단축키 안내 창 켜기 / 끄기', run: toggleKeyHints },
     { id: 'toggleTheme', label: '다크 / 라이트 전환', run: toggleTheme },
     { id: 'newFile', label: '새 파일…', run: () => newFile(lastDir.current) },
     { id: 'saveAsTemplate', label: '현재 문서를 템플릿으로 저장…', run: () => void saveAsTemplate(), enabled: () => !!bench.current?.activePath() },
@@ -912,6 +915,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
           />
         )}
       </main>
+      {root && <KeyHints hidden={!!overlay} />}
       {overlay?.kind === 'palette' && (
         <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={pickCommand} />
       )}

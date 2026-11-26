@@ -1594,6 +1594,38 @@ UI/UX 개편 K6(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(�
 - 실제 키(브라우저 방문 기록이 더는 열리지 않는지)와 설치한 Edge 앱, Mac 의 ⌘H.
 - **하이브리드 표 칸을 편집하는 중**(`HybridTable` 의 textarea)에는 편집기가 키를 받지 않아(위젯 `ignoreEvent`) `Ctrl+H` 가 여전히 브라우저로 간다 — `Ctrl+F` 도 전부터 같다. 표 칸 키는 K2 와 같은 파일이라 이 절에서는 고치지 않았다.
 
+## 46. 단축키 안내 창 (Shift+F1) (2026-11-26)
+
+UI/UX 개편 K7(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(마우스 대신 키를 익히게 하는 것이 목적), 2 주의 → 포커스가 다른 자리로 옮겨 갈 때만 다시 그린다(KH4), 3 주의 → 작게 · 접을 수 있게 · 좁은 창에서 숨김 · 목차 띠를 피한다(KH6), 6 맞음(Mac 은 ⌘ 표기), 7 맞음(표시뿐, 켬 · 접힘은 화면 설정), 4 · 5 상관없음.
+
+**학습 사다리**: 안내 창(이 자리의 자주 쓰는 키, 늘 보임) → `Alt+Enter`(이 자리의 모든 동작, §40) → `F1`(전체 표). 셋 다 단축키 표(`shortcuts-table.mjs`) 하나에서 나온다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| KH1 | **자리**: K1 의 `spotAt(document.activeElement)`(키보드 자리라 point 없이)에 영역보다 좁은 자리를 더해 하나로 정한다(`lib/keyHints.ts` `hintPlace`) — 앱 · 탭 · 파일 트리 · 훑어보기 창(트리에 포커스 + 창이 떠 있음) · 폴더 격자 · 경로 막대 · 목차 · 편집기 · 마크다운 표 칸 · 미리보기(미리보기 전용 모드 · 분할의 미리보기) · 표 · 표(열을 골랐을 때) · 표(셀 편집 중). 좁은 자리는 DOM(`.path-bar` · `.outline-panel` · `.quicklook` · `.preview`)에서 읽는다 | ADOPT K7 "자리 판단은 K1 과 같은 함수". 메뉴와 안내 창이 같은 자리를 본다 |
+| KH2 | **데이터**: 단축키 표의 줄에 `hint: { at, label, keys?, when? }` 를 단다 — at: 보일 자리(여럿 가능), label: 짧은 이름(24자 이하, 테스트), keys: 안내 창 표기(없으면 표의 keys 에서 끝의 "(목차)" 같은 자리 표기를 뺀 것), when: 자리 조건(markdown · hybrid · mermaid · writable). 안내 창 전용 줄은 하나만 더했다 — 그리드 "Alt+Enter (셀 편집 중)" 칸 안 줄바꿈 · 확정 | ADOPT 의 `where` · `hint` 를 한 칸으로. keys 칸의 괄호 표기는 F1 · SHORTCUTS.md 에서 그대로 쓰므로 옮기지 않고 안내 창에서만 뗀다 |
+| KH3 | **고르기**: 자리의 줄을 표 순서대로, 제 구역(그리드 · 마크다운 · 파일 트리 …)의 줄이 전역 · 탭 줄보다 먼저, 최대 **8줄**. 표 칸 → 편집기, 열 선택 → 표, 훑어보기 창 → 트리 순으로 이어 채우고 같은 키는 앞의 것만(열을 골랐으면 `Ctrl+Alt+=` 는 "오른쪽에 열 넣기" 하나). 팔레트 명령이 달린 줄은 **그 자리의 맥락 메뉴(`contextIds`)에 그 명령이 있을 때만** — 읽기 전용 표 · 가져온 폴더 루트에서 행 넣기 · 이름 바꾸기가 빠진다. 전역 명령 줄은 등록부에서 지금 쓸 수 있을 때만 | 메뉴에 없는 동작을 안내하지 않는다 |
+| KH4 | **다시 그리기**: `focusin` · 클릭한 뒤 · 키를 놓고 350 ms 쉰 뒤에만 자리를 다시 읽고, 보일 줄이 바뀌었을 때만 그린다. 글자를 칠 때마다 그리지 않는다 | 원칙 2. 키를 놓은 뒤 읽는 것은 커서가 표 칸 · 목차로 들어가는 것처럼 포커스는 그대로인 자리 바뀜 때문 |
+| KH5 | 맨 아래 두 줄: **`Alt+Enter` 이 자리의 모든 동작 · `F1` 전체 표**(키는 표에서). 셀 편집 중에는 `Alt+Enter` 가 칸 안 줄바꿈이라 F1 만 | 학습 사다리 |
+| KH6 | **자리 · 모양**: 문서 창 영역의 왼쪽 아래 — 파일 트리 오른쪽 끝 + 10px(트리를 접으면 화면 왼쪽), 하이브리드 목차 띠가 그 자리에 있으면 띠의 오른쪽. 문서 상태 줄 위(bottom 32px), 폭 250px, 글자 12px. 머리 `⌨ 자리 이름` + ▾ 접기 · × 끄기. 창 폭 900px 미만이면 숨는다. 오른쪽 아래는 알림 줄 자리라 피한다 | ADOPT K7 원칙 3 |
+| KH7 | **숨을 때**: 대화상자 · 팔레트 · 맥락 메뉴 · 파일 검색 · 도움말 · 가져오기 · 새 문서 창이 떠 있을 때(그 창 안에 키 안내가 있다), 폴더를 고르기 전(시작 화면) | 겹쳐 보이지 않게 |
+| KH8 | **포커스를 받지 않는다**: 단추는 `tabIndex=-1`, 누를 때 포커스를 빼앗지 않는다(`mousedown` 기본 동작 막음). 알림 영역(aria-live)이 아니다 — 스크린 리더가 자리 바뀔 때마다 읽지 않는다. `aside aria-label="단축키 안내"` | ADOPT K7. 키보드로는 `Shift+F1` 로 켜고 끈다 |
+| KH9 | **켜고 끄기**: `Shift+F1`(전역 `toggleKeyHints`), 팔레트 **단축키 안내 창 켜기 / 끄기**, F1 도움말 머리의 **안내 창 끄기 / 켜기** 단추, 안내 창의 ×. 끄면 알림 줄에 "Shift+F1 로 다시 켭니다". **처음엔 켜짐**, 켬 · 접힘은 이 브라우저의 localStorage(`jaydocs.keyHints.on` · `.folded`). 켜면 접힘도 푼다 | ADOPT K7 기본값. `F1` 가족의 두 키 |
+| KH10 | **다음엔 …**: 단축키가 있는 단추(`data-command`, §36)를 **마우스로** 누르면 안내 창 머리 아래에 "다음엔 `Ctrl+F` 표: 찾기" 를 5초 보인다. 키보드로 누른 단추(`detail === 0`)는 보이지 않는다 | ADOPT K7 "더하면 좋은 것" — JetBrains Key Promoter X. 막대 단추 = 팔레트 명령이라 키를 표에서 찾는다 |
+| KH11 | Mac 은 표기만 `Ctrl` → `⌘`(`navigator.platform`). 키 처리는 이미 ⌘ 를 Ctrl 로 받는다(`lib/keys.ts`) | 원칙 6 |
+
+코드: `lib/keyHints.ts`(자리 · 고르기 · 맨 아래 줄 · 켬 상태) · `.test.ts`, `components/KeyHints.tsx` · `.css`, `shortcuts-table.mjs`(`hint` 61줄 · `Shift+F1` · 그리드 "Alt+Enter (셀 편집 중)"), `App.tsx`(명령 · 그리기), `HelpDialog.tsx`(단추).
+
+### 46.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 클릭 · 키 입력은 자동화): 빈 화면(앱) → 트리 → `Space` 훑어보기 창 → 표(`표.tsv`) → `F2` 셀 편집 중(맨 아래 `Alt+Enter` 없음) → `Ctrl+Space` 열 선택(`Ctrl+Alt+=` 오른쪽에 열 넣기) → 편집기(소스는 목차 줄 없음, 하이브리드는 `Ctrl+Alt+T`) → `Ctrl+Alt+T` 목차 → `Ctrl+Shift+.` 경로 막대 → 미리보기 전용 모드 → `|||` 로 만든 마크다운 표 칸. 자리마다 줄이 바뀐다. 그리드 툴바 "찾기" 클릭 → "다음엔 Ctrl+F 표: 찾기". `Shift+F1` 끄기(알림 · localStorage 0) · 켜기, 팔레트가 떠 있으면 숨음, F1 도움말 단추로 끄고 켜기, ▾ 접기 · 펴기. 하이브리드 목차 띠 오른쪽으로 비켜 선다. 콘솔 오류 없음.
+
+### 46.2 확인하지 못한 것 · 남은 것 (TESTCASES §40)
+
+- 설치한 Edge 앱에서 `Shift+F1` 이 앱에 오는지, Mac 의 ⌘ 표기, 실제 한글 IME 조합 중에 다시 그리지 않는지.
+- 안내 창은 문서 창의 왼쪽 아래 글 · 표를 가린다 — 하이브리드 표를 문서 끝에서 고칠 때 표 위에 겹치는 것을 봤다. 접거나(▾) 끄면 된다. 써 보고 자리를 옮길지 정한다.
+- 자주 쓰는 키의 고르기는 표의 순서다 — 써 보고 줄을 바꾼다(`hint` 만 고치면 된다).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
