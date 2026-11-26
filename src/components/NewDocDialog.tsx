@@ -4,7 +4,7 @@ import { fileTypeOf } from '../lib/filetypes.mjs'
 import { runCommand } from '../lib/commands'
 import { dialogOpen } from '../lib/dialogs'
 import { skimReader } from '../lib/skim'
-import { blankTemplateFor, fileNameOf, newDocPath, stripTypedExt, TEMPLATES, typedExt } from '../lib/templates'
+import { blankTemplateFor, fileNameOf, newDocPath, newFolderPath, stripTypedExt, TEMPLATES, typedExt } from '../lib/templates'
 import './NewDocDialog.css'
 
 /**
@@ -13,7 +13,7 @@ import './NewDocDialog.css'
  * 세 줄: 빈 문서 · 예시(렌더된 썸네일) · 내 템플릿(주 폴더의 `_templates/`, 있을 때만).
  * 포커스는 늘 이름 칸에 있다 — `↑` `↓` 로 템플릿을 옮기고(줄을 넘어 이어진다) `Enter` 로 만든다, `Esc` 로 닫는다.
  * 카드를 누르면 선택만 바뀌고 포커스는 이름 칸에 남는다. 두 번 누르면 만든다.
- * 이름 끝에 지원 확장자를 치면(`메모.txt`) 그 형식으로 선택이 옮겨 간다.
+ * 이름 끝에 지원 확장자를 치면(`메모.txt`) 그 형식으로 선택이 옮겨 간다. 끝에 `/` 를 치면(`자료/`) 폴더를 만든다 (DESIGN §43).
  *
  * 경로 검사 · 실제 쓰기는 부른 쪽(`onCreate`)이 한다 — 문제가 있으면 이유를 돌려주고, 창은 닫히지 않고 칸 아래에 보인다.
  */
@@ -36,6 +36,8 @@ interface Props {
   userTemplates: readonly string[]
   /** 만든다. 문제가 있으면 그 이유, 되면 null (창을 닫는 것도 부른 쪽이 한다) */
   onCreate: (path: string, choice: NewDocChoice) => Promise<string | null>
+  /** 이름이 `/` 로 끝날 때 — 폴더를 만든다 (DESIGN §43, K3). 돌려주는 값은 onCreate 와 같다 */
+  onCreateFolder: (path: string) => Promise<string | null>
   onClose: () => void
 }
 
@@ -75,7 +77,7 @@ function restoreFocus(opener: Element | null) {
   }, 0)
 }
 
-export function NewDocDialog({ dir, userTemplates, onCreate, onClose }: Props) {
+export function NewDocDialog({ dir, userTemplates, onCreate, onCreateFolder, onClose }: Props) {
   const mine = useUserTemplates(userTemplates)
   const choices = useMemo(() => [...BUILTIN, ...mine], [mine])
   const initial = dir ? `${dir}/${DEFAULT_NAME}` : DEFAULT_NAME
@@ -98,6 +100,7 @@ export function NewDocDialog({ dir, userTemplates, onCreate, onClose }: Props) {
 
   const choice = choices[Math.min(index, choices.length - 1)]
   const typed = typedExt(value)
+  const folderMode = newFolderPath(value) !== null
 
   /** 만들었다 — 닫힐 때 포커스를 돌려주지 않는다 (만든 문서의 편집기가 받는다) */
   const created = useRef(false)
@@ -153,10 +156,12 @@ export function NewDocDialog({ dir, userTemplates, onCreate, onClose }: Props) {
     if (busyRef.current || !c) return
     setBusy(true)
     let problem: string | null
+    // 이름이 / 로 끝나면 폴더 (K3). 만든 뒤 닫히면 포커스는 부르던 곳으로 돌아간다 (열 문서가 없다)
+    const folder = newFolderPath(valueRef.current)
     // 부른 쪽이 만든 뒤 창을 닫고 새 문서로 포커스를 옮긴다 — 그 전에 표시해 둔다 (닫히는 것은 onCreate 안이다)
-    created.current = true
+    created.current = folder === null
     try {
-      problem = await onCreate(newDocPath(valueRef.current, c.ext), c)
+      problem = folder !== null ? await onCreateFolder(folder) : await onCreate(newDocPath(valueRef.current, c.ext), c)
     } catch (e) {
       problem = (e as Error).message || '만들지 못했습니다'
     }
@@ -238,12 +243,14 @@ export function NewDocDialog({ dir, userTemplates, onCreate, onClose }: Props) {
               spellCheck={false}
               autoComplete="off"
             />
-            {!typed && <span className="newdoc-ext" aria-label={`확장자 ${choice.ext}`}>{choice.ext}</span>}
+            {folderMode
+              ? <span className="newdoc-ext" aria-label="새 폴더">📁 폴더</span>
+              : !typed && <span className="newdoc-ext" aria-label={`확장자 ${choice.ext}`}>{choice.ext}</span>}
           </span>
         </label>
         {error !== null && <div className="dialog-error" id={`${baseId}-err`} role="alert">{error}</div>}
         <div className="dialog-hint">
-          <kbd>↑</kbd> <kbd>↓</kbd> 템플릿 고르기 · <kbd>Enter</kbd> 만들기 · 확장자는 고른 템플릿을 따르고, 이름 끝에 <code>.txt</code> 처럼 치면 그 형식이 됩니다 · <code>a/b</code> 처럼 하위 폴더도 됩니다
+          <kbd>↑</kbd> <kbd>↓</kbd> 템플릿 고르기 · <kbd>Enter</kbd> 만들기 · 확장자는 고른 템플릿을 따르고, 이름 끝에 <code>.txt</code> 처럼 치면 그 형식이 됩니다 · <code>a/b</code> 처럼 하위 폴더도 됩니다 · 끝에 <code>/</code> 를 치면(<code>자료/</code>) 폴더를 만듭니다
         </div>
         <div className="newdoc-body" id={`${baseId}-list`} role="listbox" aria-label="템플릿">
           {ROWS.map((row) => {
@@ -259,7 +266,7 @@ export function NewDocDialog({ dir, userTemplates, onCreate, onClose }: Props) {
         </div>
         <div className="info-actions">
           <button onClick={onClose} disabled={busy}>취소</button>
-          <button className="is-primary" onClick={() => void create()} disabled={busy}>만들기</button>
+          <button className="is-primary" onClick={() => void create()} disabled={busy}>{folderMode ? '폴더 만들기' : '만들기'}</button>
         </div>
       </div>
     </div>

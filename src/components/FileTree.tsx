@@ -479,7 +479,7 @@ export function FileTree(p: Props) {
           <div className="tree-empty">
             <p>{DOC_EXTS_LABEL} 파일이 없습니다</p>
             <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.onNewFile('')}>새 문서 <kbd>{keysOf('newFile')}</kbd></button>
-            <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('importFolder')}>폴더 가져오기 <kbd>{keysOf('importFolder')}</kbd></button>
+            <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('importFolder')}>가져오기 <kbd>{keysOf('importFolder')}</kbd></button>
             <p className="tree-empty-hint">파일 탐색기에서 폴더 · 파일을 여기로 끌어다 놓아도 됩니다</p>
           </div>
         )}

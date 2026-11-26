@@ -3,7 +3,7 @@ import { EditorView, drawSelection, dropCursor, highlightActiveLine, highlightSp
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search'
+import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
 import { json, jsonParseLinter } from '@codemirror/lang-json'
 import { linter, lintGutter } from '@codemirror/lint'
@@ -112,6 +112,18 @@ function languageExtensions(path: string, readOnly: boolean): Extension[] {
   return []
 }
 
+/**
+ * 찾기 패널을 열고 **바꾸기 칸**에 포커스 (DESIGN §45, K6) — 그리드의 `Ctrl+H` 와 같은 뜻.
+ * 찾을 말은 `Ctrl+F` 와 같이 선택한 글로 채운다. 읽기 전용이면 바꾸기 칸이 없어 찾기 칸에 둔다.
+ * (Windows 에서 CodeMirror 는 `Ctrl+H` 를 받지 않아 지금까지는 브라우저의 방문 기록이 열렸다)
+ */
+export function openReplacePanel(view: EditorView): boolean {
+  openSearchPanel(view)
+  const field = view.dom.querySelector<HTMLInputElement>('.cm-search input[name=replace]')
+  if (field) { field.focus(); field.select() }
+  return true
+}
+
 export interface EditorOptions {
   readOnly?: boolean
   save?: () => void
@@ -135,7 +147,7 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
     search({ top: true }),
   ]
   if (opts.readOnly) {
-    ext.push(EditorState.readOnly.of(true), EditorView.editable.of(false), keymap.of([...defaultKeymap, ...searchKeymap]))
+    ext.push(EditorState.readOnly.of(true), EditorView.editable.of(false), keymap.of([...defaultKeymap, ...searchKeymap, { key: 'Mod-h', run: openReplacePanel, scope: 'editor search-panel' }]))
   } else {
     ext.push(
       history(),
@@ -147,6 +159,8 @@ export function baseExtensions(path: string, opts: EditorOptions = {}): Extensio
         // Windows 의 CodeMirror 기본은 Ctrl+Y 뿐이다 — 그리드와 같게 Ctrl+Shift+Z 도 다시 실행
         { key: 'Mod-Shift-z', run: redo },
         ...searchKeymap,
+        // 바꾸기 — 그리드와 같은 키 (K6). 찾기 패널 안(찾기 · 바꾸기 칸)에서 눌러도 같다
+        { key: 'Mod-h', run: openReplacePanel, scope: 'editor search-panel' },
         indentWithTab,
       ]),
     )

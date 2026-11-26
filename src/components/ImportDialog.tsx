@@ -6,7 +6,8 @@ import { guessPath } from '../lib/localPath'
 type Picked = FileSystemDirectoryHandle | FileSystemFileHandle
 
 /**
- * 가져오기 — 폴더(Ctrl+Shift+O, PLAN-folder-import F3) 또는 파일 하나(Ctrl+Alt+I, DESIGN §28)를 원래 자리에서 `@별칭` 으로 연다.
+ * 가져오기 — 폴더(PLAN-folder-import F3) 또는 파일 하나(DESIGN §28)를 원래 자리에서 `@별칭` 으로 연다.
+ * 키는 `Ctrl+Shift+O` 하나 — 창 안의 "폴더 고르기…" · "파일 고르기…" 중 고른다 (DESIGN §44, K4). 팔레트 "파일 가져오기…" 는 파일 고르기에 포커스를 두고 연다.
  * 브라우저의 선택 창으로 고르거나, 파일 탐색기에서 파일 트리에 끌어다 놓는다(`initial`).
  * 권한은 가져올 때 묻는다(읽기 전용이면 읽기만) — 그래서 읽기 전용을 바꿔도 고른 것이 남는다.
  *

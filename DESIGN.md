@@ -1529,6 +1529,71 @@ K2 의 열 키 표시는 `열 전체 선택 + Ctrl+Alt+= / -` 로 고쳤다(툴�
 - 실제 폴더에 저장한 뒤의 `git diff`(테스트로는 두 줄만).
 - Mac 의 Option+↑ / ↓, 설치한 Edge 앱.
 
+## 43. 새 폴더는 새 문서 창에서 (2026-11-26)
+
+UI/UX 개편 K3(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 1 — 네 키 `Ctrl+Alt+Shift+N` 을 없앤다, 규칙 2 — 새 폴더는 새 문서보다 드물다), 2 맞음(창 하나에서 이름만 치면 된다), 7 맞음(빈 폴더 하나를 만들 뿐), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| NF1 | 새 문서 창(`Ctrl+Alt+N`)의 이름이 `/` (또는 `\`)로 끝나면 문서 대신 **폴더**를 만든다. 칸 오른쪽 표시가 확장자 대신 `📁 폴더`, 단추가 **폴더 만들기** 가 된다. 창 안내 문구에 "끝에 `/` 를 치면(`자료/`) 폴더를 만듭니다" | 이미 있는 "이름 끝 `.txt` 면 그 형식" 과 같은 문법. 경로를 `/` 로 끝내는 것은 폴더라는 뜻이 이미 널리 쓰인다(VS Code 새 파일 입력 · 셸) |
+| NF2 | 검사는 트리의 새 폴더와 같다(`checkEntryPath` kind `dir` — 이미 있는 이름 · 빈 이름 · 절대 경로 · 못 쓰는 글자). 읽기 전용으로 가져온 폴더 · 파일 하나만 가져온 곳은 새 문서와 같은 문구로 막는다 — 창을 열 때(트리에서 고른 폴더)는 알림 줄에, 창 안에서 그런 곳의 경로를 친 경우는 칸 아래에 | 새 문서와 같은 규칙. 창을 연 뒤 다른 `@별칭` 을 쳐도 백엔드가 거부하기 전에 이유를 보인다 |
+| NF3 | 만들면 창을 닫고 트리를 새로 읽고 알림 줄에 "폴더를 만들었습니다: …". 포커스는 창을 열기 전 자리로(열 문서가 없다) | 새 폴더 대화상자와 같다 |
+| NF4 | **`Ctrl+Alt+Shift+N` 을 없앴다.** 트리의 ＋폴더 · 오른쪽 클릭 · 팔레트 "새 폴더"(`newFolder`)는 그대로 | ADOPT K3 |
+
+코드: `lib/templates.ts`(`newFolderPath`) · `.test.ts`, `NewDocDialog.tsx`(`onCreateFolder` · 칸 표시 · 단추 · 안내), `App.tsx`(`createFolderFromDialog` · `readOnlyProblem`), `shortcuts-table.mjs`, `docs/guide/getting-started.md`.
+
+### 43.1 확인한 것
+
+`npm test`(새 1건 — `newFolderPath`) · `npm run build` · `npm run lint`(새 경고 없음). dev `?opfs` + 내장 브라우저(키는 이벤트로): `Ctrl+Alt+N` → `docs/시험폴더K3/` → 칸 표시 `📁 폴더` · 단추 `폴더 만들기` → `Enter` → 창 닫힘, 트리에 폴더, 알림, 포커스 트리. 같은 이름 다시 → "이미 있는 이름", `/` 만 → "이름을 입력하세요", `a:b/` → 절대 경로 거부. `@가져온폴더` 를 읽기 전용으로 켜고 `@가져온폴더/시험K3/` → 칸 아래에 읽기 전용 문구. `Ctrl+Alt+Shift+N` → 아무것도 열리지 않음. 시험한 폴더는 지웠다.
+
+### 43.2 확인하지 못한 것 (TESTCASES §37)
+
+- 실제 폴더(디스크)에서 만들기 · 한글 조합 중 `/` 입력.
+
+## 44. 가져오기를 하나로 (2026-11-26)
+
+UI/UX 개편 K4(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 4 — 같은 "가져오기" 는 같은 키, 규칙 6 — Mac 의 ⌘⌥I 가 Chrome 개발자 도구와 겹치던 문제가 없어진다), 4 맞음(흩어진 곳을 끌어오는 길이 하나), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| IM1 | `Ctrl+Shift+O`(`importFolder`)가 가져오기 창을 연다 — 창 안의 **폴더 고르기…** · **파일 고르기…** 중 고른다(처음 포커스는 폴더 고르기). 끌어다 놓기는 그대로 | ADOPT K4. 창은 이미 두 단추를 갖고 있었다 |
+| IM2 | **`Ctrl+Alt+I`(`importFile`)의 키를 없앴다.** 팔레트 "파일 가져오기…" 는 **남긴다** — 같은 창을 **파일 고르기…** 에 포커스를 두고 연다 | 키는 하나로 줄이되, 팔레트에서 "파일" 로 찾는 사람이 닿는 길은 둔다(규칙 2 — 키 없는 동작은 팔레트로). 창이 하나라 동작이 갈라지지 않는다. 선택 창을 바로 띄우지 않는 것은 그대로(읽기 전용을 먼저 고를 수 있게) |
+| IM3 | 이름을 "가져오기" 로 맞췄다 — 팔레트 `가져오기… (폴더 · 파일)`, 맨 위 📂 단추 툴팁, 빈 트리 안내의 단추 | 창이 폴더 · 파일 둘 다 받는다 |
+
+코드: `App.tsx`(명령 이름 · 툴팁 · 창이 떠 있을 때 `importFile` 키로 닫던 예외 삭제), `ImportDialog.tsx`(주석), `FileTree.tsx`(빈 트리 단추), `shortcuts-table.mjs`, `docs/guide/workspace.md`.
+
+### 44.1 확인한 것
+
+dev `?opfs` + 내장 브라우저(키는 이벤트로): `Ctrl+Shift+O` → 가져오기 창, 포커스 **폴더 고르기…** → 다시 `Ctrl+Shift+O` 로 닫힘. 팔레트 명령 `importFile` → 같은 창, 포커스 **파일 고르기…**. `Ctrl+Alt+I` → 아무것도 열리지 않음. 팔레트에 `가져오기… (폴더 · 파일)` 옆 `Ctrl+Shift+O`, "파일 가져오기…" 는 키 없음.
+
+### 44.2 확인하지 못한 것 (TESTCASES §38)
+
+- 실제 폴더 · 파일 선택 창(자동화가 못 누른다)과 그 뒤의 가져오기, 파일 탐색기에서 끌어다 놓기.
+
+## 45. 마크다운에서도 `Ctrl+H` 로 바꾸기 (2026-11-26)
+
+UI/UX 개편 K6(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 4 — 그리드의 `Ctrl+H` 와 같은 뜻, 규칙 5 — Word · VS Code(Windows) · Sheets 의 바꾸기 키), 3 맞음(글과 표가 같은 키), 나머지 상관없음.
+
+**지금까지의 `Ctrl+H`(확인)**: 편집기 keymap(`lib/cm.ts`)에 `Mod-h` 가 없었다. CodeMirror 의 `Ctrl-h`(글자 지우기)는 Mac 전용 emacs 키라 Windows 에서는 편집기가 받지 않고, 키가 브라우저로 가 **방문 기록**이 열렸다(Edge · Chrome 의 `Ctrl+H`). 코드와 CodeMirror 소스로 확인했다 — 자동화의 이벤트로는 브라우저 동작이 일어나지 않아 화면으로는 못 봤다.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RP1 | 편집기에서 `Ctrl+H` → 찾기 패널을 열고 **바꾸기 칸**에 포커스(`openReplacePanel`). 찾을 말은 `Ctrl+F` 와 같이 선택한 글로 채운다. 패널 안(찾기 · 바꾸기 칸)에서 눌러도 같다. 브라우저 기본 동작(방문 기록)은 막힌다 | ADOPT K6. 그리드 `Ctrl+H`(`gridReplace`) 와 같은 뜻 |
+| RP2 | `baseExtensions` 에 넣어 **소스 · 하이브리드 · 분할**, **.txt · .json** 편집기가 모두 같다. 읽기 전용 편집기는 바꾸기 칸이 없어 찾기 칸에 둔다 | 같은 편집기, 한 곳에서 |
+| RP3 | 팔레트 **편집기: 찾기**(`Ctrl+F`) · **편집기: 바꾸기**(`Ctrl+H`) — 새 창 명령 범위 `editor`(.md · .txt · .json). 창 막대에 단추는 두지 않는다(`noButton` — 막대 단추 검사에서 뺀다). 미리보기 전용 모드면 알림 줄에 이유 | 새 기능은 팔레트 명령과 함께. 막대는 좁고 키 · 팔레트로 닿는다 |
+| RP4 | Mac 에서는 `Mod-h` = ⌘H 다. ⌘H 는 macOS 가 앱 가리기로 먼저 받을 수 있다 — 그리드의 `Ctrl+H` 와 같은 처지 | 키 처리 규칙(⌘ 를 Ctrl 로)과 같게 둔다. Mac 확인은 아직 |
+
+코드: `lib/cm.ts`(`openReplacePanel` · keymap), `lib/paneCommands.ts`(범위 `editor` · `noButton` · 두 명령) · `.test.ts`, `Workbench.tsx`(범위 판단), `MarkdownPane.tsx`(명령 받기), `shortcuts-table.mjs`, `docs/guide/markdown.md`.
+
+### 45.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(키는 이벤트로): `개요.md` 소스 · 하이브리드, `메모.txt`, `설정.json` 에서 `Ctrl+H` → 키가 막히고(`defaultPrevented`) 패널이 열려 포커스가 바꾸기 칸. 찾기 칸에서 `Ctrl+H` → 바꾸기 칸. 팔레트 "편집기: 바꾸기" → 바꾸기 칸, "편집기: 찾기" → 찾기 칸, 키 표시 `Ctrl+F` · `Ctrl+H`. 미리보기 전용 모드에서 팔레트 → 알림. 콘솔 오류 없음.
+
+### 45.2 확인하지 못한 것 (TESTCASES §39)
+
+- 실제 키(브라우저 방문 기록이 더는 열리지 않는지)와 설치한 Edge 앱, Mac 의 ⌘H.
+- **하이브리드 표 칸을 편집하는 중**(`HybridTable` 의 textarea)에는 편집기가 키를 받지 않아(위젯 `ignoreEvent`) `Ctrl+H` 가 여전히 브라우저로 간다 — `Ctrl+F` 도 전부터 같다. 표 칸 키는 K2 와 같은 파일이라 이 절에서는 고치지 않았다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

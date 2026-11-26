@@ -147,6 +147,15 @@ export function newDocPath(input: string, ext: string): string {
   return fileTypeOf(path) ? path : path + ext
 }
 
+/**
+ * 이름 칸이 `/` (또는 `\`)로 끝나면 새 폴더 (DESIGN §43, K3) — 만들 폴더 경로. 아니면 null.
+ * `메모.txt` 가 그 형식이 되는 것과 같은 문법이다. 빈 이름(`/` 만)은 '' (검사가 "이름을 입력하세요").
+ */
+export function newFolderPath(input: string): string | null {
+  const raw = input.trim().replace(/\\/g, '/')
+  return raw.endsWith('/') ? cleanEntryPath(raw) : null
+}
+
 /** 이름 칸 끝의 지원 확장자를 뗀다 — 다른 형식의 템플릿으로 옮길 때 */
 export function stripTypedExt(input: string): string {
   const ext = typedExt(input)

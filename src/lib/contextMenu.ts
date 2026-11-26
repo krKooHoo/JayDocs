@@ -90,12 +90,12 @@ export const DOC_TAIL_IDS = ['save', 'revertToSaved', 'split', 'copyActivePath',
 
 /** 표 · 글을 고치는 명령 — 읽기 전용 문서에서는 뺀다 (등록부의 `enabled()` 도 끄지만, K7 처럼 등록부 없이 볼 때를 위해 여기서도) */
 const EDIT_IDS = new Set([
-  'gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowDup', 'gridRowDel', 'gridColLeft', 'gridColRight', 'gridColDel',
+  'gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridRowDel', 'gridColLeft', 'gridColRight', 'gridColDel',
   'gridFillDown', 'gridFillRight', 'gridReplace', 'gridSeedHeader', 'calc',
-  'mdTableRowBelow', 'mdTableColRight', 'mdTableDeleteRow', 'mdTableDeleteCol', 'formatJson', 'revertToSaved',
+  'mdTableRowBelow', 'mdTableColRight', 'mdTableDeleteRow', 'mdTableDeleteCol', 'formatJson', 'editorReplace', 'revertToSaved',
 ])
 
-const ROW_IDS = ['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowDup', 'gridRowDel']
+const ROW_IDS = ['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridRowDel']
 const COL_IDS = ['gridColLeft', 'gridColRight', 'gridColDel']
 
 /** 그리드 셀 · 열 머리. 열 전체를 골랐으면 열 명령이 먼저. 편집 중이면 빈 목록 (그 `Alt+Enter` 는 칸 안 줄바꿈) */
@@ -136,6 +136,8 @@ export function markdownContextIds(s: MarkdownSpot): string[] {
   if (s.link) ids.push('openLinkAtCursor', 'openLinkAtCursorSide')
   if (s.tsvView) ids.push('openTsvViewGrid')
   if (s.json) ids.push('formatJson')
+  // 편집기 찾기 · 바꾸기 (DESIGN §45 K6) — 미리보기 전용 모드에는 편집기가 없다
+  if (s.mode !== 'preview') ids.push('editorFind', 'editorReplace')
   if (s.markdown) {
     ids.push(...(['source', 'hybrid', 'split', 'preview'] as const).filter((m) => m !== s.mode).map((m) => VIEW_IDS[m]))
     if (s.mode === 'hybrid') ids.push('focusOutline', 'toggleOutline')

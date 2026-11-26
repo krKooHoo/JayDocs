@@ -58,7 +58,7 @@ describe('막대 단추 = 팔레트 명령', () => {
     })
   }
 
-  it('창 명령은 모두 단추가 있다 (찾기 단추가 함께 맡는 바꾸기만 빼고)', () => {
+  it('창 명령은 모두 단추가 있다 (찾기 단추가 함께 맡는 바꾸기 · 단추 없는 편집기 찾기만 빼고)', () => {
     const all = BARS.map(([f]) => read(f)).join('\n') + read('components/grid/GridPane.tsx')
     for (const c of PANE_COMMANDS) {
       if (c.id === 'gridReplace' || c.noButton) continue
