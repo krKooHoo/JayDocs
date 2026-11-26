@@ -38,9 +38,12 @@ export interface GridHandle {
   /** 지금 선택된 범위 (활성 셀 하나뿐이면 1×1) */
   range(): CellRange
   clearRange(): void
+  /** 선택(기준점 · 활성 셀)을 dr 행만큼 옮긴다 — 행을 옮기거나 복제한 뒤 선택이 그 행을 따라가게 */
+  shiftRows(dr: number): void
 }
 
-export type RowOp = 'above' | 'below' | 'append' | 'dup' | 'del'
+/** dup: 복제하고 선택을 복제본으로 (Shift+Alt+↓), dupKeep: 복제하고 선택은 그대로 (Shift+Alt+↑), moveUp · moveDown: 한 칸 옮기기 (Alt+↑ / ↓) */
+export type RowOp = 'above' | 'below' | 'append' | 'dup' | 'dupKeep' | 'del' | 'moveUp' | 'moveDown'
 export type ColOp = 'left' | 'right' | 'del'
 
 export interface GridProps {
@@ -360,7 +363,15 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   }, [active, headerRows, headerH, offsets, widths])
 
   const focusInput = useCallback(() => { ta.current?.focus({ preventScroll: true }) }, [])
-  useImperativeHandle(ref, () => ({ focus: focusInput, range: () => range, clearRange: () => setAnchor(null) }), [focusInput, range])
+  useImperativeHandle(ref, () => ({
+    focus: focusInput,
+    range: () => range,
+    clearRange: () => setAnchor(null),
+    shiftRows: (dr: number) => {
+      if (anchor) setAnchor({ r: anchor.r + dr, c: anchor.c })
+      onActiveChange({ r: active.r + dr, c: active.c })
+    },
+  }), [focusInput, range, anchor, active, onActiveChange])
 
   // ---- 선택 · 이동
   /** 활성 셀을 옮긴다. extend 면 범위를 넓힌다 (기준점 유지), 아니면 범위를 푼다 */
@@ -625,6 +636,15 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       return
     }
 
+    // 행 옮기기 · 복제 (Alt+↑ / ↓, Shift+Alt+↑ / ↓) — 마크다운의 줄 옮기기 · 복제와 같은 키 (DESIGN §42 K5)
+    if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      const up = e.key === 'ArrowUp'
+      if (e.shiftKey) onRowOp(up ? 'dupKeep' : 'dup', range)
+      else onRowOp(up ? 'moveUp' : 'moveDown', range)
+      return
+    }
+
     // 선택 상태
     switch (e.key) {
       case 'ArrowUp': e.preventDefault(); moveActive('up', mod, e.shiftKey); return
@@ -694,8 +714,10 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
         case 'KeyY': e.preventDefault(); onRedo(); return
         case 'KeyD':
           e.preventDefault()
-          if (e.shiftKey) onRowOp('dup', range)
-          else { const g = range; onEdit((t) => fillDown(t, g)) }
+          // Ctrl+Shift+D(행 복제)는 Shift+Alt+↓ 로 옮겼다 (K5). 손에 익은 키를 누르면 새 키를 알린다 —
+          // 흘려보내면 Chrome 의 "모든 탭을 북마크에 추가" 가 뜬다
+          if (e.shiftKey) { onNotice('행 복제는 Shift+Alt+↓ 로 바뀌었습니다 (Alt+↑ / ↓ 는 행 옮기기)'); return }
+          { const g = range; onEdit((t) => fillDown(t, g)) }
           return
         case 'KeyR': { e.preventDefault(); const g = range; onEdit((t) => fillRight(t, g)); return }
         // Shift·Alt 가 겹친 Ctrl+F / Ctrl+H (Ctrl+Shift+F 등)는 그리드가 가로채지 않고 전역 단축키에 맡긴다
