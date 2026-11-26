@@ -22,7 +22,8 @@ export const SHORTCUTS = [
     intro: '어느 창에 포커스가 있든 동작한다. 브라우저가 가로채는 조합(Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab, Ctrl+숫자)은 피했다.',
     items: [
       { hint: { at: 'app', label: '명령 팔레트 — 모든 명령' }, keys: 'Ctrl+Shift+P', label: '명령 팔레트 — 모든 명령을 글자로 찾아 실행', command: 'palette' },
-      { hint: { at: 'app', label: '파일 이름으로 찾아 열기' }, keys: 'Ctrl+P', label: '파일 검색 — 파일 이름으로 찾아 열기 (파일 트리 위 🔍 버튼)', command: 'fileSearch' },
+      { hint: { at: 'app', label: '파일 이름으로 찾아 열기' }, keys: 'Ctrl+P', label: '파일 검색 — 파일 이름으로 찾아 열기 (파일 트리 위 🔍 버튼). 이름:12 는 그 줄로, #제목 은 지금 문서의 제목으로, Ctrl+Enter 는 오른쪽 창에. 목록 맨 아래 "본문에서 … 찾기" 는 전체 검색으로', command: 'fileSearch' },
+      { hint: { at: 'app', label: '전체 검색 (파일 내용)' }, keys: 'Ctrl+Alt+F', label: '전체 검색 — 연 폴더(가져온 폴더 포함)의 문서 본문에서 글자를 찾는다. 대소문자는 가리지 않고, 결과는 파일마다 줄로. 저장 안 한 편집도 찾는다', command: 'searchContent' },
       { keys: 'Alt+Enter', label: '맥락 메뉴 — 포커스가 있는 자리(그리드 셀 · 열 · 파일 트리 항목 · 마크다운 커서의 표 · 링크 · tsv-view · 탭)에서 쓸 수 있는 명령만 작은 목록으로 띄운다. 치면 거르고, 항목 옆에 단축키, Enter 실행, Esc 닫기(포커스는 연 자리로). 오른쪽 클릭 · 키보드의 메뉴 키도 같다 (Shift+오른쪽 클릭은 브라우저 메뉴). 메뉴의 항목은 모두 팔레트에도 있다. 그리드 셀 편집 중에는 칸 안 줄바꿈(CSV) · 확정(TSV)', command: 'contextMenu' },
       { keys: 'Shift+F10', label: '맥락 메뉴 (Alt+Enter 와 같다)', command: 'contextMenu' },
       { keys: 'F1', label: '단축키 도움말 — 열리면 검색 칸에 포커스, 글자를 치면 키 · 설명으로 거른다', command: 'help' },
@@ -187,7 +188,22 @@ export const SHORTCUTS = [
       { keys: '↑ / ↓', label: '항목 이동' },
       { keys: 'Enter', label: '실행 / 열기' },
       { keys: 'Esc', label: '닫기' },
+      { keys: 'Ctrl+Enter (파일 검색)', label: '오른쪽 창에 열기 — 분할한 옆 창에(없으면 오른쪽으로 나눈다). 마우스는 Ctrl+클릭' },
+      { keys: '이름:12 (파일 검색)', label: '그 파일의 12번째 줄로 — 표는 그 행. 이름은 글자 순서만 맞으면 된다' },
+      { keys: '#제목 (파일 검색)', label: '지금 문서(.md)의 제목으로 — # 만 치면 제목이 전부 나오고, 글자를 더 치면 거른다' },
       { keys: 'Ctrl+Shift+P / Ctrl+P / F1 (창이 떠 있을 때)', label: '그 창을 연 키를 다시 누르면 닫는다. 팔레트 · 파일 검색 · 도움말끼리는 서로의 키로 바로 넘어간다 (가져오기 창은 Ctrl+Shift+O 로 닫는다)' },
+    ],
+  },
+  {
+    scope: '전체 검색',
+    intro: 'Ctrl+Alt+F 또는 파일 검색 목록 맨 아래의 "본문에서 … 찾기" 로 연다. 다시 열면 앞의 찾을 글자가 그대로다. 큰 폴더는 나눠 읽으며 "n / m개 읽음" 을 보이고, 결과가 1000줄을 넘으면 멈춘다.',
+    items: [
+      { keys: '글자 입력', label: '찾기 — 치기를 멈추면 찾는다. 대소문자는 가리지 않고 정규식은 아니다' },
+      { keys: '↑ / ↓ · PageUp / PageDown', label: '결과 고르기 — 파일 머리와 줄' },
+      { keys: 'Enter', label: '그 줄로 (맞은 글자를 고른 채로). 표는 그 셀, 파일 머리는 파일만 연다' },
+      { keys: 'Ctrl+Enter', label: '오른쪽 창에 열고 그 줄로' },
+      { keys: 'Tab → 범위 단추', label: '범위 바꾸기 — 전체 / 현재 폴더(지금 문서의 폴더와 그 아래)' },
+      { keys: 'Esc · Ctrl+Alt+F', label: '닫기' },
     ],
   },
 ]

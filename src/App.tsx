@@ -31,7 +31,10 @@ import { NoticeHost } from './components/NoticeHost'
 import { askConfirm, askText, dialogOpen } from './lib/dialogs'
 import { dismissAllNotices, dismissNotice, noticeList, notify, notifyError } from './lib/notices'
 import { checkEntryPath, cleanEntryPath, nameStemRange } from './lib/names'
-import { setTreeCursor } from './lib/nav'
+import { openAtLine, openPath, requestCell, requestLine, setTreeCursor, type LineTarget } from './lib/nav'
+import { headingsOf, parseQuickOpen, tsvColumnAt } from './lib/quickOpen'
+import { matchScore } from './lib/match'
+import { SearchDialog, type SearchOpen } from './components/SearchDialog'
 import { useTreeDrop } from './lib/treeDrop'
 import { copyText } from './lib/copyText'
 import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
@@ -164,15 +167,21 @@ type Overlay =
   | { kind: 'newDoc'; dir: string }
   /** 맥락 메뉴 (DESIGN §40) — 연 때 계산한 자리의 명령 */
   | { kind: 'context'; title: string; items: PaletteItem[]; anchor: SpotAnchor }
+  /** 전체 검색 (DESIGN §47). query: 빠른 열기의 "본문에서 찾기" 에서 넘긴 글자 */
+  | { kind: 'search'; query?: string }
   | null
+
+/** 빠른 열기 목록의 특별한 줄 — 파일 경로와 겹치지 않게   으로 시작 */
+const SEARCH_CONTENT = ' search'
+const HEADING_NONE = ' none'
 
 /** 그 창을 여는 명령 — 떠 있는 동안 같은 키를 다시 누르면 닫는다 (DESIGN §24.7 X5) */
 const OVERLAY_COMMAND: Partial<Record<NonNullable<Overlay>['kind'], string>> = {
-  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder', newDoc: 'newFile', context: 'contextMenu',
+  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder', newDoc: 'newFile', context: 'contextMenu', search: 'searchContent',
 }
 /** 찾아보는 창(팔레트 · 파일 검색 · 도움말)끼리는 서로의 키로 바로 넘어간다. 입력을 받는 창(가져오기 · 폴더 정보 · 연결 도우미)에서는 안 넘어간다 */
-const LOOKUP_OVERLAYS = new Set(['palette', 'files', 'help'])
-const LOOKUP_COMMANDS = new Set(['palette', 'fileSearch', 'help'])
+const LOOKUP_OVERLAYS = new Set(['palette', 'files', 'help', 'search'])
+const LOOKUP_COMMANDS = new Set(['palette', 'fileSearch', 'help', 'searchContent'])
 
 /** 가져온 폴더 목록에서 화면이 쓰는 값만 — 같은지 볼 때 (안의 파일 목록은 뺀다) */
 function mountsKey(mounts: readonly (MountInfo & { error?: string | null })[]) {
@@ -753,6 +762,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'palette', label: '명령 팔레트', run: () => { beforeOverlay.current = document.activeElement; setOverlay({ kind: 'palette' }) } },
     { id: 'contextMenu', label: '맥락 메뉴 — 지금 자리(셀 · 트리 항목 · 커서 · 탭)에서 쓸 수 있는 명령', run: contextMenuHere },
     { id: 'fileSearch', label: '파일 검색', run: () => setOverlay({ kind: 'files' }) },
+    { id: 'searchContent', label: '전체 검색 — 파일 내용에서 찾기', run: (arg) => setOverlay({ kind: 'search', query: typeof arg === 'string' ? arg : undefined }) },
     { id: 'help', label: '단축키 도움말', run: () => setOverlay({ kind: 'help' }) },
     { id: 'toggleKeyHints', label: '단축키 안내 창 켜기 / 끄기', run: toggleKeyHints },
     { id: 'toggleTheme', label: '다크 / 라이트 전환', run: toggleTheme },
@@ -866,6 +876,72 @@ function Workspace({ layoutId }: { layoutId: string }) {
     return []
   }, [overlay, tree, layoutId])
 
+  // ---- 빠른 열기 확장 · 전체 검색 (ADOPT B1 · B2, DESIGN §47)
+  /** 그 문서를 열고 줄 · 셀로. side: 오른쪽 창에 (Ctrl+Enter). 표는 줄 → 행 (TSV 는 파일 한 줄이 한 행) */
+  const openAt = useCallback((path: string, side: boolean, line?: LineTarget, lineText?: string) => {
+    const table = isTsvPath(path)
+    const cell = line ? { r: line.line - 1, c: lineText !== undefined && path.toLowerCase().endsWith('.tsv') ? tsvColumnAt(lineText, line.col ?? 0) : 0 } : undefined
+    if (side) {
+      if (line) { if (table) requestCell(path, cell!); else requestLine(path, line) }
+      bench.current?.openFileSide(path)
+    } else if (!line) bench.current?.openFile(path, true)
+    else if (table) openPath(path, cell, true)
+    else openAtLine(path, line)
+  }, [])
+  /** `#제목` (지금 문서) · `이름:12` 는 목록을 직접 만든다. 그냥 이름이면 null — 팔레트가 거른다 */
+  const quickSource = useCallback((query: string): PaletteItem[] | null => {
+    const q = parseQuickOpen(query)
+    if (q.kind === 'heading') {
+      const path = bench.current?.activePath()
+      const text = path && fileTypeOf(path)?.kind === 'md' ? store.fileText(path) : null
+      if (text === null) return [{ id: HEADING_NONE, label: '지금 문서가 마크다운이 아닙니다 — #제목 은 열린 .md 의 제목으로 갑니다', disabled: true }]
+      const hs = headingsOf(text)
+      const min = hs.reduce((m, h) => Math.min(m, h.level), 6)
+      const items = hs
+        .map((h) => ({ h, s: q.text ? matchScore(q.text, h.text) : 0 }))
+        .filter((x): x is { h: typeof x.h; s: number } => x.s !== null)
+        .sort((a, b) => a.s - b.s || a.h.line - b.h.line)
+        .map(({ h }) => ({ id: `#${h.line}`, label: ' '.repeat(h.level - min) + (h.text || '(빈 제목)'), hint: `${h.line}줄` }))
+      return items.length ? items : [{ id: HEADING_NONE, label: hs.length ? '맞는 제목이 없습니다' : '제목이 없습니다', disabled: true }]
+    }
+    if (q.kind === 'line') {
+      return allFiles(tree)
+        .map((path): { it: PaletteItem; s: number | null } => {
+          const label = path.split('/').pop() ?? path
+          const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+          return { it: { id: path, label, hint: `${dir ? dir + ' · ' : ''}${q.line}줄` }, s: matchScore(q.name, label + ' ' + dir) }
+        })
+        .filter((x): x is { it: PaletteItem; s: number } => x.s !== null)
+        .sort((a, b) => a.s - b.s || a.it.label.localeCompare(b.it.label, 'ko'))
+        .slice(0, 60)
+        .map((x) => x.it)
+    }
+    return null
+  }, [tree])
+  const quickFooter = useCallback((query: string): PaletteItem | null => {
+    const q = query.trim()
+    if (!q || parseQuickOpen(q).kind === 'heading') return null
+    return { id: SEARCH_CONTENT, label: `본문에서 ‘${q}’ 찾기`, hint: keysOf('searchContent') }
+  }, [])
+  const pickQuickOpen = useCallback((id: string, query: string, side: boolean) => {
+    if (id === SEARCH_CONTENT) { setOverlay({ kind: 'search', query: query.trim() }); return }
+    setOverlay(null)
+    if (id.startsWith('#')) {
+      const path = bench.current?.activePath()
+      if (path) openAt(path, side, { line: Number(id.slice(1)) })
+      return
+    }
+    const q = parseQuickOpen(query)
+    openAt(id, side, q.kind === 'line' ? { line: q.line } : undefined)
+  }, [openAt])
+  const openSearchHit = useCallback((o: SearchOpen) => {
+    setOverlay(null)
+    openAt(o.path, o.side, o.hit ? { line: o.hit.line, col: o.hit.col, len: o.hit.len } : undefined, o.hit?.text)
+  }, [openAt])
+  const searchFiles = useMemo(() => allFiles(tree), [tree])
+  const activeForSearch = overlay?.kind === 'search' ? bench.current?.activePath() ?? null : null
+  const searchFolder = activeForSearch === null ? null : activeForSearch.includes('/') ? activeForSearch.slice(0, activeForSearch.lastIndexOf('/')) : ''
+
   /** 팔레트에서 명령을 실행한 뒤: 팔레트가 사라지며 포커스가 body 로 빠졌으면 문서 창으로 돌린다.
    *  다른 창을 연 명령(가져오기 · 도움말 …)이나 스스로 포커스를 옮긴 명령(트리로 포커스 …)은 건드리지 않는다. */
   const pickCommand = useCallback((id: string) => {
@@ -920,7 +996,10 @@ function Workspace({ layoutId }: { layoutId: string }) {
         <Palette title="명령 팔레트" placeholder="명령 이름…" items={paletteItems} onClose={closeOverlay} onPick={pickCommand} />
       )}
       {overlay?.kind === 'files' && (
-        <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id, true) }} />
+        <Palette title="파일 검색" placeholder="파일 이름…  ·  이름:12 그 줄로  ·  #제목  ·  Ctrl+Enter 오른쪽 창에" items={paletteItems} onClose={closeOverlay} onPick={pickQuickOpen} source={quickSource} footer={quickFooter} />
+      )}
+      {overlay?.kind === 'search' && (
+        <SearchDialog files={searchFiles} folder={searchFolder} initialQuery={overlay.query} onClose={closeOverlay} onOpen={openSearchHit} />
       )}
       {overlay?.kind === 'context' && (
         <Palette title={overlay.title} placeholder="거르기…" items={overlay.items} anchor={overlay.anchor} onClose={closeContext} onPick={pickContext} />

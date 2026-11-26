@@ -5,7 +5,7 @@ import { syntaxTree } from '@codemirror/language'
 import { openSearchPanel } from '@codemirror/search'
 import { baseExtensions, isMarkdownPath, openReplacePanel, remote } from '../lib/cm'
 import { cmdTitle, runCommand, tip } from '../lib/commands'
-import { onPaneAction } from '../lib/nav'
+import { onLineRequest, onPaneAction } from '../lib/nav'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -185,7 +185,18 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       if (from === source) return
       view.dispatch({ changes, annotations: [remote.of(true), Transaction.addToHistory.of(false)] })
     })
+    // 빠른 열기 `이름:12` · `#제목`, 전체 검색 결과 (DESIGN §47) — 그 줄(맞은 자리)을 고르고 편집기 가운데로
+    const unLine = onLineRequest(path, (t) => {
+      const doc = view.state.doc
+      const ln = doc.line(Math.min(Math.max(1, t.line), doc.lines))
+      const from = Math.min(ln.from + (t.col ?? 0), ln.to)
+      const to = Math.min(from + (t.len ?? 0), ln.to)
+      view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) })
+      // 창을 여는 쪽(Workbench)도 포커스를 옮긴다 — 그 뒤에 편집기로
+      window.setTimeout(() => { if (view.dom.isConnected) view.focus() }, 60)
+    })
     return () => {
+      unLine()
       unsubscribe()
       view.destroy()
       viewRef.current = null

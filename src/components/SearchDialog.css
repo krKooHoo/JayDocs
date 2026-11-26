@@ -1,0 +1,11 @@
+/* 전체 검색 (DESIGN §47) — 팔레트 틀에 범위 단추 · 진행 줄 · 결과 묶음 */
+.palette.search-dialog { width: min(760px, 94vw); max-height: 78vh; }
+.search-row { display: flex; align-items: center; gap: 6px; margin-right: 10px; }
+.search-row .palette-input { flex: 1; min-width: 0; }
+.search-scope { flex-shrink: 0; font-size: 12px; white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.search-status { padding: 0 14px 6px; font-size: 11px; color: var(--muted); }
+.palette-item.search-file { padding-top: 6px; font-weight: 600; }
+.palette-item.search-hit { padding: 2px 14px 2px 26px; gap: 10px; font-size: 12px; }
+.search-line { flex-shrink: 0; min-width: 3.5em; text-align: right; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.search-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.search-text mark { background: var(--accent-soft); color: var(--fg); outline: 1px solid var(--accent); border-radius: 2px; }

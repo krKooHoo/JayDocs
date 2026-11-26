@@ -45,6 +45,8 @@ export interface WorkbenchHandle {
   closePaths(path: string, isDir: boolean): void
   /** 열린 문서 탭의 경로들 */
   openPaths(): string[]
+  /** 오른쪽 창에 열기 (DESIGN §38) — 빠른 열기 · 전체 검색의 Ctrl+Enter */
+  openFileSide(path: string): void
 }
 
 interface Props {
@@ -526,7 +528,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     return [...out]
   }, [model])
 
-  useImperativeHandle(ref, () => ({ openFile, saveActive, activePath, renamePaths, closePaths, openPaths }), [openFile, saveActive, activePath, renamePaths, closePaths, openPaths])
+  useImperativeHandle(ref, () => ({ openFile, saveActive, activePath, renamePaths, closePaths, openPaths, openFileSide }), [openFile, saveActive, activePath, renamePaths, closePaths, openPaths, openFileSide])
 
   const factory = (node: TabNode) => {
     const cfg = (node.getConfig() ?? {}) as Record<string, unknown>

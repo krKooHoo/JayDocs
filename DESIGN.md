@@ -1626,6 +1626,37 @@ UI/UX 개편 K7(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(�
 - 안내 창은 문서 창의 왼쪽 아래 글 · 표를 가린다 — 하이브리드 표를 문서 끝에서 고칠 때 표 위에 겹치는 것을 봤다. 접거나(▾) 끄면 된다. 써 보고 자리를 옮길지 정한다.
 - 자주 쓰는 키의 고르기는 표의 순서다 — 써 보고 줄을 바꾼다(`hint` 만 고치면 된다).
 
+## 47. 빠른 열기 확장 · 전체 검색 (Ctrl+P · Ctrl+Alt+F) (2026-11-26)
+
+UI/UX 개편 B1 · B2(`docs/research/apple-uiux/ADOPT.md`). Jay 요청(2026-11-26) "Ctrl+P 에서 파일 내용 검색" 을 B1 의 "본문에서 찾기" 줄 + B2 로 받았다. 원칙 확인: 1 맞음(키보드로 찾고 그 자리로), 2 주의 → 본문 결과를 `Ctrl+P` 에 섞지 않고(QO4), 전체 검색은 나눠 읽고 진행을 보인다(GS3), 4 · 5 맞음(흩어진 문서를 글자로 모은다), 7 맞음(읽기만 한다).
+
+| # | 결정 | 근거 |
+|---|---|---|
+| QO1 | **`이름:12`** → 그 파일의 12번째 줄로(편집기는 그 줄에 커서, 가운데로). 표는 그 행(TSV 는 파일 한 줄 = 한 행). 목록은 `:` 앞의 이름으로 거르고, 오른쪽에 "폴더 · 12줄" | ADOPT B1. Xcode Open Quickly · VS Code 의 `:줄` |
+| QO2 | **`#제목`** → 지금 문서(.md)의 제목 목록. `#` 만 치면 전부(문서 순서, 단계만큼 들여 씀), 글자를 더 치면 거른다. 고르면 그 제목 줄로. 지금 문서가 마크다운이 아니면 그렇다고 한 줄 | ADOPT B1. 제목은 글에서 바로 읽는다(`lib/quickOpen.ts` `headingsOf` — 코드 펜스 안은 뺀다). 저장 안 한 편집 포함 |
+| QO3 | **`Ctrl+Enter`**(마우스는 Ctrl+클릭) → 오른쪽 창에 열기 — 트리의 `Ctrl+Enter`(§38)와 같은 뜻. `이름:12` · `#제목` 과 같이 쓰면 오른쪽 창에서 그 줄로 | A8 에서 B1 으로 미룬 것 |
+| QO4 | 글자를 치면 목록 **맨 아래에 늘 "본문에서 ‘…’ 찾기 (Ctrl+Alt+F)"**. 고르면 친 글자를 넘겨 전체 검색이 열린다. 본문 결과는 `Ctrl+P` 목록에 섞지 않는다 | ADOPT B1 — 섞으면 이름 목록이 파일을 다 읽을 때까지 흔들린다(원칙 2). VS Code 도 나눈다 |
+| QO5 | 규칙은 입력 칸 안내 문구("파일 이름… · 이름:12 그 줄로 · #제목 · Ctrl+Enter 오른쪽 창에")와 단축키 표로 알린다. 새 전역 키는 없다. 빈 입력은 지금처럼 최근 순(고정 B4 는 아직) | ADOPT B1 |
+| GS1 | **전체 검색** `Ctrl+Alt+F`(팔레트 **전체 검색 — 파일 내용에서 찾기**). 연 폴더와 가져온 폴더의 문서(.md · .tsv · .csv · .txt · .json) 본문에서 **대소문자를 가리지 않는 그냥 글자**를 찾는다(정규식 아님). 결과는 파일마다 묶고 줄마다 하나, 맞은 글자를 칠한다. 긴 줄은 맞은 자리 둘레만 | ADOPT B2. 결과를 줄 단위로 — 같은 줄에 여러 번이어도 한 줄 |
+| GS2 | **저장 안 한 문서는 편집 중인 글**(`store.fileText`)에서 찾는다. 나머지는 디스크에서 읽고 창이 떠 있는 동안 기억한다(입력을 바꿔도 다시 읽지 않는다). 못 읽은 파일은 세어 보인다 | 화면에 보이는 글과 결과가 같게 |
+| GS3 | 입력이 멈추고 200 ms 뒤에 찾는다. 6개씩 나눠 읽으며 "n / m개 읽음" 을 보이고, 입력이 바뀌면 앞의 찾기를 버린다(세대 번호). 결과가 **1000줄**(파일당 100줄)을 넘으면 멈추고 "더 길게 치세요" | 원칙 2 · HIG 진행 표시 |
+| GS4 | **범위** 단추: 전체 / 현재 폴더(지금 문서의 폴더와 그 아래, 루트 문서면 주 폴더 전체). 문서가 없으면 전체만 | ADOPT B2 "범위를 칸 옆에" |
+| GS5 | 키: `↑ / ↓ · PageUp / PageDown` 결과 고르기(파일 머리도 고른다), `Enter` 그 줄로 — 맞은 글자를 고른 채로, 표(TSV)는 그 셀(앞의 탭 수로 열), CSV 는 그 행의 첫 칸, 파일 머리는 파일만. `Ctrl+Enter` 오른쪽 창에, `Esc` · `Ctrl+Alt+F` 닫기. 팔레트 · 파일 검색 · 도움말과는 서로의 키로 넘어간다 | 빠른 열기와 같은 키 |
+| GS6 | 다시 열면 앞의 찾을 글자 · 범위가 그대로(이 창을 띄운 동안만, 저장하지 않는다) | VS Code 와 같다 |
+| GS7 | 줄로 가기는 `lib/nav.ts` 의 `openAtLine` · `requestLine`(편집기가 아직 없으면 켜질 때 받는다), 셀은 `requestCell` · `openPath`. 오른쪽 창은 `WorkbenchHandle.openFileSide` | 미리보기 tsv-view → 그리드 셀과 같은 길 |
+
+코드: `lib/quickOpen.ts`(입력 규칙 · 제목 · 본문 찾기 · TSV 열) · `.test.ts`, `lib/nav.ts`(줄 · 셀 요청), `components/Palette.tsx`(`source` · `footer` · `onPick(id, query, side)`), `components/SearchDialog.tsx` · `.css`, `MarkdownPane.tsx`(줄 요청 받기), `Workbench.tsx`(`openFileSide`), `App.tsx`, `shortcuts-table.mjs`(`Ctrl+Alt+F` · 파일 검색 규칙 · "전체 검색" 구역).
+
+### 47.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 키 입력은 자동화): `Ctrl+P` `코드:3` → 목록 "코드.md docs · 3줄" + 맨 아래 "본문에서 ‘코드:3’ 찾기", Enter → 코드.md 3줄(```csharp). `#` → "코드 1줄". `turn` → 맨 아래 줄 Enter → 전체 검색에 `turn`, "문서 11개 · 1개 파일에서 6줄", 결과 Enter → 그 줄, 맞은 글자 `turn` 이 골라짐. `값` → 4개 파일, `표.tsv` 결과 `Ctrl+Enter` → 오른쪽 창에 표.tsv, B2 셀. 범위 단추 → "현재 폴더 (docs)" 문서 5개. 콘솔 오류 없음.
+
+### 47.2 확인하지 못한 것 · 알려진 한계 (TESTCASES §41)
+
+- 실제 큰 폴더(수강생 제출물 폴더)의 속도, 설치한 Edge 앱의 `Ctrl+Alt+F`, Mac 의 ⌘⌥F, 한글 IME 조합 중의 Enter.
+- **미리보기 전용 모드**의 문서는 줄로 가도 편집기가 보이지 않아 자리가 보이지 않는다(보기 모드는 바꾸지 않는다).
+- CSV 의 따옴표 안 줄바꿈이 있으면 파일 줄 ≠ 행이라 표 행이 어긋날 수 있다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

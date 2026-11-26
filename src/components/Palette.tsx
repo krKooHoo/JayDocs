@@ -19,8 +19,15 @@ interface Props {
   title: string
   placeholder: string
   items: PaletteItem[]
-  onPick: (id: string) => void
+  /** query: 고를 때의 입력, side: Ctrl+Enter (오른쪽 창에 열기 — 빠른 열기, DESIGN §47) */
+  onPick: (id: string, query: string, side: boolean) => void
   onClose: () => void
+  /** 입력에 따라 목록을 직접 만든다 (빠른 열기의 `#제목` · `이름:12`). null 이면 items 를 입력으로 거른다. 돌려준 목록은 거르지 않는다 */
+  source?: (query: string) => PaletteItem[] | null
+  /** 목록 맨 아래에 늘 붙는 줄 (빠른 열기의 "본문에서 '…' 찾기") */
+  footer?: (query: string) => PaletteItem | null
+  /** 첫 입력 (전체 검색에서 넘어올 때 등) */
+  initialQuery?: string
   /** 맥락 메뉴: 이 화면 자리(커서 · 셀 · 트리 항목 · 클릭한 곳) 옆에 띄운다. 어둡게 덮지 않는다 */
   anchor?: { x: number; y: number }
 }
@@ -28,14 +35,21 @@ interface Props {
 /** 띄어쓰기 없이 글자 순서만 맞아도 찾는다. 점수가 낮을수록 좋다 */
 const score = matchScore
 
-export function Palette({ title, placeholder, items, onPick, onClose, anchor }: Props) {
-  const [query, setQuery] = useState('')
+export function Palette({ title, placeholder, items, onPick, onClose, anchor, source, footer, initialQuery }: Props) {
+  const [query, setQuery] = useState(initialQuery ?? '')
   const [index, setIndex] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
+    const own = source?.(query)
+    const foot = footer?.(query)
+    const list = own ?? listOf()
+    return foot ? [...list, foot] : list
+  }, [items, query, anchor, source, footer]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function listOf(): PaletteItem[] {
     const scored = items
       .map((it, i) => ({ it, i, s: score(query, it.label + ' ' + (it.hint ?? '')) }))
       .filter((x): x is { it: PaletteItem; i: number; s: number } => x.s !== null)
@@ -45,7 +59,7 @@ export function Palette({ title, placeholder, items, onPick, onClose, anchor }: 
     const NOT_RECENT = Number.MAX_SAFE_INTEGER
     scored.sort((a, b) => a.s - b.s || (a.it.recent ?? NOT_RECENT) - (b.it.recent ?? NOT_RECENT) || a.it.label.localeCompare(b.it.label, 'ko'))
     return scored.map((x) => x.it).slice(0, 60)
-  }, [items, query, anchor])
+  }
 
   // 맥락 메뉴: 자리 옆에, 창 밖으로 나가지 않게 (아래가 모자라면 위로)
   useLayoutEffect(() => {
@@ -66,10 +80,10 @@ export function Palette({ title, placeholder, items, onPick, onClose, anchor }: 
     el?.scrollIntoView({ block: 'nearest' })
   }, [index])
 
-  const pick = (i: number) => {
+  const pick = (i: number, side = false) => {
     const it = filtered[i]
     if (!it || it.disabled) return
-    onPick(it.id)
+    onPick(it.id, query, side)
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -82,7 +96,7 @@ export function Palette({ title, placeholder, items, onPick, onClose, anchor }: 
       case 'Home': if (query === '') { e.preventDefault(); setIndex(0) } break
       case 'End': if (query === '') { e.preventDefault(); setIndex(filtered.length - 1) } break
       // Alt+Enter 는 맥락 메뉴의 키 — 앱이 받아 메뉴를 닫는다 (팔레트에서는 아무것도 하지 않는다)
-      case 'Enter': if (e.altKey) break; e.preventDefault(); pick(index); break
+      case 'Enter': if (e.altKey) break; e.preventDefault(); pick(index, e.ctrlKey || e.metaKey); break
       case 'Escape': e.preventDefault(); onClose(); break
       default: break
     }
@@ -112,7 +126,7 @@ export function Palette({ title, placeholder, items, onPick, onClose, anchor }: 
               className={'palette-item' + (i === index ? ' is-hl' : '') + (it.disabled ? ' is-disabled' : '')}
               onMouseEnter={() => setIndex(i)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(i)}
+              onClick={(e) => pick(i, e.ctrlKey || e.metaKey)}
             >
               <span className="palette-label">{it.label}</span>
               {it.recent !== undefined && query === '' && <span className="palette-recent">최근</span>}
