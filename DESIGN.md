@@ -1442,6 +1442,41 @@ UI/UX 개편 A9(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 5 맞음(�
 - 실제 마우스 휠 · 트랙패드 핀치(트랙패드 핀치는 `Ctrl+휠` 로 온다 — 포커스가 있을 때만 다이어그램 확대).
 - 큰 다이어그램(노드 수십 개)에서 끌기의 부드러움, 설치한 Edge 앱.
 
+## 40. 맥락 메뉴 (Alt+Enter) (2026-11-26)
+
+UI/UX 개편 K1(`docs/research/apple-uiux/ADOPT.md`), 단축키 규칙 3(`PRINCIPLES.md`). 원칙 확인: 1 맞음(마우스 없이 자리의 동작, 메뉴가 단축키를 가르친다 — 항목은 모두 팔레트에도 있다), 2 맞음(목록은 열 때만 계산, 새 라이브러리 없음 — 팔레트 틀 재사용), 3 맞음(그 창의 커서 · 선택에만 돈다. 다른 창의 상태는 그대로), 6 맞음(`Alt+Enter` 는 Mac 에서 Option+Return, 오른쪽 클릭은 Ctrl+클릭도 같다), 4 · 5 · 7 상관없음(파일 바이트를 건드리지 않는다).
+
+| # | 결정 | 근거 |
+|---|---|---|
+| CM1 | **자리 판단 함수**는 `src/lib/contextMenu.ts` — 자리(spot) → 그 자리에서 쓸 수 있는 명령 id 목록. 영역마다 하나: `gridContextIds` · `treeContextIds` · `markdownContextIds` · `tabContextIds` · `appContextIds`, 묶어서 `contextIds(spot)`. 순수 함수 | K7 단축키 안내 창이 같은 함수를 쓴다(아래). 테스트할 수 있게 |
+| CM2 | **자리 읽기**: 영역의 컴포넌트가 제 바깥 요소에 `registerSpotReader(el, fn)` 를 걸고, `spotAt(요소, 클릭 자리?)` 가 요소에서 위로 올라가며 처음 만난 영역의 자리를 돌려준다(읽기 함수가 null 이면 더 위로, 아무 데도 아니면 `app`). 그리드 = `GridPane`(고른 범위 · 편집 중 · 읽기 전용 · 빈 표 · 열 전체), 트리 = `FileTree`(커서 항목 · 가져온 폴더 · 읽기 전용), 마크다운 = `MarkdownPane` + `mdContext.ts`(커서 구문의 표 · 링크 · tsv-view · mermaid, 미리보기에서 포커스한 링크 · tsv-view), 탭 = `Workbench`(탭 제목) | 자리를 아는 것은 그 컴포넌트다. 앱(메뉴)은 영역을 몰라도 된다 |
+| CM3 | **메뉴 전용 동작은 없다.** 항목은 등록부(`lib/commands.ts`)의 명령 중 지금 등록되어 있고 `enabled()` 인 것만(`availableContextCommands`), 순서는 자리 판단 함수의 순서. 이름 · 키는 팔레트와 같다(키는 단축키 표 — 창이 직접 받는 키는 `palette:` 로). 메뉴에 넣으려고 새로 만든 팔레트 명령: 트리 `treeRename` · `treeDelete` · `treeCopyPath`, `copyRootPath`, `editRoot:별칭`, `closeOtherTabs`, `openLinkAtCursor` · `openLinkAtCursorSide` · `openTsvViewGrid`, 그리드 `gridFillDown` · `gridFillRight`(막대 단추 없음 — `paneCommands.ts` 의 `noButton`), 메뉴 자체 `contextMenu` | ADOPT K1 "메뉴의 모든 항목은 팔레트에도 있다". `contextMenu.test.ts` 가 자리 판단 함수의 id 가 모두 소스에 등록된 명령인지 검사한다 |
+| CM4 | 메뉴 틀은 팔레트(`Palette.tsx`)에 `anchor` 를 준 것 — 자리 옆에 작게(어둡게 덮지 않는다), 받은 순서 그대로(거를 때는 점수 → 순서), 항목 옆 `<kbd>` 단축키, 화면 밖으로 나가지 않게(아래가 모자라면 위로). 거르기는 `match.ts` 그대로 | 거르기 · ↑↓ · Enter · Esc 를 한 번만 만든다 |
+| CM5 | 여는 길: `Alt+Enter` · `Shift+F10`(단축키 표의 전역 명령 `contextMenu`), 키보드의 메뉴 키, 오른쪽 클릭(앱의 `contextmenu` 처리). 키보드로 열면 커서(편집기 `coordsAtPos`) · 활성 셀(입력 칸) · 트리 항목 · 탭 제목 아래에, 오른쪽 클릭이면 누른 자리에. 메뉴가 떠 있을 때 `Alt+Enter` · `Shift+F10` · 메뉴 키는 닫는다. 팔레트에서 "맥락 메뉴" 를 고르면 팔레트를 열기 전의 자리 메뉴 | 단축키 규칙 3 |
+| CM6 | 브라우저 메뉴를 남기는 곳: **Shift+오른쪽 클릭**, 입력 칸(찾기 막대 · 대화상자 · 팔레트 — 그리드 · tsv-view 의 셀 입력은 빼고), 작업대 밖(위 막대). 키보드로 연 뒤 0.4초 안에 브라우저가 이어서 내는 `contextmenu` 는 삼킨다 | 편집기에서 오른쪽 클릭이 브라우저의 붙여넣기 · 맞춤법 메뉴를 잃는다 — Shift 로 닿게 남긴다(되돌릴 수 있는 결정) |
+| CM7 | 오른쪽 클릭은 자리를 먼저 옮긴다: 트리 = 누른 항목으로 커서 · 고른 폴더(빈 자리면 주 폴더 루트), 그리드 = 고른 범위 밖을 누르면 그 셀 · 행 · 열을 고른다(Excel 과 같다, `Grid.tsx` 의 오른쪽 `mousedown`), 편집기 = 고른 범위 밖이면 그 자리로 커서(하이브리드의 표 · 다이어그램 · tsv-view 위젯 위는 그대로), 탭 = 그 탭을 활성으로 | 메뉴의 명령은 "지금 자리"(커서 · 활성 탭)에 돈다 |
+| CM8 | 포커스: `Esc` · 바깥 클릭 → 연 자리로. 항목 실행 → **연 자리로 먼저 돌린 뒤** 명령을 돌린다 — 명령이 지금 자리를 읽고, 명령이 띄운 대화상자는 닫히면 그 자리로 돌아간다. 연 자리가 없어졌으면 문서 창으로 | 포커스 예측(원칙 1). 팔레트의 `pickCommand` 와 같은 뒷처리 |
+| CM9 | `Alt+Enter` 를 Enter 로 먹던 곳은 Alt 가 붙으면 넘긴다: 트리 · 그리드(편집 중 아님) · 목차 · 경로 막대 · 미리보기 tsv-view 셀 · 팔레트. **그리드 셀 편집 중은 그대로**(CSV 칸 안 줄바꿈, TSV 는 Enter 와 같은 확정) — 메뉴가 뜨지 않는다(`gridContextIds` 도 편집 중이면 빈 목록). 하이브리드 표 칸 편집 중의 `Alt+Enter` 는 지금처럼 칸 이동(Enter 와 같다) — ADOPT 대로 그 기능이 자리 잡은 뒤 맞춘다. 훑어보기 창의 폴더 격자도 Enter 그대로 | Excel 관행(편집 중 Alt+Enter = 줄바꿈) |
+| CM10 | 항목 순서: **자리의 명령 → 문서 명령 → 문서 어디서나**(저장 · 마지막 저장 상태로 되돌리기 · 오른쪽에 분할 · 경로 복사 · UTF-8 로 바꿔 저장). 그리드는 열 전체를 골랐으면 열 명령이 먼저, 빈 표는 "타입 행 · 머리글 만들기" 가 맨 위. 마크다운은 지금 보기 모드를 빼고 나머지 셋, 하이브리드면 목차. 읽기 전용이면 고치는 명령을 뺀다(등록부의 `enabled()` 도 끄지만, K7 처럼 등록부 없이 볼 때를 위해 함수에서도) | 자주 쓰는 것이 위 |
+| CM11 | **트리의 예전 `Shift+F10` 메뉴(`.ctx-menu`)를 이 메뉴로 합쳤다.** 항목은 전부 남았고(훑어보기 · 새 파일 · 새 폴더 · 이름 바꾸기 · 전체 경로 복사 · 상세 경로 편집 · 삭제 · 읽기 전용 · 새로 고침 · 해제), 더한 것: 오른쪽 창에 열기(파일), 폴더 훑어보기, 폴더의 이름 바꾸기(`F2` 와 같게), 파일에서도 그 폴더에 새 파일 · 새 폴더, 루트의 폴더 가져오기. 항목 이름이 팔레트 이름이라 전보다 길다 | 한 메뉴 · 한 키 |
+| CM12 | 링크 · tsv-view 의 "지금" 은 미리보기의 링크 · tsv-view 에 포커스가 있으면 그것(`data-doc-link` · `data-tsv-file`, `PreviewPane.tsx`), 아니면 포커스가 든(없으면 마지막) 마크다운 편집기의 커서 구문. 문서 링크만(바깥 주소 · `#제목` 은 빼고) | 팔레트에서 불러도 같은 대상 |
+
+빠진 것(ADOPT K1 초안 중): **Mermaid**(크게 보기 · 맞춤) — 팔레트 명령이 없다(§39: 포커스한 다이어그램의 키 · 단추로만). 넣으려면 "마지막으로 포커스한 다이어그램" 에 도는 팔레트 명령이 먼저 있어야 한다. 아직 없는 기능 — 표 정렬 · 거르기 · 열 숨기기 · 폭 맞춤(E1), 제목 접기 · 절 옮기기 · 단계(C1 · C2), 다른 인코딩으로 다시 열기 · 보이지 않는 문자(C4), 탭 유지 · 아래로 분할(D2 · D4), 고정(B4) — 은 그 기능이 들어올 때 자리 판단 함수에 id 를 더한다. 훑어보기 창 · 폴더 격자(본문 끝에 붙는 창)는 영역 자리가 없어 `app` 자리(새 문서 · 파일 검색 · 팔레트 …)가 뜬다.
+
+**K7 단축키 안내 창에서 쓰는 법**: `spotAt(document.activeElement)` 로 자리를 읽고 `spot.zone` · `contextIds(spot)`(또는 `availableContextCommands(spot)`)로 그 자리의 명령 · 키를 고른다. 자리 읽기의 `point` 는 넘기지 않는다(넘기면 커서 · 선택을 옮긴다).
+
+코드: `lib/contextMenu.ts`(자리 · 판단 함수 · 자리 읽기) · `.test.ts`, `components/mdContext.ts`(마크다운 자리 · 링크 · tsv-view), `App.tsx`(메뉴 열기 · 닫기 · 오른쪽 클릭 · 메뉴 키, `contextMenu` · `copyRootPath` · `editRoot:별칭`), `Palette.tsx`(`anchor`), `FileTree.tsx`(예전 메뉴 삭제, 자리 읽기, 커서 명령), `grid/GridPane.tsx` · `grid/Grid.tsx`(자리 읽기, 채우기 명령, 오른쪽 클릭 선택, `Alt+Enter` 넘김), `MarkdownPane.tsx`, `Workbench.tsx`(탭 자리, `closeOtherTabs` · 링크 · tsv-view 명령), `PreviewPane.tsx`(`data-doc-link` · `data-tsv-file`), `tableCommands.ts`(`lastMdView`), `lib/commands.ts`(`getCommand`), `lib/paneCommands.ts`(`noButton`), `shortcuts-table.mjs`, `styles.css`(`.is-menu`, `.ctx-menu` 삭제).
+
+### 40.1 확인한 것
+
+`npm test` — 새 11건(`contextMenu.test.ts`: 자리 판단 함수의 id 가 모두 등록된 명령 · 한 자리에 같은 명령이 두 번 나오지 않음 · 그리드 편집 중 빈 목록 · 열 전체면 열 명령 먼저 · 빈 표 · 읽기 전용 · 트리(파일 · 가져온 폴더 루트 · 주 폴더 루트 · 읽기 전용 · 파일 하나 가져온 곳) · 마크다운 순서 · 탭 · 키 표기 · 자리 읽기), `paneCommands.test.ts` 는 단추 없는 명령을 빼고 그대로 통과. `npm run build`, `npm run lint`(새 경고 없음). dev `?opfs`(5181) + 내장 브라우저(키 · 오른쪽 클릭은 이벤트로): 트리 `Alt+Enter`(커서 폴더 · 파일) · 오른쪽 클릭(누른 항목으로 커서, 트리 빈 자리 = 루트 메뉴, `@가져온폴더` 루트 = 상세 경로 · 읽기 전용 · 해제) → 글자로 거르기 → `Esc` 로 트리에 포커스 → "오른쪽 창에 열기" 실행. 편집기: 커서가 링크 위 → "커서의 링크 열기" 로 그 문서가 열림, 표 안 → "마크다운 표: 아래에 행 넣기" 로 행이 늘어남, tsv-view 펜스 안 → 그리드로 열림(포커스 그리드), `Shift+F10` 도 같은 메뉴. 분할 모드 미리보기의 링크에 포커스 → 링크 항목. 그리드: `Alt+Enter`(행 명령 먼저) · `Ctrl+Space` 뒤(열 명령 먼저, 제목 `A열`) · `F2` 편집 중 `Alt+Enter` 는 메뉴 없이 확정 · 셀 오른쪽 클릭이 그 셀을 고르고 연다. 탭 제목 오른쪽 클릭 → 그 탭이 활성 → "다른 탭 닫기". 팔레트 "맥락 메뉴" → 팔레트를 열기 전 자리(트리)의 메뉴. 콘솔 오류 없음.
+
+### 40.2 확인하지 못한 것 (TESTCASES §34)
+
+- 실제 키보드의 `Alt+Enter` · `Shift+F10` · 메뉴 키, 실제 오른쪽 클릭(특히 메뉴 키 뒤 브라우저 `contextmenu` 를 삼키는지, Windows 에서 `contextmenu` 가 mouseup 에 오는 때의 선택 이동), Mac 의 Option+Return · Ctrl+클릭.
+- 실제 한글 IME 조합 중의 `Alt+Enter`, 설치한 Edge 앱, 실제 폴더.
+- 자동화 창은 `document.hasFocus()` 가 false 라 편집기의 `focusin` 이 오지 않는다 — 표 명령 확인은 `focusin` 을 직접 보냈다(링크 · tsv-view 는 포커스한 편집기를 직접 찾게 해 없이도 된다).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

@@ -22,6 +22,8 @@ export interface PaneCommand {
   edits?: boolean
   /** 단축키 표에 줄이 없는 키 */
   keys?: string
+  /** 막대에 단추가 없다 — 키 · 팔레트 · 맥락 메뉴(DESIGN §40)로만 닿는다 */
+  noButton?: true
 }
 
 export const PANE_COMMANDS: readonly PaneCommand[] = [
@@ -36,6 +38,8 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'gridColLeft', label: '표: 왼쪽에 열 삽입', title: '선택한 열 왼쪽에 빈 열', scope: 'grid', edits: true },
   { id: 'gridColRight', label: '표: 오른쪽에 열 삽입', title: '선택한 열 오른쪽에 빈 열', scope: 'grid', edits: true },
   { id: 'gridColDel', label: '표: 열 삭제', title: '선택한 열 삭제', scope: 'grid', edits: true },
+  { id: 'gridFillDown', label: '표: 아래로 채우기 (범위의 첫 행을 아래로)', title: '아래로 채우기', scope: 'grid', edits: true, noButton: true },
+  { id: 'gridFillRight', label: '표: 오른쪽으로 채우기 (범위의 첫 열을 오른쪽으로)', title: '오른쪽으로 채우기', scope: 'grid', edits: true, noButton: true },
   { id: 'gridFind', label: '표: 찾기', title: '찾기', scope: 'grid' },
   { id: 'gridReplace', label: '표: 바꾸기', title: '바꾸기', scope: 'grid' },
   { id: 'gridCalcFile', label: '표: 계산식 파일 열기 · 만들기 (같은 폴더의 _Calc.tsv)', title: '계산식 파일 열기 — 없으면 만들어 연다', scope: 'grid' },

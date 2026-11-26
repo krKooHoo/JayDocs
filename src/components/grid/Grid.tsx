@@ -630,6 +630,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
         setAnchor(null)
         return
       case 'Enter':
+        // Alt+Enter 는 맥락 메뉴 (전역 — DESIGN §40). 편집 중의 Alt+Enter 는 위 분기(칸 안 줄바꿈)
+        if (e.altKey) return
         e.preventDefault()
         startEdit('edit')
         return
@@ -777,6 +779,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
 
   // ---- 마우스 (이벤트 위임)
   const onMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 2) { onRightDown(e); return }
     if (e.button !== 0) return
     const target = e.target as HTMLElement
     if (target.closest('[data-fill]')) {
@@ -835,6 +838,28 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     if (target.closest('[data-bool]')) { select({ r, c }); toggleBool(r, c); focusInput(); return }
     select({ r, c }, e.shiftKey)
     dragging.current = true
+    focusInput()
+  }
+  /** 오른쪽 클릭 (맥락 메뉴, DESIGN §40) — 고른 범위 밖을 누르면 그 셀 · 행 · 열을 고른다 (Excel 과 같다). 메뉴는 앱의 contextmenu 처리가 띄운다 */
+  const onRightDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    const letter = target.closest<HTMLElement>('[data-letter]')
+    const rownum = target.closest<HTMLElement>('[data-rownum]')
+    const cell = target.closest<HTMLElement>('[data-r]')
+    if (!letter && !rownum && !cell) return
+    e.preventDefault()
+    if (editing) commitEdit(null)
+    if (letter) {
+      const c = Number(letter.dataset.letter)
+      if (!(c >= range.c1 && c <= range.c2 && range.r1 === 0 && range.r2 === maxR)) selectCols(c, c)
+    } else if (rownum) {
+      const r = Number(rownum.dataset.rownum)
+      if (!(r >= range.r1 && r <= range.r2 && range.c1 === 0 && range.c2 === maxC)) selectRows(r, r)
+    } else if (cell) {
+      const r = Number(cell.dataset.r)
+      const c = Number(cell.dataset.c)
+      if (r < range.r1 || r > range.r2 || c < range.c1 || c > range.c2) select({ r, c })
+    }
     focusInput()
   }
   const onMouseMove = (e: React.MouseEvent) => {

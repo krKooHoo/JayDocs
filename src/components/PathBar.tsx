@@ -175,7 +175,7 @@ export function PathBar({ path, tail, onExit }: Props) {
       case 'ArrowRight': e.preventDefault(); setCur(Math.min(last, seg + 1)); break
       case 'Home': e.preventDefault(); setCur(0); break
       case 'End': e.preventDefault(); setCur(null); break
-      case 'Enter': case 'ArrowDown': case ' ': e.preventDefault(); openSeg(seg); break
+      case 'Enter': case 'ArrowDown': case ' ': if (e.altKey) break; e.preventDefault(); openSeg(seg); break // Alt+Enter 는 맥락 메뉴
       case 'Escape': e.preventDefault(); e.stopPropagation(); onExit(); break
     }
   }

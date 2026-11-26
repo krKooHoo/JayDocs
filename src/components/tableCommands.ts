@@ -17,6 +17,11 @@ import { focusTableCellAt, hybridOn, runHybridTableOp } from './hybrid'
 /** 마지막으로 포커스를 받은 마크다운 편집기 — 팔레트를 열면 포커스가 빠지므로 여기서 찾는다 */
 let lastView: EditorView | null = null
 
+/** 마지막으로 포커스를 받은 마크다운 편집기 — 팔레트 · 맥락 메뉴의 "커서의 링크 열기" 등이 쓴다 (mdContext.ts) */
+export function lastMdView(): EditorView | null {
+  return lastView
+}
+
 /** 커서 자리의 GFM 표: 표 원문의 시작(줄 처음)과 원문 */
 function tableAtCursor(view: EditorView): { from: number; src: string; offset: number } | null {
   const { state } = view

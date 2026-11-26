@@ -22,6 +22,8 @@ import { activeIndex, outlineOf } from '../lib/md/outline'
 import { useDocPaneCount } from './docPanes'
 import { hybrid } from './hybrid'
 import { mdTableExtension } from './tableCommands'
+import { readMarkdownSpot, setMdViewPath } from './mdContext'
+import { registerSpotReader, type SpotReader } from '../lib/contextMenu'
 
 type Mode = 'source' | 'hybrid' | 'preview' | 'split'
 const MODES: Mode[] = ['source', 'hybrid', 'split', 'preview']
@@ -167,6 +169,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       parent: host.current,
     })
     viewRef.current = view
+    setMdViewPath(view, path)
     setSkimView(view)
     const unsubscribe = store.onChanges(path, (changes, from) => {
       if (from === source) return
@@ -186,6 +189,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
     if (!view) return
     view.dispatch({ effects: hybridComp.current.reconfigure(isMd && mode === 'hybrid' ? hybrid(path) : []) })
   }, [mode, path, isMd])
+
+  // 맥락 메뉴의 자리 (DESIGN §40) — 커서 · 포커스의 표 · 링크 · tsv-view · 다이어그램
+  const spotRef = useRef<SpotReader>(() => null)
+  spotRef.current = (target, point) => (ready
+    ? readMarkdownSpot(viewRef.current, target, point, { path, markdown: isMd, json: isJson, readOnly: store.isReadOnly(path), mode: modeRef.current })
+    : null)
+  useEffect(() => {
+    const el = root.current
+    return el ? registerSpotReader(el, (t, pt) => spotRef.current(t, pt)) : undefined
+  }, [])
 
   const dirty = store.isDirty(path)
   const bakeErrors = d?.kind === 'text' ? d.bakeErrors : []

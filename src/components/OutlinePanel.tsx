@@ -127,7 +127,7 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
       case 'End': move(last); break
       case 'PageDown': move(cursor + PAGE); break
       case 'PageUp': move(cursor - PAGE); break
-      case 'Enter': e.preventDefault(); go(cursor, true); break
+      case 'Enter': if (e.altKey) break; e.preventDefault(); go(cursor, true); break // Alt+Enter 는 맥락 메뉴
       case ' ': e.preventDefault(); go(cursor, false); break
       case 'Escape': e.preventDefault(); e.stopPropagation(); view?.focus(); break
     }

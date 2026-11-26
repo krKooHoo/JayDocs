@@ -23,7 +23,7 @@ const BARS: [string, string, string][] = [
 /** 소스에 등록된 명령 id — `registerCommands([{ id: '…' …` 와 이 표 */
 function registeredIds(): Set<string> {
   const ids = new Set<string>(PANE_COMMAND_IDS)
-  for (const f of ['App.tsx', 'components/Workbench.tsx']) for (const m of read(f).matchAll(/\bid: '([\w:]+)'/g)) ids.add(m[1])
+  for (const f of ['App.tsx', 'components/Workbench.tsx', 'components/FileTree.tsx']) for (const m of read(f).matchAll(/\bid: '([\w:]+)'/g)) ids.add(m[1])
   return ids
 }
 
@@ -61,7 +61,7 @@ describe('막대 단추 = 팔레트 명령', () => {
   it('창 명령은 모두 단추가 있다 (찾기 단추가 함께 맡는 바꾸기만 빼고)', () => {
     const all = BARS.map(([f]) => read(f)).join('\n') + read('components/grid/GridPane.tsx')
     for (const c of PANE_COMMANDS) {
-      if (c.id === 'gridReplace') continue
+      if (c.id === 'gridReplace' || c.noButton) continue
       expect(all.includes(`data-command="${c.id}"`), `${c.id} 의 단추가 없다`).toBe(true)
     }
   })
