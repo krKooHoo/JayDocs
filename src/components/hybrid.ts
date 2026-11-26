@@ -187,7 +187,7 @@ class BlockWidget extends WidgetType {
       add.addEventListener('mousedown', (e) => { e.preventDefault(); addRow(view, wrap, h) })
       const addCol = document.createElement('button')
       addCol.textContent = '＋ 열'
-      addCol.title = '표 오른쪽 끝에 빈 열 추가 (칸에서 Ctrl+Alt+Shift+= 는 그 칸 오른쪽에)'
+      addCol.title = '표 오른쪽 끝에 빈 열 추가 (그 칸 오른쪽에는 팔레트 "마크다운 표: 오른쪽에 열 넣기")'
       addCol.addEventListener('mousedown', (e) => {
         e.preventDefault()
         const at = tableAt(view, wrap, h)

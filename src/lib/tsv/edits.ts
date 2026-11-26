@@ -91,6 +91,44 @@ export function moveRow(t: TsvTable, from: number, to: number): TsvTable {
   return withRows(t, rows)
 }
 
+/**
+ * 행 [r1..r2] 를 한 칸 위(-1) · 아래(+1)로 (DESIGN §42 K5). 행 객체를 그대로 옮기므로 원문(raw)이 남는다 —
+ * diff 에는 옮긴 행과 자리를 바꾼 이웃 한 행만 나온다. 끝에 닿았으면 같은 표.
+ */
+export function moveRows(t: TsvTable, r1: number, r2: number, dir: -1 | 1): TsvTable {
+  if (r1 < 0 || r2 < r1 || r2 >= t.rows.length) return t
+  const other = dir < 0 ? r1 - 1 : r2 + 1
+  if (other < 0 || other >= t.rows.length) return t
+  const rows = [...t.rows]
+  const [row] = rows.splice(other, 1)
+  rows.splice(dir < 0 ? r2 : r1, 0, row)
+  return withRows(t, rows)
+}
+
+function isBlankRow(row: TsvRow | undefined): boolean {
+  return !row || row.cells.every((c) => c.trim() === '')
+}
+
+/**
+ * 행 [r1..r2] 를 dir 로 옮길 수 있나. 되면 null, 아니면 알릴 말 — 빈 문자열이면 조용히 아무것도 하지 않는다(끝에 닿음).
+ * - 머리글 · 타입 행(headerRows 위)은 옮기지 않고, 본문 행도 그 위로 올라가지 않는다.
+ * - `_Field` 시트(field)는 빈 줄로 나눈 블록의 항목만 그 블록 안에서 옮긴다 — 블록 이름 줄(블록 첫 행) · 빈 줄은 옮기지 않고 넘지도 않는다.
+ */
+export function canMoveRows(t: TsvTable, r1: number, r2: number, dir: -1 | 1, opts: { headerRows: number; field: boolean }): string | null {
+  const n = t.rows.length
+  if (r1 < 0 || r2 >= n || r2 < r1) return ''
+  if (r1 < opts.headerRows) return '머리글 · 타입 행은 옮기지 않습니다'
+  const other = dir < 0 ? r1 - 1 : r2 + 1
+  if (other < opts.headerRows || other >= n) return ''
+  if (!opts.field) return null
+  /** 블록의 항목 줄 — 빈 줄도 아니고 블록 첫 행(위가 빈 줄이거나 파일 첫 줄)도 아니다 */
+  const isEntry = (r: number) => !isBlankRow(t.rows[r]) && r > 0 && !isBlankRow(t.rows[r - 1])
+  for (let r = r1; r <= r2; r++) {
+    if (!isEntry(r)) return '_Field 시트는 블록 안의 항목만 옮깁니다 — 블록 이름 줄 · 빈 줄은 옮기지 않습니다'
+  }
+  return isEntry(other) ? null : ''
+}
+
 /** 열 삽입 — 모든 행이 수정된 행이 된다 (불가피, DESIGN §6.1) */
 export function insertColumns(t: TsvTable, at: number, count = 1): TsvTable {
   if (count <= 0) return t

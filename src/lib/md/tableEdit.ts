@@ -237,13 +237,14 @@ export function deleteColChanges(src: string, col: number): TextChange[] | null 
   return out
 }
 
-/** 표 구조 편집 — 그리드(TSV)와 같은 키 */
+/**
+ * 표 구조 편집 — 행은 그리드(TSV)와 같은 키. 마크다운 표에는 열 전체 선택이 없어
+ * 열 넣기 · 지우기는 키 없이 팔레트 "마크다운 표: …" 와 맥락 메뉴로만 (DESIGN §41 K2)
+ */
 export type TableOp = 'rowBelow' | 'colRight' | 'deleteRow' | 'deleteCol'
 export const TABLE_OP_KEYS: Record<string, TableOp> = {
   'Ctrl+Alt+=': 'rowBelow',
-  'Ctrl+Alt+Shift+=': 'colRight',
   'Ctrl+Alt+-': 'deleteRow',
-  'Ctrl+Alt+Shift+-': 'deleteCol',
 }
 
 /** 구조 편집 하나 → 변경들과, 그 뒤에 고칠 칸. 못 하면(머리글 행 · 마지막 열 지우기) null */

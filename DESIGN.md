@@ -1477,6 +1477,58 @@ UI/UX 개편 K1(`docs/research/apple-uiux/ADOPT.md`), 단축키 규칙 3(`PRINCI
 - 실제 한글 IME 조합 중의 `Alt+Enter`, 설치한 Edge 앱, 실제 폴더.
 - 자동화 창은 `document.hasFocus()` 가 false 라 편집기의 `focusin` 이 오지 않는다 — 표 명령 확인은 `focusin` 을 직접 보냈다(링크 · tsv-view 는 포커스한 편집기를 직접 찾게 해 없이도 된다).
 
+## 41. 행 · 열 넣기 · 지우기를 선택에 따라 (2026-11-26)
+
+UI/UX 개편 K2(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 1 — 네 키 `Ctrl+Alt+Shift+= / -` 를 없앰, 규칙 4 — 그리드 · 마크다운 표가 같은 키), 7 맞음(편집 동작은 그대로, 키만 바뀜), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RC1 | 그리드의 `Ctrl+Alt+=` · `Ctrl+Alt+-` 하나로 — **열 전체를 고른 상태**면 열을 오른쪽에 넣고 · 지우고, 아니면 행을 아래에 넣고 · 지운다. 고른 열 · 행 수만큼 | Excel 도 열 전체를 고르고 삽입하면 열이 들어간다 |
+| RC2 | "열 전체를 고른 상태" 는 **`Ctrl+Space` · 열 글자 클릭(Shift 로 넓히기 포함)으로 고른 범위가 그대로일 때**만(`Grid.tsx` 의 `colPick`). 범위만 보고(첫 행 ~ 끝 행) 판단하지 않는다. `Ctrl+A`(전체)는 행 | 행이 한두 개인 표에서 셀 몇 개를 고른 것이 열 선택으로 잡히지 않게 |
+| RC3 | 열을 넣으면 **넣은 열이 골라진 채**, 지우면 **그 자리의 열이 골라진 채**(끝 열을 지웠으면 새 끝 열) 남는다 | Excel 과 같다. 한 번 더 누르면 계속 열이 들어가고 · 지워진다 — 앞 동작 뒤에 선택이 풀려 갑자기 행이 지워지지 않게 |
+| RC4 | `Ctrl+Alt+Shift+=` · `Ctrl+Alt+Shift+-` 를 그리드와 마크다운 표(DESIGN §23 H9, `lib/md/tableEdit.ts` 의 `TABLE_OP_KEYS`) 양쪽에서 **없앤다** — 눌러도 아무것도 하지 않는다 | 단축키 규칙 1(키는 셋까지) |
+| RC5 | 마크다운 표에는 열 선택이 없으니 열 넣기 · 지우기는 **키 없이** 팔레트 "마크다운 표: 오른쪽에 열 넣기" · "마크다운 표: 열 지우기" 로(맥락 메뉴는 K1). 행 키(`Ctrl+Alt+= / -`)는 그대로 | ADOPT K2 |
+| RC6 | 팔레트 명령(`gridColRight` · `gridColDel` 등)은 그대로. 키 표시만 `열 전체 선택 + Ctrl+Alt+=` · `열 전체 선택 + Ctrl+Alt+-` 로(단축키 표의 `palette`) | 명령 id 를 바꾸면 맥락 메뉴(K1)와 겹친다 |
+
+코드: `Grid.tsx`(`colPick` · `isWholeCols` · 키 분기), `GridPane.tsx`(`colOp` 가 바꿨는지 돌려준다), `lib/md/tableEdit.ts`(`TABLE_OP_KEYS`), `Workbench.tsx`(`MD_TABLE_COMMANDS` 의 열 키 표시 없앰), `hybrid.ts`(＋ 열 툴팁), `shortcuts-table.mjs`.
+
+### 41.1 확인한 것
+
+`npm test` · `npm run build`. dev `?opfs` + 내장 브라우저(키는 이벤트로), `docs/표.tsv`: 열 글자 B 클릭 → `Ctrl+Alt+=` 두 번 → 열이 C · D 에 들어가고 넣은 열이 골라짐 → `Ctrl+Alt+-` 두 번 → 3열로, 그 자리의 열이 골라짐. `Ctrl+Alt+Shift+=` 는 아무것도 하지 않음. `↓` 로 셀 하나를 고른 뒤 `Ctrl+Alt+=` · `-` 는 행. 되돌리기로 샘플 원래대로.
+
+### 41.2 확인하지 못한 것 (TESTCASES §35)
+
+- 마크다운 표에서 `Ctrl+Alt+Shift+= / -` 가 아무것도 하지 않는지 — 화면으로는 보지 않았다(키 표에서 뺀 것만 코드로).
+- Mac(⌘⌥=)과 설치한 Edge 앱.
+
+## 42. 행 옮기기 · 복제 키를 마크다운과 맞추기 (2026-11-26)
+
+UI/UX 개편 K5(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(키 · 팔레트 · 막대 단추가 같이 들어감, 단축키 규칙 4 — 마크다운의 줄 옮기기 · 복제와 같은 키), 5 맞음(표의 순서를 정리하는 구조 잡기), 6 맞음(`Alt+↑ / ↓` 는 Chrome · Edge 가 가로채지 않는다, Mac 은 Option), 7 맞음(행 객체를 그대로 옮겨 원문이 남는다 — 아래 RM2), 2 · 3 · 4 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RM1 | 그리드에서 `Alt+↑ / Alt+↓` = 고른 행(들)을 한 칸 위 / 아래로(**새 기능**). 선택(열 범위 포함)이 행을 따라간다. 셀 편집 중에는 받지 않는다(칸 안 커서) | 마크다운의 줄 옮기기 · 목차의 절 옮기기와 같은 키 |
+| RM2 | 옮기기는 **행 객체를 그대로** 자리만 바꾼다(`lib/tsv/edits.ts` 의 `moveRows`) — `raw` 가 남아 저장하면 그 줄의 바이트가 그대로다. 행 하나를 옮기면 diff 에는 **그 행과 자리를 바꾼 이웃 한 행만**, 여러 행이면 고른 행과 이웃 한 행. CSV 의 따옴표 · 칸 안 줄바꿈도 원문 그대로. 끝 개행이 없는 파일에서 마지막 행이 바뀌어도 그 두 줄뿐 | 포맷 계약(§2) · 원칙 7. 테스트 `rowMove.test.ts`(바이트 왕복 · diff 범위 · CRLF · BOM · CSV) |
+| RM3 | 동작 하나가 `edit` 한 번 = 되돌리기 한 번 | 되돌리기 한 번에 한 동작 |
+| RM4 | 머리글 · 타입 행(`schema.headerRows`)은 옮기지 않고(고르면 알림), 본문 첫 행은 그 위로 올라가지 않는다(조용히). 표 끝에서도 조용히 | VS Code 처럼 끝에서는 아무 일도 없다 |
+| RM5 | **`_Field` 시트**는 빈 줄로 나눈 블록의 **항목만, 그 블록 안에서** 옮긴다. 블록 이름 줄(블록 첫 행) · 빈 줄은 옮기지 않고(고르면 알림), 항목이 블록 이름 줄 · 빈 줄을 넘지 않는다(조용히). 블록 순서를 바꾸는 것은 하지 않는다 | 블록 이름 줄을 옮기면 블록 경계가 바뀌어 다른 블록의 항목이 딸려 간다(`parseFieldBlocks` 가 빈 줄 · 첫 행으로 읽는다). 항목을 다른 블록으로 보내려면 잘라내 붙이기 |
+| RM6 | `Shift+Alt+↓` = 행 복제 — 고른 행 아래에 붙이고 **복제본을 고른다**. `Shift+Alt+↑` = 복제하고 선택은 그대로(위쪽 원본 자리). 복제본은 새 줄이고 원본 행은 그대로 | 마크다운(CodeMirror)의 줄 복제 · 위로 복제와 같다 |
+| RM7 | `Ctrl+Shift+D`(행 복제)를 **없앤다**. 그리드에서 누르면 아무것도 고치지 않고 "행 복제는 Shift+Alt+↓ 로 바뀌었습니다" 를 알린다 | 흘려보내면 Chrome 의 "모든 탭을 북마크에 추가" 가 뜬다. 손에 익은 키를 새 키로 이끈다 |
+| RM8 | 팔레트 "표: 행 위로 옮기기" · "표: 행 아래로 옮기기"(`gridRowUp` · `gridRowDown`), 그리드 막대의 행 무리에 ↑ · ↓ 단추(`data-command`). "표: 행 복제" 의 키 표시는 `Shift+Alt+↓` | 새 기능은 팔레트 명령과 함께. 막대 단추 = 팔레트 명령(§36) |
+
+K2 의 열 키 표시는 `열 전체 선택 + Ctrl+Alt+= / -` 로 고쳤다(툴팁의 괄호가 겹쳐서).
+
+코드: `lib/tsv/edits.ts`(`moveRows` · `canMoveRows`) · `rowMove.test.ts`, `Grid.tsx`(키 · `shiftRows`), `GridPane.tsx`(`rowOp` 의 `moveUp` · `moveDown` · `dupKeep`, 막대 단추), `lib/paneCommands.ts`, `shortcuts-table.mjs`.
+
+### 42.1 확인한 것
+
+`npm test` — 새 14건(`rowMove.test.ts`). dev `?opfs` + 내장 브라우저(키는 이벤트로): `docs/표.tsv` 의 `나` 에서 `Alt+↑` → `가` 와 자리 바꿈 · 선택이 따라감 → 한 번 더는 머리글 아래라 그대로 → `Alt+↓` 로 돌아옴 → `Shift+Alt+↓` 복제(복제본 고름) → `Shift+Alt+↑` 복제(선택 그대로) → `Ctrl+Shift+D` 는 알림만 → `Ctrl+Z` 네 번이 한 동작씩 되돌려 원래대로(수정됨 표시 없음). `data/Item/Item_Field.tsv`: 블록 첫 항목 `Key` 의 `Alt+↑` · 끝 항목 `Upkeep` 의 `Alt+↓` · 다음 블록 첫 항목 `Weapon` 의 `Alt+↑` 는 그대로, 블록 이름 줄 `Category` 는 알림, `Armor` 의 `Alt+↑` 는 블록 안에서 옮겨짐 → 되돌림. 막대 단추 툴팁에 키.
+
+### 42.2 확인하지 못한 것 (TESTCASES §36)
+
+- 실제 폴더에 저장한 뒤의 `git diff`(테스트로는 두 줄만).
+- Mac 의 Option+↑ / ↓, 설치한 Edge 앱.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

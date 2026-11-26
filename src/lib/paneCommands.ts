@@ -34,6 +34,8 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'gridRowBelow', label: '표: 아래에 행 삽입', title: '선택한 행 아래에 빈 행 — 선택한 행 수만큼', scope: 'grid', edits: true },
   { id: 'gridRowAppend', label: '표: 끝에 행 추가', title: '맨 끝에 빈 행', scope: 'grid', edits: true },
   { id: 'gridRowDup', label: '표: 행 복제', title: '선택한 행 복제', scope: 'grid', edits: true },
+  { id: 'gridRowUp', label: '표: 행 위로 옮기기', title: '선택한 행을 한 칸 위로', scope: 'grid', edits: true },
+  { id: 'gridRowDown', label: '표: 행 아래로 옮기기', title: '선택한 행을 한 칸 아래로', scope: 'grid', edits: true },
   { id: 'gridRowDel', label: '표: 행 삭제', title: '선택한 행 삭제', scope: 'grid', edits: true },
   { id: 'gridColLeft', label: '표: 왼쪽에 열 삽입', title: '선택한 열 왼쪽에 빈 열', scope: 'grid', edits: true },
   { id: 'gridColRight', label: '표: 오른쪽에 열 삽입', title: '선택한 열 오른쪽에 빈 열', scope: 'grid', edits: true },

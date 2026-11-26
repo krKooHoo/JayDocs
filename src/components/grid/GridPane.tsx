@@ -5,7 +5,7 @@ import { backend } from '../../lib/backend'
 import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
-import { deleteColumns, deleteRows, duplicateRows, fillDown, fillRight, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
+import { canMoveRows, deleteColumns, deleteRows, duplicateRows, fillDown, fillRight, insertColumns, insertRows, moveColumns, moveRows, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
 import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { parseFieldBlocks } from '../../lib/tsv/field'
@@ -208,7 +208,19 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'above': edit((t) => insertRows(t, g.r1, n)); break
       case 'below': edit((t) => insertRows(t, g.r2 + 1, n)); grid.current?.clearRange(); setActive({ r: g.r2 + 1, c: active.c }); break
       case 'append': edit((t) => insertRows(t, t.rows.length, 1)); grid.current?.clearRange(); setActive({ r: table.rows.length, c: active.c }); break
-      case 'dup': edit((t) => duplicateRows(t, g.r1, n)); grid.current?.clearRange(); setActive({ r: g.r2 + 1, c: active.c }); break
+      // 복제본을 고른 채로 (마크다운의 줄 복제처럼). dupKeep 은 선택을 그대로 — 위쪽이 원본 자리
+      case 'dup': if (edit((t) => duplicateRows(t, g.r1, n))) grid.current?.shiftRows(n); break
+      case 'dupKeep': edit((t) => duplicateRows(t, g.r1, n)); break
+      case 'moveUp':
+      case 'moveDown': {
+        // 한 칸 옮기고 선택이 따라간다. 머리글 · 타입 행, _Field 의 블록 경계는 넘지 않는다 (DESIGN §42)
+        const dir = kind === 'moveUp' ? -1 : 1
+        const r2 = Math.min(g.r2, table.rows.length - 1)
+        const why = canMoveRows(table, g.r1, r2, dir, { headerRows: schema?.headerRows ?? 0, field: isFieldFile(path) })
+        if (why !== null) { if (why) showNotice(why); break }
+        if (edit((t) => moveRows(t, g.r1, r2, dir))) grid.current?.shiftRows(dir)
+        break
+      }
       case 'del': {
         // 모든 행을 지워도 묻지 않는다 — Ctrl+Z 로 돌아온다. 알림에 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
         if (edit((t) => deleteRows(t, g.r1, n))) showNotice(n >= table.rows.length ? `모든 행(${n}개)을 지웠습니다` : `행 ${n}개를 지웠습니다`, { undo: true })
@@ -217,20 +229,23 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       }
     }
     refocus()
-  }, [table, edit, active.c, showNotice])
+  }, [table, schema, path, edit, active.c, showNotice])
 
   // 열을 넣고 · 지우고 · 옮기면 모든 행이 다시 조립된다. 예전에는 그때마다 확인 창으로 물었지만
   // Ctrl+Z 로 돌아오는 조작이라 묻지 않고 실행한 뒤, 같은 사실을 알림에 적고 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
-  const colOp = useCallback((kind: ColOp, g: CellRange) => {
-    if (!table) return
+  const colOp = useCallback((kind: ColOp, g: CellRange): boolean => {
+    if (!table) return false
     const n = g.c2 - g.c1 + 1
     const note = '모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다'
+    let done = false
     switch (kind) {
       case 'left':
-        if (edit((t) => insertColumns(t, g.c1, n))) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
+        done = edit((t) => insertColumns(t, g.c1, n))
+        if (done) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
         break
       case 'right':
-        if (edit((t) => insertColumns(t, g.c2 + 1, n))) {
+        done = edit((t) => insertColumns(t, g.c2 + 1, n))
+        if (done) {
           showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
           grid.current?.clearRange()
           setActive({ r: active.r, c: g.c2 + 1 })
@@ -238,11 +253,13 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
         break
       case 'del':
         if (n >= table.width) { showNotice('열을 전부 지울 수는 없습니다'); break }
-        if (edit((t) => deleteColumns(t, g.c1, n))) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
+        done = edit((t) => deleteColumns(t, g.c1, n))
+        if (done) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
         grid.current?.clearRange()
         break
     }
     refocus()
+    return done
   }, [table, edit, active.r, showNotice])
 
   /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입 · 삭제처럼 묻지 않고 옮긴 뒤 알림에 되돌리기를 단다. 옮겼으면 true */
@@ -414,6 +431,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'gridRowBelow': rowOp('below', currentRange()); break
       case 'gridRowAppend': rowOp('append', currentRange()); break
       case 'gridRowDup': rowOp('dup', currentRange()); break
+      case 'gridRowUp': rowOp('moveUp', currentRange()); break
+      case 'gridRowDown': rowOp('moveDown', currentRange()); break
       case 'gridRowDel': rowOp('del', currentRange()); break
       case 'gridColLeft': colOp('left', currentRange()); break
       case 'gridColRight': colOp('right', currentRange()); break
@@ -524,6 +543,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
             <button data-command="gridRowBelow" onClick={() => runPane('gridRowBelow')} disabled={!table.rows.length} title={cmdTitle('gridRowBelow')}>＋아래</button>
             <button data-command="gridRowAppend" onClick={() => runPane('gridRowAppend')} title={cmdTitle('gridRowAppend')}>＋끝</button>
             <button data-command="gridRowDup" onClick={() => runPane('gridRowDup')} disabled={!table.rows.length} title={cmdTitle('gridRowDup')}>복제</button>
+            <button data-command="gridRowUp" onClick={() => runPane('gridRowUp')} disabled={!table.rows.length} title={cmdTitle('gridRowUp')} aria-label="행 위로">↑</button>
+            <button data-command="gridRowDown" onClick={() => runPane('gridRowDown')} disabled={!table.rows.length} title={cmdTitle('gridRowDown')} aria-label="행 아래로">↓</button>
             <button data-command="gridRowDel" onClick={() => runPane('gridRowDel')} disabled={!table.rows.length} title={cmdTitle('gridRowDel')}>삭제</button>
             <span className="sep" />
             <span className="grid-toolbar-label">열</span>
