@@ -1442,6 +1442,30 @@ UI/UX 개편 A9(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 5 맞음(�
 - 실제 마우스 휠 · 트랙패드 핀치(트랙패드 핀치는 `Ctrl+휠` 로 온다 — 포커스가 있을 때만 다이어그램 확대).
 - 큰 다이어그램(노드 수십 개)에서 끌기의 부드러움, 설치한 Edge 앱.
 
+## 41. 행 · 열 넣기 · 지우기를 선택에 따라 (2026-11-26)
+
+UI/UX 개편 K2(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 1 — 네 키 `Ctrl+Alt+Shift+= / -` 를 없앰, 규칙 4 — 그리드 · 마크다운 표가 같은 키), 7 맞음(편집 동작은 그대로, 키만 바뀜), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| RC1 | 그리드의 `Ctrl+Alt+=` · `Ctrl+Alt+-` 하나로 — **열 전체를 고른 상태**면 열을 오른쪽에 넣고 · 지우고, 아니면 행을 아래에 넣고 · 지운다. 고른 열 · 행 수만큼 | Excel 도 열 전체를 고르고 삽입하면 열이 들어간다 |
+| RC2 | "열 전체를 고른 상태" 는 **`Ctrl+Space` · 열 글자 클릭(Shift 로 넓히기 포함)으로 고른 범위가 그대로일 때**만(`Grid.tsx` 의 `colPick`). 범위만 보고(첫 행 ~ 끝 행) 판단하지 않는다. `Ctrl+A`(전체)는 행 | 행이 한두 개인 표에서 셀 몇 개를 고른 것이 열 선택으로 잡히지 않게 |
+| RC3 | 열을 넣으면 **넣은 열이 골라진 채**, 지우면 **그 자리의 열이 골라진 채**(끝 열을 지웠으면 새 끝 열) 남는다 | Excel 과 같다. 한 번 더 누르면 계속 열이 들어가고 · 지워진다 — 앞 동작 뒤에 선택이 풀려 갑자기 행이 지워지지 않게 |
+| RC4 | `Ctrl+Alt+Shift+=` · `Ctrl+Alt+Shift+-` 를 그리드와 마크다운 표(DESIGN §23 H9, `lib/md/tableEdit.ts` 의 `TABLE_OP_KEYS`) 양쪽에서 **없앤다** — 눌러도 아무것도 하지 않는다 | 단축키 규칙 1(키는 셋까지) |
+| RC5 | 마크다운 표에는 열 선택이 없으니 열 넣기 · 지우기는 **키 없이** 팔레트 "마크다운 표: 오른쪽에 열 넣기" · "마크다운 표: 열 지우기" 로(맥락 메뉴는 K1). 행 키(`Ctrl+Alt+= / -`)는 그대로 | ADOPT K2 |
+| RC6 | 팔레트 명령(`gridColRight` · `gridColDel` 등)은 그대로. 키 표시만 `Ctrl+Alt+= (열 전체 선택)` · `Ctrl+Alt+- (열 전체 선택)` 으로(단축키 표의 `palette`) | 명령 id 를 바꾸면 맥락 메뉴(K1)와 겹친다 |
+
+코드: `Grid.tsx`(`colPick` · `isWholeCols` · 키 분기), `GridPane.tsx`(`colOp` 가 바꿨는지 돌려준다), `lib/md/tableEdit.ts`(`TABLE_OP_KEYS`), `Workbench.tsx`(`MD_TABLE_COMMANDS` 의 열 키 표시 없앰), `hybrid.ts`(＋ 열 툴팁), `shortcuts-table.mjs`.
+
+### 41.1 확인한 것
+
+`npm test` · `npm run build`. dev `?opfs` + 내장 브라우저(키는 이벤트로), `docs/표.tsv`: 열 글자 B 클릭 → `Ctrl+Alt+=` 두 번 → 열이 C · D 에 들어가고 넣은 열이 골라짐 → `Ctrl+Alt+-` 두 번 → 3열로, 그 자리의 열이 골라짐. `Ctrl+Alt+Shift+=` 는 아무것도 하지 않음. `↓` 로 셀 하나를 고른 뒤 `Ctrl+Alt+=` · `-` 는 행. 되돌리기로 샘플 원래대로.
+
+### 41.2 확인하지 못한 것 (TESTCASES §35)
+
+- 마크다운 표에서 `Ctrl+Alt+Shift+= / -` 가 아무것도 하지 않는지 — 화면으로는 보지 않았다(키 표에서 뺀 것만 코드로).
+- Mac(⌘⌥=)과 설치한 Edge 앱.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

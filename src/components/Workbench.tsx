@@ -24,12 +24,12 @@ import { EditorView } from '@codemirror/view'
 import { revertTextInView } from '../lib/revert'
 import { PANE_COMMANDS } from '../lib/paneCommands'
 
-/** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
-const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
+/** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다). 열은 키가 없다 (DESIGN §41 K2) */
+const MD_TABLE_COMMANDS: [string, TableOp, string, string | undefined][] = [
   ['mdTableRowBelow', 'rowBelow', '마크다운 표: 아래에 행 넣기', 'Ctrl+Alt+='],
-  ['mdTableColRight', 'colRight', '마크다운 표: 오른쪽에 열 넣기', 'Ctrl+Alt+Shift+='],
+  ['mdTableColRight', 'colRight', '마크다운 표: 오른쪽에 열 넣기', undefined],
   ['mdTableDeleteRow', 'deleteRow', '마크다운 표: 행 지우기', 'Ctrl+Alt+-'],
-  ['mdTableDeleteCol', 'deleteCol', '마크다운 표: 열 지우기', 'Ctrl+Alt+Shift+-'],
+  ['mdTableDeleteCol', 'deleteCol', '마크다운 표: 열 지우기', undefined],
 ]
 
 export interface WorkbenchHandle {

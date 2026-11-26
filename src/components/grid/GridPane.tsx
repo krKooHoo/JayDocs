@@ -220,16 +220,19 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   // 열을 넣고 · 지우고 · 옮기면 모든 행이 다시 조립된다. 예전에는 그때마다 확인 창으로 물었지만
   // Ctrl+Z 로 돌아오는 조작이라 묻지 않고 실행한 뒤, 같은 사실을 알림에 적고 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
-  const colOp = useCallback((kind: ColOp, g: CellRange) => {
-    if (!table) return
+  const colOp = useCallback((kind: ColOp, g: CellRange): boolean => {
+    if (!table) return false
     const n = g.c2 - g.c1 + 1
     const note = '모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다'
+    let done = false
     switch (kind) {
       case 'left':
-        if (edit((t) => insertColumns(t, g.c1, n))) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
+        done = edit((t) => insertColumns(t, g.c1, n))
+        if (done) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
         break
       case 'right':
-        if (edit((t) => insertColumns(t, g.c2 + 1, n))) {
+        done = edit((t) => insertColumns(t, g.c2 + 1, n))
+        if (done) {
           showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
           grid.current?.clearRange()
           setActive({ r: active.r, c: g.c2 + 1 })
@@ -237,11 +240,13 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
         break
       case 'del':
         if (n >= table.width) { showNotice('열을 전부 지울 수는 없습니다'); break }
-        if (edit((t) => deleteColumns(t, g.c1, n))) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
+        done = edit((t) => deleteColumns(t, g.c1, n))
+        if (done) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
         grid.current?.clearRange()
         break
     }
     refocus()
+    return done
   }, [table, edit, active.r, showNotice])
 
   /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입 · 삭제처럼 묻지 않고 옮긴 뒤 알림에 되돌리기를 단다. 옮겼으면 true */

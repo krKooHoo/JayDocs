@@ -56,7 +56,8 @@ export interface GridProps {
   onNotice: (msg: string, opts?: { undo?: boolean }) => void
   /** 행/열 조작 (단축키에서). 범위를 함께 보낸다 */
   onRowOp: (kind: RowOp, range: CellRange) => void
-  onColOp: (kind: ColOp, range: CellRange) => void
+  /** 실제로 바꿨으면 true (읽기 전용 · 못 하는 조작이면 false) */
+  onColOp: (kind: ColOp, range: CellRange) => boolean
   /** 열 글자를 끌어 옮기기. to 는 옮긴 뒤 첫 열의 자리. 실제로 옮겼으면(읽기 전용이 아니면) true */
   onMoveColumns: (from: number, count: number, to: number) => boolean
   /** Ctrl+F / Ctrl+H — 찾기 막대 열기 (withReplace 면 바꾸기 칸으로) */
@@ -382,10 +383,22 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     setAnchor({ r: Math.min(r1, r2), c: 0 })
     onActiveChange({ r: Math.max(r1, r2), c: maxC })
   }, [maxC, onActiveChange])
+  /**
+   * 열 전체 선택(Ctrl+Space · 열 글자)으로 고른 열. 범위가 그대로인 동안만 "열을 골랐다" 로 본다 —
+   * Ctrl+Alt+= / - 가 열을 넣고 지운다 (DESIGN §41 K2). 행이 한두 개인 표에서 셀 범위를 열로 오해하지 않게 범위만으로 판단하지 않는다.
+   */
+  const colPick = useRef<{ c1: number; c2: number } | null>(null)
   const selectCols = useCallback((c1: number, c2: number) => {
+    colPick.current = { c1: Math.min(c1, c2), c2: Math.max(c1, c2) }
     setAnchor({ r: 0, c: Math.min(c1, c2) })
     onActiveChange({ r: maxR, c: Math.max(c1, c2) })
   }, [maxR, onActiveChange])
+  const isWholeCols = (g: CellRange) => {
+    const pick = colPick.current
+    return !!pick && g.r1 === 0 && g.r2 === maxR && g.c1 === pick.c1 && g.c2 === pick.c2
+  }
+  // 범위가 바뀌어 고른 열과 달라지면 잊는다
+  useEffect(() => { if (!isWholeCols(range)) colPick.current = null })
   const selectAll = useCallback(() => {
     setAnchor({ r: 0, c: 0 })
     onActiveChange({ r: maxR, c: maxC })
@@ -593,11 +606,22 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       }
     }
 
-    // 행/열 조작 (Ctrl+Alt+= / -, Shift 면 열)
-    if (mod && e.altKey && (code === 'Equal' || code === 'Minus')) {
+    // 행/열 조작 (Ctrl+Alt+= / -). 열 전체를 골랐으면 열, 아니면 행 — Excel 과 같다 (DESIGN §41 K2)
+    if (mod && e.altKey && !e.shiftKey && (code === 'Equal' || code === 'Minus')) {
       e.preventDefault()
-      if (code === 'Equal') { if (e.shiftKey) onColOp('right', range); else onRowOp('below', range) }
-      else { if (e.shiftKey) onColOp('del', range); else onRowOp('del', range) }
+      if (isWholeCols(range)) {
+        const n = range.c2 - range.c1 + 1
+        if (code === 'Equal') {
+          // 넣은 열을 고른 채로 둔다 — 한 번 더 누르면 또 열이 들어간다
+          if (onColOp('right', range)) selectCols(range.c2 + 1, range.c2 + n)
+        } else if (onColOp('del', range)) {
+          // 지운 자리의 열을 고른 채로 둔다 (Excel). 끝 열을 지웠으면 새 끝 열로
+          const left = table.width - n
+          const c1 = Math.min(range.c1, left - 1)
+          selectCols(c1, Math.min(c1 + n - 1, left - 1))
+        }
+      } else if (code === 'Equal') onRowOp('below', range)
+      else onRowOp('del', range)
       return
     }
 
