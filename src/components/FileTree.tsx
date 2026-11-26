@@ -4,7 +4,8 @@ import { keysOf, registerCommands, runCommand, tip } from '../lib/commands'
 import { registerSpotReader, type SpotReader, type TreeSpot } from '../lib/contextMenu'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
-import { onQuickLookRequest, onTreeCursor, onTreeOpenSide, type QuickLookMode } from '../lib/nav'
+import { onQuickLookRequest, onTreeCursor, onTreeFilterRequest, onTreeOpenSide, type QuickLookMode } from '../lib/nav'
+import { filterActive, filterTree } from '../lib/treeFilter'
 import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/treeState'
 import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
@@ -82,6 +83,18 @@ export function FileTree(p: Props) {
   const [lookRoot, setLookRoot] = useState(false)
   /** 창이 뜨면 격자의 첫 카드로 포커스를 옮길 것 (팔레트 "폴더 훑어보기") — 청한 때 */
   const gridFocusAsked = useRef(0)
+  /**
+   * 트리 필터 (ADOPT B3 · DESIGN §48). 트리 위 칸에 치면 맞는 항목만, 그 상위 폴더는 펼쳐 보인다.
+   * 화면 상태라 저장하지 않는다. filterShown: 칸이 보인다 (글자가 없어도 Ctrl+F 로 연 동안)
+   */
+  const [filterQuery, setFilterQuery] = useState('')
+  const [filterDirty, setFilterDirty] = useState(false)
+  const [filterShown, setFilterShown] = useState(false)
+  /** 필터가 펼친 폴더 중 사용자가 다시 접은 것 — 글자가 바뀌면 비운다 */
+  const [filterClosed, setFilterClosed] = useState<Set<string>>(() => new Set())
+  const filterInput = useRef<HTMLInputElement>(null)
+  /** 팔레트 "이름으로 거르기" — 트리가 포커스를 받은 뒤 칸으로 옮긴다 */
+  const filterFocusAsked = useRef(0)
 
   // 고른 폴더를 앱에 알린다 (Ctrl+Alt+N / Ctrl+Alt+Shift+N 이 이 폴더에 만든다)
   const onSelectDir = p.onSelectDir
@@ -142,7 +155,18 @@ export function FileTree(p: Props) {
   const mountOfRef = useRef(mountOf)
   mountOfRef.current = mountOf
 
-  const rows = useMemo(() => flatten(p.entries, expanded), [p.entries, expanded])
+  const filter = useMemo(() => ({ query: filterQuery, dirty: filterDirty ? p.dirtyPaths : null }), [filterQuery, filterDirty, p.dirtyPaths])
+  const filtering = filterActive(filter)
+  const filtered = useMemo(() => filterTree(p.entries, filter), [p.entries, filter])
+  useEffect(() => { setFilterClosed(new Set()) }, [filterQuery, filterDirty])
+  /** 보이는 펼침 — 필터 중이면 맞는 항목의 상위 폴더도 (사용자가 다시 접은 것만 빼고) */
+  const shownOpen = useMemo(() => {
+    if (!filtering) return expanded
+    const s = new Set([...expanded, ...filtered.open])
+    for (const d of filterClosed) s.delete(d)
+    return s
+  }, [filtering, expanded, filtered.open, filterClosed])
+  const rows = useMemo(() => flatten(filtered.entries, shownOpen), [filtered.entries, shownOpen])
   const cursorRow = rows.find((r) => r.entry.path === cursor) ?? null
 
   /** 앱이 커서를 옮기라고 한 경로 (이름을 바꾼 파일) — 트리를 다시 읽기 전이면 아직 행이 없다. 행이 생기면 보이게 스크롤하고 비운다 */
@@ -179,8 +203,68 @@ export function FileTree(p: Props) {
     el?.scrollIntoView({ block: 'nearest' })
   }, [cursor, rows, initialized])
 
-  const toggle = (path: string) =>
+  const toggle = (path: string) => {
+    // 필터가 펼친 폴더는 필터 동안만 접고 편다 — 사용자가 펼쳐 둔 상태(저장분)는 그대로
+    if (filtering && filtered.open.has(path)) {
+      setFilterClosed((s) => { const n = new Set(s); if (n.has(path)) n.delete(path); else n.add(path); return n })
+      return
+    }
     setExpanded((s) => { const n = new Set(s); if (n.has(path)) n.delete(path); else n.add(path); return n })
+  }
+
+  // ---- 트리 필터
+  /** 칸을 열고 포커스 (이미 있으면 글자를 고른다) */
+  const showFilter = () => {
+    setFilterShown(true)
+    window.setTimeout(() => { filterInput.current?.focus(); filterInput.current?.select() }, 0)
+  }
+  /** 필터를 지우고 트리로 — 커서의 항목은 상위 폴더를 펴서 보이게 둔다 */
+  const clearFilter = () => {
+    filterFocusAsked.current = 0
+    setFilterQuery('')
+    setFilterDirty(false)
+    setFilterShown(false)
+    if (cursor) {
+      const up = ancestorDirs(cursor)
+      setExpanded((s) => (up.every((d) => s.has(d)) ? s : new Set([...s, ...up])))
+      shown.current = null
+    }
+    body.current?.focus()
+  }
+  /** 칸에서 ↓ · Enter — 트리로. 커서가 걸러진 목록에 없으면 첫 맞은 항목으로 */
+  const enterRows = () => {
+    if (!rows.length) return
+    if (!cursor || !rows.some((r) => r.entry.path === cursor)) setCursor(filtered.hits.find((h) => rows.some((r) => r.entry.path === h)) ?? rows[0].entry.path)
+    body.current?.focus()
+  }
+  // 글자를 바꾸면 커서를 첫 맞은 항목으로 (보이게 스크롤)
+  const firstHit = filtered.hits[0]
+  useEffect(() => {
+    if (filterQuery.trim() && firstHit) setCursor(firstHit)
+  }, [filterQuery, firstHit])
+  // 팔레트 "이름으로 거르기" · "저장 안 한 것만" (lib/nav requestTreeFilter) — 트리로 포커스를 보낸 뒤 온다
+  const filterReqRef = useRef<(r: 'focus' | 'dirty') => void>(() => {})
+  filterReqRef.current = (r) => {
+    if (r === 'dirty') {
+      const on = !filterDirty
+      setFilterDirty(on)
+      if (on) setFilterShown(true)
+      else if (!filterQuery.trim()) setFilterShown(false)
+      return
+    }
+    filterFocusAsked.current = Date.now()
+    showFilter()
+  }
+  useEffect(() => onTreeFilterRequest((r) => filterReqRef.current(r)), [])
+
+  const onFilterKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return
+    const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); clearFilter(); return }
+    if ((e.key === 'ArrowDown' || e.key === 'Enter') && plain) { e.preventDefault(); enterRows(); return }
+    // 칸 안의 Ctrl+F — 글자를 고른다 (브라우저 찾기 대신)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopPropagation(); e.currentTarget.select() }
+  }
 
   /** 오른쪽 클릭한 항목으로 커서 · 고른 폴더를 옮긴다 — 맥락 메뉴의 명령이 그 항목에 돈다 */
   const pointAt = (path: string, isDir: boolean) => {
@@ -326,6 +410,14 @@ export function FileTree(p: Props) {
         return
       }
     }
+    // Ctrl+F — 트리 필터 칸으로 (편집기 · 그리드의 Ctrl+F 처럼 "이 영역에서 찾기"). 브라우저 찾기는 막는다
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault()
+      e.stopPropagation()
+      setQuickLook(false)
+      showFilter()
+      return
+    }
     switch (e.key) {
       case 'ArrowDown': e.preventDefault(); go(idx + 1); return
       case 'ArrowUp': e.preventDefault(); go(idx <= 0 ? 0 : idx - 1); return
@@ -334,13 +426,13 @@ export function FileTree(p: Props) {
       case 'ArrowRight':
         e.preventDefault()
         if (!cursorRow) { go(0); return }
-        if (cursorRow.entry.type === 'dir') { if (!expanded.has(cursorRow.entry.path)) toggle(cursorRow.entry.path); else go(idx + 1) }
+        if (cursorRow.entry.type === 'dir') { if (!shownOpen.has(cursorRow.entry.path)) toggle(cursorRow.entry.path); else go(idx + 1) }
         else { p.onOpen(cursorRow.entry.path, quickLook); setQuickLook(false) }
         return
       case 'ArrowLeft': {
         e.preventDefault()
         if (!cursorRow) return
-        if (cursorRow.entry.type === 'dir' && expanded.has(cursorRow.entry.path)) { toggle(cursorRow.entry.path); return }
+        if (cursorRow.entry.type === 'dir' && shownOpen.has(cursorRow.entry.path)) { toggle(cursorRow.entry.path); return }
         const parentIdx = rows.findIndex((r) => r.entry.path === cursorRow.parent)
         if (parentIdx >= 0) go(parentIdx)
         return
@@ -372,10 +464,9 @@ export function FileTree(p: Props) {
         else if (cursorRow) setQuickLook(true)
         return
       case 'Escape':
-        if (!quickLook) return
-        e.preventDefault()
-        e.stopPropagation()
-        setQuickLook(false)
+        // 훑어보기 창이 먼저, 그다음 필터 (DESIGN §48)
+        if (quickLook) { e.preventDefault(); e.stopPropagation(); setQuickLook(false); return }
+        if (filtering || filterShown) { e.preventDefault(); e.stopPropagation(); clearFilter() }
         return
       // 창이 폴더 격자면 첫 카드로 들어간다 (Phase E). 그 밖에는 지금처럼 브라우저의 Tab
       case 'Tab':
@@ -410,7 +501,7 @@ export function FileTree(p: Props) {
     const indent = { paddingLeft: `${8 + row.depth * 14}px` }
     const isCursor = cursor === e.path
     if (e.type === 'dir') {
-      const open = expanded.has(e.path)
+      const open = shownOpen.has(e.path)
       const m = e.mount
       return (
         <div
@@ -458,7 +549,31 @@ export function FileTree(p: Props) {
         <button data-command="newFile" onClick={() => p.onNewFile(selectedDir)} title={tip('선택한 폴더에 새 문서', 'newFile')}>＋파일</button>
         <button data-command="newFolder" onClick={() => p.onNewFolder(selectedDir)} title={tip('선택한 폴더에 새 폴더', 'newFolder')}>＋폴더</button>
         <button data-command="refreshTree" onClick={p.onRefresh} title={tip('파일 트리 새로고침', 'refreshTree')}>↻</button>
+        <button data-command="treeFilter" className={filtering || filterShown ? 'is-on' : undefined} onClick={showFilter} title={tip('이름으로 거르기', 'treeFilter')}>⌕</button>
       </div>
+      {(filterShown || filtering) && (
+        <div className="tree-filter">
+          <input
+            ref={filterInput}
+            className="tree-filter-input"
+            value={filterQuery}
+            placeholder="이름으로 거르기…  (Esc 지우기)"
+            aria-label="파일 트리 필터"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setFilterQuery(e.target.value)}
+            onKeyDown={onFilterKeyDown}
+          />
+          <button
+            data-command="treeFilterDirty"
+            className={'tree-filter-dirty' + (filterDirty ? ' is-on' : '')}
+            aria-pressed={filterDirty}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => filterReqRef.current('dirty')}
+            title={tip('저장 안 한 것만', 'treeFilterDirty')}
+          >●</button>
+        </div>
+      )}
       <div
         className="tree-body"
         ref={body}
@@ -471,6 +586,9 @@ export function FileTree(p: Props) {
           if (!cursor && rows.length) setCursor(p.activePath ?? rows[0].entry.path)
           if (quickLookAsked.current && Date.now() - quickLookAsked.current < 1000) openLook(quickLookAskedMode.current)
           quickLookAsked.current = 0
+          // 팔레트 "이름으로 거르기" — 트리로 포커스가 온 뒤 칸으로
+          if (filterFocusAsked.current && Date.now() - filterFocusAsked.current < 1000) filterInput.current?.focus()
+          filterFocusAsked.current = 0
         }}
         onBlur={(ev) => { if (quickLook) onFocusLeave(ev.relatedTarget as Element | null) }}
       >
@@ -481,6 +599,12 @@ export function FileTree(p: Props) {
             <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => p.onNewFile('')}>새 문서 <kbd>{keysOf('newFile')}</kbd></button>
             <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('importFolder')}>가져오기 <kbd>{keysOf('importFolder')}</kbd></button>
             <p className="tree-empty-hint">파일 탐색기에서 폴더 · 파일을 여기로 끌어다 놓아도 됩니다</p>
+          </div>
+        )}
+        {filtering && p.entries.length > 0 && rows.length === 0 && (
+          <div className="tree-empty">
+            <p>{filterQuery.trim() ? `‘${filterQuery.trim()}’ 에 맞는 ${filterDirty ? '저장 안 한 ' : ''}항목이 없습니다` : '저장 안 한 문서가 없습니다'}</p>
+            <p className="tree-empty-hint">Esc 로 필터를 지웁니다</p>
           </div>
         )}
         {rows.map(renderRow)}

@@ -109,19 +109,22 @@ export function gridContextIds(s: GridSpot): string[] {
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids
 }
 
+/** 트리 어디서나 — 트리 필터 (DESIGN §48) */
+const TREE_TAIL = ['treeFilter', 'treeFilterDirty']
+
 /** 파일 트리 항목 — 예전 `Shift+F10` 메뉴의 항목 전부 + 오른쪽 창에 열기 */
 export function treeContextIds(s: TreeSpot): string[] {
   // 주 폴더 루트 (트리의 빈 자리)
-  if (s.path === '') return ['newFile', 'newFolder', 'quickLookFolder', 'copyRootPath', 'editRoot', 'refreshTree', 'importFolder']
+  if (s.path === '') return ['newFile', 'newFolder', 'quickLookFolder', 'copyRootPath', 'editRoot', 'refreshTree', 'importFolder', ...TREE_TAIL]
   const make = s.writable && !s.fileMount ? ['newFile', 'newFolder'] : []
   if (s.isMountRoot && s.mountAlias !== null) {
     const a = s.mountAlias
-    return ['quickLook', 'quickLookFolder', ...make, 'treeCopyPath', `editRoot:${a}`, `toggleReadOnly:${a}`, 'refreshTree', `unmount:${a}`]
+    return ['quickLook', 'quickLookFolder', ...make, 'treeCopyPath', `editRoot:${a}`, `toggleReadOnly:${a}`, 'refreshTree', `unmount:${a}`, ...TREE_TAIL]
   }
   const change = s.writable ? ['treeRename'] : []
   const del = s.writable ? ['treeDelete'] : []
-  if (s.isDir) return ['quickLook', 'quickLookFolder', ...make, ...change, 'treeCopyPath', ...del]
-  return ['openTreeCursorSide', 'quickLook', ...change, 'treeCopyPath', ...make, ...del]
+  if (s.isDir) return ['quickLook', 'quickLookFolder', ...make, ...change, 'treeCopyPath', ...del, ...TREE_TAIL]
+  return ['openTreeCursorSide', 'quickLook', ...change, 'treeCopyPath', ...make, ...del, ...TREE_TAIL]
 }
 
 const VIEW_IDS: Record<MarkdownSpot['mode'], string> = { source: 'viewSource', hybrid: 'viewHybrid', split: 'viewSplit', preview: 'viewPreview' }

@@ -109,6 +109,20 @@ export function onTreeOpenSide(l: () => void): () => void {
   return () => { treeSideListeners.delete(l) }
 }
 
+// ---- 트리 필터 (팔레트 명령, DESIGN §48). 필터는 트리 안의 state 라 이 길로 보낸다 — 트리로 포커스를 보낸 뒤 온다
+/** focus: 필터 칸으로 · dirty: "저장 안 한 것만" 켜고 끄기 */
+export type TreeFilterRequest = 'focus' | 'dirty'
+const treeFilterListeners = new Set<(r: TreeFilterRequest) => void>()
+
+export function requestTreeFilter(r: TreeFilterRequest) {
+  for (const l of treeFilterListeners) l(r)
+}
+
+export function onTreeFilterRequest(l: (r: TreeFilterRequest) => void): () => void {
+  treeFilterListeners.add(l)
+  return () => { treeFilterListeners.delete(l) }
+}
+
 // ---- 글 문서의 그 줄로 (빠른 열기 `이름:12` · `#제목`, 전체 검색 결과 — DESIGN §47). 편집기는 창 안의 state 라 이 길로 보낸다
 /** line: 1부터 세는 줄. col · len: 그 줄 안에서 고를 자리 (없으면 줄 앞에 커서) */
 export interface LineTarget {

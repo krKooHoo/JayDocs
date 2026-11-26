@@ -1657,6 +1657,32 @@ UI/UX 개편 B1 · B2(`docs/research/apple-uiux/ADOPT.md`). Jay 요청(2026-11-2
 - **미리보기 전용 모드**의 문서는 줄로 가도 편집기가 보이지 않아 자리가 보이지 않는다(보기 모드는 바꾸지 않는다).
 - CSV 의 따옴표 안 줄바꿈이 있으면 파일 줄 ≠ 행이라 표 행이 어긋날 수 있다.
 
+## 48. 트리 필터 (트리에서 Ctrl+F) (2026-11-26)
+
+UI/UX 개편 B3(`docs/research/apple-uiux/ADOPT.md`). `Ctrl+P` 는 이름 목록에서 고르고, 트리 필터는 **폴더 구조를 그대로 보며** 거른다(Xcode 내비게이터 필터). 원칙 확인: 1 맞음(`Ctrl+F` · `Esc` · 팔레트 · 맥락 메뉴), 2 맞음(이미 읽은 트리를 메모리에서 거른다 — 파일을 읽지 않는다), 4 · 5 맞음(가져온 폴더까지 한 트리에서 모은다), 3 · 6 · 7 상관없음(화면 상태, 저장하지 않는다).
+
+| # | 결정 | 근거 |
+|---|---|---|
+| TF1 | 트리에 포커스가 있을 때 **`Ctrl+F`** → 트리 막대 아래에 필터 칸이 열리고 포커스. 트리 막대의 **⌕** 단추 · 팔레트 **파일 트리: 이름으로 거르기** · 트리 맥락 메뉴도 같다(트리가 접혀 있으면 편다). 트리가 키를 받아 브라우저 찾기를 막는다 | ADOPT B3 — `Ctrl+F` 는 "이 영역에서 찾기"(편집기 · 그리드와 같다, PRINCIPLES 단축키 규칙 4) |
+| TF2 | 치는 대로 거른다: **이름에 그 글자가 든 항목**(대소문자 무시, 한글 NFC/NFD 같게)과 그 상위 폴더만 남기고, 상위 폴더는 펼쳐 보인다. 글자에 `/` 가 있으면 경로 전체에서 찾는다. **이름이 맞은 폴더는 안을 거르지 않는다**(그 폴더를 찾은 뒤 둘러본다 — 펼침은 사용자가 펴 둔 대로). 연 폴더 · 가져온 폴더 모두. 맞는 것이 없으면 "‘…’ 에 맞는 항목이 없습니다" | `lib/treeFilter.ts` `filterTree` — 순수 함수, 테스트 |
+| TF3 | 필터가 편 폴더는 필터 동안만 펼친다 — `←` · 클릭으로 접어도 사용자가 펼쳐 둔 상태(저장분)는 그대로. 글자가 바뀌면 다시 편다 | 필터를 지우면 원래 트리로 |
+| TF4 | 칸에서 `↓` · `Enter` → 걸러진 트리로(커서는 첫 맞은 항목). 글자를 바꾸면 커서가 첫 맞은 항목으로 간다. 필터는 트리를 돌아다니고 파일을 여는 동안 **그대로**다 | Xcode 와 같다 — 찾은 몇 개를 오가며 연다 |
+| TF5 | `Esc`(칸 · 트리) → 필터를 지우고 트리로. 커서의 항목은 상위 폴더를 펴서 그 자리에 보인다. 훑어보기 창이 떠 있으면 `Esc` 는 창을 먼저 닫는다. 칸 안의 `Ctrl+F` 는 글자를 고른다 | ADOPT B3 |
+| TF6 | **저장 안 한 것만** — 칸 옆 ● 단추 · 팔레트 **파일 트리: 저장 안 한 것만 보기 켜기 / 끄기** · 맥락 메뉴. 저장 안 한 파일과 그 상위 폴더만(글자와 같이 쓰면 둘 다 맞아야). 저장하면 목록에서 빠진다. 키는 주지 않는다 | ADOPT B3. 단축키 규칙 2 — 자주 쓰지 않는다 |
+| TF7 | 필터는 화면 상태다 — 저장하지 않고, 새로고침하면 없다 | 원칙 7 |
+
+코드: `lib/treeFilter.ts` · `.test.ts`, `components/FileTree.tsx`(칸 · 키 · 보이는 펼침 `shownOpen` · 다시 접은 폴더 `filterClosed`), `lib/nav.ts`(`requestTreeFilter` — 팔레트가 트리로 포커스를 보낸 뒤 보낸다), `Workbench.tsx`(팔레트 `treeFilter` · `treeFilterDirty`), `lib/contextMenu.ts`(트리 맥락 메뉴 끝에 두 명령), `styles.css`, `shortcuts-table.mjs`(`Ctrl+F` · `↓ · Enter` · `Esc` 줄, 안내 창 `hint`).
+
+### 48.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(실제 키 입력은 자동화): 트리에서 `Ctrl+F` → 칸에 포커스, `md` → docs 의 .md 셋 + `@가져온폴더` 의 문서, `↓ ↓ Enter` → 아이템.md 를 열고 필터 그대로, `Esc` → 원래 트리, 커서는 아이템.md. `item` → `data/Item` 폴더째(안의 tsv 셋), 커서는 `data/Item`, `←` 로 접기 · 펴기. `아이` → 아이템.md. 없는 글자 → 안내 줄. 문서를 고친 뒤 팔레트 "저장 안 한 것만" → docs/아이템.md 만, ● 켜짐. 편집기에서 팔레트 "이름으로 거르기" → 칸에 포커스(트리를 `Ctrl+B` 로 접은 뒤에도), `Esc` → 트리로. 트리 `Alt+Enter` 메뉴 끝에 두 명령(`Ctrl+F` 표시). 안내 창 트리 자리에 `Ctrl+F`. 콘솔 오류 없음.
+
+고친 것: 팔레트로 칸을 연 지 1초 안에 `Esc` 하면 포커스가 사라졌다(트리가 포커스를 받을 때 칸으로 보내는 요청이 남아 있었다) → 지울 때 요청도 지운다.
+
+### 48.2 확인하지 못한 것 (TESTCASES §42)
+
+- 실제 큰 폴더(수강생 제출물 — 항목 수천 개)에서 치는 동안의 속도, 설치한 Edge 앱 · Mac 의 `Ctrl+F` / ⌘F 가 브라우저 찾기 대신 칸을 여는지, 한글 IME 조합 중의 `Enter` · `Esc`.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

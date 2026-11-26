@@ -100,7 +100,7 @@ describe('자리의 키', () => {
     expect(keysAt('mdPreview', md({ mode: 'preview', mermaid: true }))).toContain('Ctrl+= / -')
   })
   it('트리 — 가져온 폴더의 루트 · 읽기 전용에서는 이름 바꾸기 · 삭제가 없다', () => {
-    expect(keysAt('tree', tree())).toEqual(expect.arrayContaining(['Enter', 'Ctrl+Enter', 'F2', 'Delete', 'Space']))
+    expect(keysAt('tree', tree())).toEqual(expect.arrayContaining(['Enter', 'Ctrl+Enter', 'F2', 'Delete', 'Space', 'Ctrl+F']))
     const ro = keysAt('tree', tree({ writable: false, mountAlias: 'a' }))
     expect(ro).not.toContain('F2')
     expect(ro).not.toContain('Delete')

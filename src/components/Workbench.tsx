@@ -4,7 +4,7 @@ import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
-import { paneAction, requestQuickLook, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
+import { paneAction, requestQuickLook, requestTreeFilter, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
 import { isTsvPath, store, useDirtyPaths } from '../store/documents'
 import { isMarkdownPath } from '../lib/cm'
 import { fileTypeOf } from '../lib/filetypes.mjs'
@@ -438,6 +438,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
     { id: 'openTreeCursorSide', label: '파일 트리 커서의 파일을 오른쪽 창에 열기', run: requestTreeOpenSide },
+    { id: 'treeFilter', label: '파일 트리: 이름으로 거르기 (트리 위 필터 칸)', run: () => { focusTree(); requestTreeFilter('focus') } },
+    { id: 'treeFilterDirty', label: '파일 트리: 저장 안 한 것만 보기 켜기 / 끄기', run: () => { focusTree(); requestTreeFilter('dirty') } },
     { id: 'quickLook', label: '훑어보기 (파일 트리 커서의 항목)', run: () => { focusTree(); requestQuickLook() } },
     { id: 'quickLookFolder', label: '폴더 훑어보기 (파일 트리에서 고른 폴더의 썸네일 격자)', run: () => { focusTree(); requestQuickLook('folder') } },
     { id: 'quickLookReset', label: '훑어보기 창 크기 · 배율 처음으로', run: () => { resetLookPrefs(); notify('훑어보기 창의 크기와 배율을 처음으로 되돌렸습니다') }, enabled: () => !isLookDefault() },
