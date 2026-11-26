@@ -275,15 +275,19 @@ function Workspace({ layoutId }: { layoutId: string }) {
    * 예전에는 이름을 다 치고 확인을 누른 뒤에야 백엔드가 거부했다. 마지막 판단은 여전히 백엔드가 한다.
    */
   const blockedReadOnly = (path: string, what: string) => {
+    const problem = readOnlyProblem(path, what)
+    if (problem === null) return false
+    notifyError(problem, { key: FILE_NOTICE })
+    return true
+  }
+
+  /** `blockedReadOnly` 의 이유만 — 창 안에서 친 경로를 검사할 때 (칸 아래에 보인다) */
+  const readOnlyProblem = (path: string, what: string): string | null => {
     const { alias } = splitRootPath(path)
     // 파일 하나만 가져온 곳은 그 파일을 고치는 것만 된다 (DESIGN §28)
-    if (store.inFileRoot(path)) {
-      notifyError(`파일 하나만 가져온 곳(@${alias})에서는 ${what} 수 없습니다 — 원래 폴더에서 하세요`, { key: FILE_NOTICE })
-      return true
-    }
-    if (store.readOnlyReason(path) !== 'mount') return false
-    notifyError(`읽기 전용으로 가져온 폴더(@${alias})에서는 ${what} 수 없습니다. 고치려면 트리에서 그 폴더를 오른쪽 클릭 → 읽기 전용 끄기`, { key: FILE_NOTICE })
-    return true
+    if (store.inFileRoot(path)) return `파일 하나만 가져온 곳(@${alias})에서는 ${what} 수 없습니다 — 원래 폴더에서 하세요`
+    if (store.readOnlyReason(path) !== 'mount') return null
+    return `읽기 전용으로 가져온 폴더(@${alias})에서는 ${what} 수 없습니다. 고치려면 트리에서 그 폴더를 오른쪽 클릭 → 읽기 전용 끄기`
   }
 
   /** 새 문서 창을 연다 (PLAN-skim SK8). 이름 검사 · 만들기는 창의 Enter 에서 `createDoc` 이 한다 */
@@ -318,6 +322,22 @@ function Workspace({ layoutId }: { layoutId: string }) {
     await refreshTree()
     // 만든 문서의 편집기로 포커스 — 바로 칠 수 있게 (DESIGN §24.7 X4). 창이 돌려준 포커스(트리 등)보다 뒤에 온다
     bench.current?.openFile(path, true)
+    return null
+  }, [refreshTree])
+
+  /** 새 문서 창에서 이름 끝에 `/` 를 쳤을 때 — 폴더를 만든다 (DESIGN §43, K3). 막힘 · 검사는 새 문서 · 새 폴더와 같다 */
+  const createFolderFromDialog = useCallback(async (path: string): Promise<string | null> => {
+    const problem = checkEntryPath(path, { kind: 'dir', exists: pathTaken }) ?? readOnlyProblem(path, '폴더를 만들')
+    if (problem) return problem
+    try {
+      await backend().mkdir(path)
+    } catch (e) {
+      return `만들지 못했습니다: ${(e as Error).message}`
+    }
+    setOverlay(null)
+    dismissNotice(FILE_NOTICE)
+    await refreshTree()
+    notify(`폴더를 만들었습니다: ${path}`, { key: FILE_NOTICE })
     return null
   }, [refreshTree])
 
@@ -839,7 +859,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         />
       )}
       {/* 닫으면 창이 스스로 부르던 곳(트리 · 편집기)으로 포커스를 돌려준다 — 이름 입력 대화상자와 같은 규칙 */}
-      {overlay?.kind === 'newDoc' && <NewDocDialog dir={overlay.dir} userTemplates={userTemplatePaths(tree)} onCreate={createDoc} onClose={() => setOverlay(null)} />}
+      {overlay?.kind === 'newDoc' && <NewDocDialog dir={overlay.dir} userTemplates={userTemplatePaths(tree)} onCreate={createDoc} onCreateFolder={createFolderFromDialog} onClose={() => setOverlay(null)} />}
     </div>
   )
 }

@@ -1442,6 +1442,27 @@ UI/UX 개편 A9(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 5 맞음(�
 - 실제 마우스 휠 · 트랙패드 핀치(트랙패드 핀치는 `Ctrl+휠` 로 온다 — 포커스가 있을 때만 다이어그램 확대).
 - 큰 다이어그램(노드 수십 개)에서 끌기의 부드러움, 설치한 Edge 앱.
 
+## 43. 새 폴더는 새 문서 창에서 (2026-11-26)
+
+UI/UX 개편 K3(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 1 — 네 키 `Ctrl+Alt+Shift+N` 을 없앤다, 규칙 2 — 새 폴더는 새 문서보다 드물다), 2 맞음(창 하나에서 이름만 치면 된다), 7 맞음(빈 폴더 하나를 만들 뿐), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| NF1 | 새 문서 창(`Ctrl+Alt+N`)의 이름이 `/` (또는 `\`)로 끝나면 문서 대신 **폴더**를 만든다. 칸 오른쪽 표시가 확장자 대신 `📁 폴더`, 단추가 **폴더 만들기** 가 된다. 창 안내 문구에 "끝에 `/` 를 치면(`자료/`) 폴더를 만듭니다" | 이미 있는 "이름 끝 `.txt` 면 그 형식" 과 같은 문법. 경로를 `/` 로 끝내는 것은 폴더라는 뜻이 이미 널리 쓰인다(VS Code 새 파일 입력 · 셸) |
+| NF2 | 검사는 트리의 새 폴더와 같다(`checkEntryPath` kind `dir` — 이미 있는 이름 · 빈 이름 · 절대 경로 · 못 쓰는 글자). 읽기 전용으로 가져온 폴더 · 파일 하나만 가져온 곳은 새 문서와 같은 문구로 막는다 — 창을 열 때(트리에서 고른 폴더)는 알림 줄에, 창 안에서 그런 곳의 경로를 친 경우는 칸 아래에 | 새 문서와 같은 규칙. 창을 연 뒤 다른 `@별칭` 을 쳐도 백엔드가 거부하기 전에 이유를 보인다 |
+| NF3 | 만들면 창을 닫고 트리를 새로 읽고 알림 줄에 "폴더를 만들었습니다: …". 포커스는 창을 열기 전 자리로(열 문서가 없다) | 새 폴더 대화상자와 같다 |
+| NF4 | **`Ctrl+Alt+Shift+N` 을 없앴다.** 트리의 ＋폴더 · 오른쪽 클릭 · 팔레트 "새 폴더"(`newFolder`)는 그대로 | ADOPT K3 |
+
+코드: `lib/templates.ts`(`newFolderPath`) · `.test.ts`, `NewDocDialog.tsx`(`onCreateFolder` · 칸 표시 · 단추 · 안내), `App.tsx`(`createFolderFromDialog` · `readOnlyProblem`), `shortcuts-table.mjs`, `docs/guide/getting-started.md`.
+
+### 43.1 확인한 것
+
+`npm test`(새 1건 — `newFolderPath`) · `npm run build` · `npm run lint`(새 경고 없음). dev `?opfs` + 내장 브라우저(키는 이벤트로): `Ctrl+Alt+N` → `docs/시험폴더K3/` → 칸 표시 `📁 폴더` · 단추 `폴더 만들기` → `Enter` → 창 닫힘, 트리에 폴더, 알림, 포커스 트리. 같은 이름 다시 → "이미 있는 이름", `/` 만 → "이름을 입력하세요", `a:b/` → 절대 경로 거부. `@가져온폴더` 를 읽기 전용으로 켜고 `@가져온폴더/시험K3/` → 칸 아래에 읽기 전용 문구. `Ctrl+Alt+Shift+N` → 아무것도 열리지 않음. 시험한 폴더는 지웠다.
+
+### 43.2 확인하지 못한 것 (TESTCASES §37)
+
+- 실제 폴더(디스크)에서 만들기 · 한글 조합 중 `/` 입력.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

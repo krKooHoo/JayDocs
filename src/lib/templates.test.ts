@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FILE_TYPES } from './filetypes.mjs'
-import { blankTemplateFor, fileNameOf, newDocPath, stripTypedExt, TEMPLATES, typedExt, userTemplatePaths } from './templates'
+import { blankTemplateFor, fileNameOf, newDocPath, newFolderPath,stripTypedExt, TEMPLATES, typedExt, userTemplatePaths } from './templates'
 import { parseTable, serializeTable } from './tsv/table'
 import { deriveSchema } from './tsv/schema'
 import { validateTable } from './tsv/validate'
@@ -115,6 +115,15 @@ describe('이름 칸 → 경로', () => {
   it('빈 칸 · / 로 끝나는 이름은 검사가 거부하게 남긴다', () => {
     expect(newDocPath('   ', '.md')).toBe('')
     expect(newDocPath('docs/', '.md')).toBe('docs/')
+  })
+
+  it('newFolderPath — / 나 \\ 로 끝나면 새 폴더 (K3)', () => {
+    expect(newFolderPath('docs/새 폴더/')).toBe('docs/새 폴더')
+    expect(newFolderPath(' 자료\\ ')).toBe('자료')
+    expect(newFolderPath('@MyGame/Assets//')).toBe('@MyGame/Assets')
+    expect(newFolderPath('/')).toBe('')
+    expect(newFolderPath('docs/메모')).toBeNull()
+    expect(newFolderPath('메모.txt')).toBeNull()
   })
 
   it('stripTypedExt — 끝의 지원 확장자만 뗀다', () => {

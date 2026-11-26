@@ -22,8 +22,7 @@ export const SHORTCUTS = [
       { keys: 'F1', label: '단축키 도움말 — 열리면 검색 칸에 포커스, 글자를 치면 키 · 설명으로 거른다', command: 'help' },
       { keys: 'Ctrl+S', label: '저장', command: 'save' },
       { keys: 'Ctrl+Shift+S', label: '모두 저장', command: 'saveAll' },
-      { keys: 'Ctrl+Alt+N', label: '새 문서 창 — 빈 문서 · 예시 · 내 템플릿(_templates/)에서 골라 이름을 넣어 만든다 (트리에서 고른 폴더 아래)', command: 'newFile' },
-      { keys: 'Ctrl+Alt+Shift+N', label: '새 폴더 (트리에서 고른 폴더 아래)', command: 'newFolder' },
+      { keys: 'Ctrl+Alt+N', label: '새 문서 창 — 빈 문서 · 예시 · 내 템플릿(_templates/)에서 골라 이름을 넣어 만든다 (트리에서 고른 폴더 아래). 이름 끝에 / 를 치면 새 폴더', command: 'newFile' },
       { keys: 'Ctrl+Shift+O', label: '폴더 가져오기 — 다른 폴더를 원래 자리에서 @별칭 으로 열기 (해제·읽기 전용은 트리 오른쪽 클릭 또는 팔레트). 파일 탐색기에서 폴더를 파일 트리에 끌어다 놓아도 된다', command: 'importFolder' },
       { keys: 'Ctrl+Alt+I', label: '파일 가져오기 — 파일 하나를 원래 자리에서 @별칭 으로 열기 (그 파일을 고치는 것만 된다). 파일 탐색기에서 파일을 파일 트리에 끌어다 놓아도 된다', command: 'importFile' },
       { keys: 'Ctrl+Alt+D', label: '다크 / 라이트 전환', command: 'toggleTheme' },
@@ -43,7 +42,7 @@ export const SHORTCUTS = [
   },
   {
     scope: '새 문서 창',
-    intro: 'Ctrl+Alt+N · 트리의 ＋파일 · 빈 화면의 "새 파일" 로 연다. 포커스는 늘 이름 칸에 있고(기본 이름 "새 문서" 가 선택되어 있다) 처음 선택은 빈 마크다운이라, 이름을 치고 Enter 면 빈 .md 가 생긴다. 확장자는 고른 템플릿을 따르고, 이름 끝에 .txt 처럼 치면 그 형식의 빈 문서로 옮겨 간다. 주 폴더의 _templates/ 바로 아래 파일은 "내 템플릿" 줄에 뜬다 (팔레트의 "현재 문서를 템플릿으로 저장" 으로 넣는다). 떠 있는 동안 전역 단축키는 동작하지 않는다.',
+    intro: 'Ctrl+Alt+N · 트리의 ＋파일 · 빈 화면의 "새 파일" 로 연다. 포커스는 늘 이름 칸에 있고(기본 이름 "새 문서" 가 선택되어 있다) 처음 선택은 빈 마크다운이라, 이름을 치고 Enter 면 빈 .md 가 생긴다. 확장자는 고른 템플릿을 따르고, 이름 끝에 .txt 처럼 치면 그 형식의 빈 문서로 옮겨 간다. 이름 끝에 / 를 치면(자료/) 문서 대신 폴더를 만든다 — 새 폴더는 이 창 · 트리의 ＋폴더 · 오른쪽 클릭 · 팔레트 "새 폴더" 로. 주 폴더의 _templates/ 바로 아래 파일은 "내 템플릿" 줄에 뜬다 (팔레트의 "현재 문서를 템플릿으로 저장" 으로 넣는다). 떠 있는 동안 전역 단축키는 동작하지 않는다.',
     items: [
       { keys: '↑ / ↓', label: '템플릿 고르기 — 빈 문서 → 예시 → 내 템플릿 줄을 넘어 이어진다 (카드 클릭도 같고, 두 번 누르면 만든다)' },
       { keys: 'Enter', label: '만들기 — 틀린 이름 · 이미 있는 이름이면 닫지 않고 칸 아래에 이유. 한글 조합 중의 Enter 는 조합 확정' },
