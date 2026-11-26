@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MountInfo, TreeEntry } from '../lib/backend'
-import { keysOf, runCommand, tip } from '../lib/commands'
+import { keysOf, registerCommands, runCommand, tip } from '../lib/commands'
+import { registerSpotReader, type SpotReader, type TreeSpot } from '../lib/contextMenu'
 import { DOC_EXTS_LABEL, fileTypeOf } from '../lib/filetypes.mjs'
 import { splitRootPath } from '../lib/roots.mjs'
 import { onQuickLookRequest, onTreeCursor, onTreeOpenSide, type QuickLookMode } from '../lib/nav'
@@ -8,7 +9,7 @@ import { ancestorDirs, loadExpanded, pruneExpanded, saveExpanded } from '../lib/
 import { lookResizeKey, lookZoomKey } from '../lib/skim/look'
 import { QuickLook, type QuickLookHandle } from './QuickLook'
 
-/** 트리 오른쪽 클릭의 폴더·경로 동작 */
+/** 트리 맥락 메뉴(팔레트 명령)의 폴더·경로 동작 */
 export type RootAction = 'unmount' | 'toggleReadOnly' | 'refresh' | 'copyPath' | 'editRoot'
 
 interface Props {
@@ -29,13 +30,6 @@ interface Props {
   onRootAction: (action: RootAction, path: string) => void
   /** 트리에서 고른 폴더가 바뀔 때 — 새 파일·새 폴더 단축키의 기본 위치가 된다 */
   onSelectDir?: (dir: string) => void
-}
-
-interface Menu {
-  x: number
-  y: number
-  path: string
-  isDir: boolean
 }
 
 interface FlatRow {
@@ -70,11 +64,9 @@ export function FileTree(p: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selectedDir, setSelectedDir] = useState('')
   const [initialized, setInitialized] = useState(false)
-  const [menu, setMenu] = useState<Menu | null>(null)
   /** 키보드 커서 (경로) */
   const [cursor, setCursor] = useState<string | null>(null)
   const body = useRef<HTMLDivElement>(null)
-  const menuBox = useRef<HTMLDivElement>(null)
   /** 훑어보기 창 (PLAN-skim Phase D) — 커서의 항목을 열지 않고 트리 오른쪽에 크게. 포커스는 트리에 남는다 */
   const [quickLook, setQuickLook] = useState(false)
   const quickLookBox = useRef<QuickLookHandle>(null)
@@ -94,34 +86,6 @@ export function FileTree(p: Props) {
   // 고른 폴더를 앱에 알린다 (Ctrl+Alt+N / Ctrl+Alt+Shift+N 이 이 폴더에 만든다)
   const onSelectDir = p.onSelectDir
   useEffect(() => { onSelectDir?.(selectedDir) }, [selectedDir, onSelectDir])
-
-  // 메뉴가 창 밖으로 나가지 않게 + 열리면 첫 항목에 포커스 (키보드로 바로 고르게)
-  useLayoutEffect(() => {
-    if (!menu || !menuBox.current) return
-    const { width, height } = menuBox.current.getBoundingClientRect()
-    menuBox.current.style.left = `${Math.max(4, Math.min(menu.x, window.innerWidth - width - 4))}px`
-    menuBox.current.style.top = `${Math.max(4, Math.min(menu.y, window.innerHeight - height - 4))}px`
-    menuBox.current.querySelector<HTMLElement>('button')?.focus()
-  }, [menu])
-
-  /** 메뉴를 닫고 트리로 포커스를 돌려준다 (Esc · 항목 실행) */
-  const closeMenu = () => { setMenu(null); body.current?.focus() }
-
-  const onMenuKeyDown = (e: React.KeyboardEvent) => {
-    const items = [...(menuBox.current?.querySelectorAll<HTMLElement>('button') ?? [])]
-    if (!items.length) return
-    const i = items.indexOf(document.activeElement as HTMLElement)
-    const move = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length].focus() }
-    switch (e.key) {
-      case 'ArrowDown': move(i + 1); break
-      case 'ArrowUp': move(i < 0 ? items.length - 1 : i - 1); break
-      case 'Tab': move(e.shiftKey ? i - 1 : i + 1); break
-      case 'Home': move(0); break
-      case 'End': move(items.length - 1); break
-      case 'Escape': e.preventDefault(); e.stopPropagation(); closeMenu(); break
-      default: break
-    }
-  }
 
   // 팔레트 명령 "훑어보기" · "폴더 훑어보기" (lib/nav requestQuickLook) — 트리로 포커스를 보낸 뒤 오는 요청이다
   useEffect(() => onQuickLookRequest((mode) => {
@@ -175,14 +139,8 @@ export function FileTree(p: Props) {
     const mount = alias === null ? null : mounts.get(alias) ?? null
     return { mount, isRoot: !!mount && rel === '' }
   }
-
-  useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(null)
-    window.addEventListener('mousedown', close)
-    window.addEventListener('blur', close)
-    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('blur', close) }
-  }, [menu])
+  const mountOfRef = useRef(mountOf)
+  mountOfRef.current = mountOf
 
   const rows = useMemo(() => flatten(p.entries, expanded), [p.entries, expanded])
   const cursorRow = rows.find((r) => r.entry.path === cursor) ?? null
@@ -224,9 +182,10 @@ export function FileTree(p: Props) {
   const toggle = (path: string) =>
     setExpanded((s) => { const n = new Set(s); if (n.has(path)) n.delete(path); else n.add(path); return n })
 
-  const openMenu = (x: number, y: number, path: string, isDir: boolean) => {
-    setMenu({ x, y, path, isDir })
-    setCursor(path)
+  /** 오른쪽 클릭한 항목으로 커서 · 고른 폴더를 옮긴다 — 맥락 메뉴의 명령이 그 항목에 돈다 */
+  const pointAt = (path: string, isDir: boolean) => {
+    setLookRoot(false)
+    if (path) setCursor(path)
     setSelectedDir(isDir ? path : parentOf(path))
   }
 
@@ -297,8 +256,54 @@ export function FileTree(p: Props) {
   // 창이 닫히면 루트 보기도 끝
   useEffect(() => { if (!quickLook) setLookRoot(false) }, [quickLook])
 
+  // ---- 맥락 메뉴 (DESIGN §40). 메뉴는 앱이 띄우고, 트리는 "지금 자리" 와 커서 항목에 도는 팔레트 명령을 준다
+  /** 커서(오른쪽 클릭이면 누른 항목)의 자리. 트리의 빈 자리 · 빈 트리는 주 폴더 루트('') */
+  const readSpot = (target: Element, point: { x: number; y: number } | null): TreeSpot => {
+    let path: string | null = cursorRow?.entry.path ?? null
+    let isDir = cursorRow?.entry.type === 'dir'
+    if (point && body.current?.contains(target)) {
+      const rowEl = target.closest<HTMLElement>('[data-path]')
+      const hit = rowEl ? rows.find((r) => r.entry.path === rowEl.dataset.path) : undefined
+      path = hit ? hit.entry.path : ''
+      isDir = hit ? hit.entry.type === 'dir' : true
+      pointAt(path, isDir)
+    }
+    if (path === null) { path = ''; isDir = true }
+    const { mount, isRoot } = mountOf(path)
+    const rowEl = path ? body.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(path)}"]`) : null
+    const rect = rowEl?.getBoundingClientRect()
+    return {
+      zone: 'tree',
+      title: path === '' ? '(루트)' : isRoot ? mount!.path ?? mount!.folder : path,
+      anchor: rect && rect.height ? { x: rect.left + 40, y: rect.bottom } : undefined,
+      path,
+      isDir,
+      mountAlias: mount?.alias ?? null,
+      isMountRoot: isRoot,
+      fileMount: !!mount?.file,
+      writable: !mount?.readOnly,
+    }
+  }
+  const spotRef = useRef<SpotReader>(() => null)
+  spotRef.current = readSpot
+  useEffect(() => (treeBox ? registerSpotReader(treeBox, (t, pt) => spotRef.current(t, pt)) : undefined), [treeBox])
+
+  /** 커서 항목에 도는 팔레트 명령 (맥락 메뉴의 항목도 이것). 가져온 폴더의 루트는 이름 바꾸기 · 지우기가 없다 (해제는 따로) */
+  const cursorRef = useRef(cursorRow)
+  cursorRef.current = cursorRow
+  const actRef = useRef(p)
+  actRef.current = p
+  useEffect(() => {
+    const cur = () => cursorRef.current?.entry ?? null
+    const changeable = () => { const e = cur(); return !!e && !e.mount && !mountOfRef.current(e.path).mount?.readOnly }
+    return registerCommands([
+      { id: 'treeRename', label: '파일 트리: 커서 항목 이름 바꾸기 / 옮기기', run: () => { const e = cur(); if (e && !e.mount) { setQuickLook(false); actRef.current.onRename(e.path, e.type === 'dir') } }, enabled: changeable },
+      { id: 'treeDelete', label: '파일 트리: 커서 항목 삭제', run: () => { const e = cur(); if (e && !e.mount) { setQuickLook(false); actRef.current.onDelete(e.path, e.type === 'dir') } }, enabled: changeable },
+      { id: 'treeCopyPath', label: '파일 트리: 커서 항목의 전체 경로 복사', run: () => { const e = cur(); if (e) actRef.current.onRootAction('copyPath', e.path) }, enabled: () => !!cur() },
+    ])
+  }, [])
+
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (menu) return
     const plain = !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
     const idx = cursorRow ? rows.indexOf(cursorRow) : -1
     const go = (i: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, i))]; if (r) { setLookRoot(false); setCursor(r.entry.path); setSelectedDir(r.entry.type === 'dir' ? r.entry.path : r.parent) } }
@@ -341,6 +346,8 @@ export function FileTree(p: Props) {
         return
       }
       case 'Enter':
+        // Alt+Enter 는 맥락 메뉴 (전역 — DESIGN §40)
+        if (e.altKey) return
         e.preventDefault()
         // Ctrl+Enter — 파일을 오른쪽 창에 (훑어보기 창이 떠 있으면 닫는다). 폴더는 그냥 Enter 와 같다
         if (cursorRow && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && cursorRow.entry.type === 'file') {
@@ -393,16 +400,6 @@ export function FileTree(p: Props) {
         // 가져온 폴더의 루트는 지우지 않는다 (해제는 메뉴에서)
         if (cursorRow && !cursorRow.entry.mount) p.onDelete(cursorRow.entry.path, cursorRow.entry.type === 'dir')
         return
-      case 'F10':
-      case 'ContextMenu':
-        if (e.key === 'F10' && !e.shiftKey) return
-        e.preventDefault()
-        if (cursorRow && body.current) {
-          const el = body.current.querySelector<HTMLElement>(`[data-path="${CSS.escape(cursorRow.entry.path)}"]`)
-          const rect = el?.getBoundingClientRect()
-          openMenu(rect ? rect.left + 40 : 100, rect ? rect.bottom : 100, cursorRow.entry.path, cursorRow.entry.type === 'dir')
-        }
-        return
       default:
         return
     }
@@ -423,7 +420,6 @@ export function FileTree(p: Props) {
           style={indent}
           title={m ? `${m.file ? '가져온 파일 — 그 파일을 고치는 것만 됩니다' : '가져온 폴더'}${m.readOnly ? ' (읽기 전용)' : ''}\n${m.path ?? m.folder}` : undefined}
           onClick={() => activate(row)}
-          onContextMenu={(ev) => { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, e.path, true) }}
         >
           <span className="tree-caret">{open ? '▾' : '▸'}</span>
           {m && <span className="tree-mount-icon">{m.readOnly ? '🔒' : '🔗'}</span>}
@@ -441,7 +437,6 @@ export function FileTree(p: Props) {
         style={indent}
         title={e.path}
         onClick={() => activate(row)}
-        onContextMenu={(ev) => { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, e.path, false) }}
       >
         <span className="tree-icon">{fileIcon(e.name)}</span>
         <span className="tree-name">{e.name}</span>
@@ -478,7 +473,6 @@ export function FileTree(p: Props) {
           quickLookAsked.current = 0
         }}
         onBlur={(ev) => { if (quickLook) onFocusLeave(ev.relatedTarget as Element | null) }}
-        onContextMenu={(ev) => { if (ev.target === ev.currentTarget) { ev.preventDefault(); openMenu(ev.clientX, ev.clientY, '', true) } }}
       >
         {p.entries.length === 0 && (
           // 빈 문서 폴더 (DESIGN §35): 무엇을 할 수 있는지 키와 함께. 단추는 Tab 순서에 넣지 않는다 — 키보드는 적힌 키로
@@ -494,27 +488,6 @@ export function FileTree(p: Props) {
       {quickLook && lookEntry && (
         <QuickLook ref={quickLookBox} entry={lookEntry} anchor={treeBox} onFocusOut={onFocusLeave} onPick={onLookPick} onUp={onLookUp} onBack={() => body.current?.focus()} onNewFile={p.onNewFile} onOpenFile={openFrom} />
       )}
-      {menu && (() => {
-        const { mount, isRoot } = mountOf(menu.path)
-        const writable = !mount?.readOnly
-        const isPrimary = menu.path === ''
-        const act = (a: RootAction) => { closeMenu(); p.onRootAction(a, menu.path) }
-        return (
-          <div className="ctx-menu" role="menu" ref={menuBox} style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()} onKeyDown={onMenuKeyDown}>
-            <div className="ctx-title">{isPrimary ? '(루트)' : isRoot ? mount!.path ?? mount!.folder : menu.path}</div>
-            {!isPrimary && <button onClick={() => { closeMenu(); setQuickLook(true) }}>훑어보기 <kbd>Space</kbd></button>}
-            {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFile(menu.path) }}>＋ 새 파일</button>}
-            {menu.isDir && writable && <button onClick={() => { closeMenu(); p.onNewFolder(menu.path) }}>＋ 새 폴더</button>}
-            {!isRoot && writable && !menu.isDir && <button onClick={() => { closeMenu(); p.onRename(menu.path, false) }}>이름 바꾸기 / 옮기기 <kbd>F2</kbd></button>}
-            <button onClick={() => act('copyPath')}>전체 경로 복사</button>
-            {(isRoot || isPrimary) && <button onClick={() => act('editRoot')}>{isPrimary ? '별칭 · 상세 경로 편집' : '상세 경로 편집'}</button>}
-            {!isRoot && !isPrimary && writable && <button className="is-danger" onClick={() => { closeMenu(); p.onDelete(menu.path, menu.isDir) }}>삭제 <kbd>Del</kbd></button>}
-            {isRoot && <button onClick={() => act('toggleReadOnly')}>{mount!.readOnly ? '읽기 전용 끄기' : '읽기 전용 켜기'}</button>}
-            {isRoot && <button onClick={() => act('refresh')}>새로 고침</button>}
-            {isRoot && <button onClick={() => act('unmount')}>가져오기 해제 (파일은 그대로)</button>}
-          </div>
-        )
-      })()}
     </div>
   )
 }

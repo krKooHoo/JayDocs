@@ -5,13 +5,14 @@ import { backend } from '../../lib/backend'
 import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
-import { deleteColumns, deleteRows, duplicateRows, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
+import { deleteColumns, deleteRows, duplicateRows, fillDown, fillRight, insertColumns, insertRows, moveColumns, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
 import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { parseFieldBlocks } from '../../lib/tsv/field'
 import { PathBar, type PathTail } from '../PathBar'
 import { DocStatus } from '../DocStatus'
 import { usePaneCommands } from '../usePaneCommands'
+import { anchorOf, registerSpotReader, type GridSpot, type SpotReader } from '../../lib/contextMenu'
 import { summarizeRange, summaryParts, useSummaryKeys } from '../../lib/tsv/summary'
 import { sanitizeFor } from '../../lib/tsv/table'
 import { issueKey, validateTable } from '../../lib/tsv/validate'
@@ -417,6 +418,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'gridColLeft': colOp('left', currentRange()); break
       case 'gridColRight': colOp('right', currentRange()); break
       case 'gridColDel': colOp('del', currentRange()); break
+      case 'gridFillDown': { const g = currentRange(); edit((t) => fillDown(t, g)); refocus(); break }
+      case 'gridFillRight': { const g = currentRange(); edit((t) => fillRight(t, g)); refocus(); break }
       case 'gridFind': openFind(false); break
       case 'gridReplace': openFind(true); break
       case 'gridCalcFile': if (hasCalc) openPath(calcPath); else void createCalc(); break
@@ -427,6 +430,32 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     }
   }
   usePaneCommands(paneRoot, runPane)
+
+  // 맥락 메뉴의 자리 (DESIGN §40) — 고른 범위 · 편집 중인가. 메뉴는 활성 셀(입력 칸) 아래에 뜬다
+  const spotRef = useRef<SpotReader>(() => null)
+  spotRef.current = (): GridSpot | null => {
+    if (!table) return null
+    const g = currentRange()
+    const wholeCols = table.rows.length > 0 && g.r1 === 0 && g.r2 === table.rows.length - 1
+    const at = (r: number, c: number) => `${columnLetter(c)}${r + 1}`
+    let where = g.r1 === g.r2 && g.c1 === g.c2 ? at(g.r1, g.c1) : `${at(g.r1, g.c1)}:${at(g.r2, g.c2)}`
+    if (wholeCols) where = g.c1 === g.c2 ? `${columnLetter(g.c1)}열` : `${columnLetter(g.c1)}:${columnLetter(g.c2)}열`
+    const input = paneRoot.current?.querySelector<HTMLElement>('.grid-input')
+    return {
+      zone: 'grid',
+      title: `${baseName(path)} · ${where}`,
+      anchor: anchorOf(input),
+      editing: !!input?.classList.contains('is-editing'),
+      readOnly: store.isReadOnly(path),
+      empty: table.rows.length === 0,
+      wholeCols,
+    }
+  }
+  const hasTable = !!table
+  useEffect(() => {
+    const el = paneRoot.current
+    return el ? registerSpotReader(el, (t, pt) => spotRef.current(t, pt)) : undefined
+  }, [hasTable])
 
   // 문서 상태 줄 (DESIGN §32): 활성 셀의 이름 · 열 · 타입 · 검증 오류 · Field 설명, 여러 칸을 고르면 선택 요약
   const summaryKeys = useSummaryKeys()

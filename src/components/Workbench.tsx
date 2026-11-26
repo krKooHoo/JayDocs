@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
 import { keysOf, registerCommands, runCommand } from '../lib/commands'
@@ -23,6 +23,8 @@ import { confirmConvertToUtf8 } from './ReadOnlyBanner'
 import { EditorView } from '@codemirror/view'
 import { revertTextInView } from '../lib/revert'
 import { PANE_COMMANDS } from '../lib/paneCommands'
+import { registerSpotReader, type SpotReader, type TabSpot } from '../lib/contextMenu'
+import { currentLink, currentTsvView } from './mdContext'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string][] = [
@@ -319,6 +321,15 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (tab) void closeTab(tab.getId())
   }, [activeTab, closeTab])
 
+  /** 다른 탭 닫기 — 같은 탭 묶음에서 활성 탭만 남긴다. 저장 안 한 탭은 하나씩 묻는다 (취소하면 그 탭은 남는다) */
+  const closeOthers = useCallback(async () => {
+    const tab = activeTab()
+    const ts = activeTabSet()
+    if (!tab || !ts) return
+    for (const t of [...ts.getChildren()] as TabNode[]) if (t !== tab) await closeTab(t.getId())
+    if (model.getNodeById(tab.getId())) { selectTab(tab); focusTabPane(tab.getId()) }
+  }, [activeTab, activeTabSet, closeTab, model, selectTab])
+
   /** 패널을 접거나 편다. show=true 면 펴기만. 이미 열려 있었으면 true */
   const toggleBorder = useCallback((component: string, show = false): boolean => {
     const hit = findBorder(model, component)
@@ -416,6 +427,11 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'prevTab', label: '이전 탭', run: () => cycleTab(-1) },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `tab${i + 1}`, label: `${i + 1}번째 탭`, hidden: true, run: () => selectTabIndex(i) })),
     { id: 'closeTab', label: '탭 닫기', run: closeActive },
+    { id: 'closeOtherTabs', label: '다른 탭 닫기 (같은 탭 묶음에서 이 탭만 남긴다)', run: () => void closeOthers(), enabled: () => (activeTabSet()?.getChildren().length ?? 0) > 1 },
+    // 커서 · 포커스의 문서 링크 · tsv-view (맥락 메뉴 · DESIGN §40) — 미리보기의 링크에 포커스가 있으면 그것, 아니면 마지막 마크다운 편집기의 커서
+    { id: 'openLinkAtCursor', label: '커서의 링크 열기 (문서 링크)', run: () => { const t = currentLink(); if (t) openFile(t, true) }, enabled: () => currentLink() !== null },
+    { id: 'openLinkAtCursorSide', label: '커서의 링크를 오른쪽 창에 열기', run: () => { const t = currentLink(); if (t) openFileSide(t) }, enabled: () => currentLink() !== null },
+    { id: 'openTsvViewGrid', label: 'tsv-view 의 표를 그리드로 열기 (커서의 tsv-view 펜스 · 고른 셀)', run: () => { const t = currentTsvView(); if (t) openFile(t, true) }, enabled: () => currentTsvView() !== null },
     // 트리에 포커스가 있을 때 접으면 포커스가 body 로 빠진다 — 문서 창(없으면 빈 화면 안내)으로 보낸다
     { id: 'toggleTree', label: '파일 트리 접기 / 펴기', run: () => { toggleBorder('tree'); window.setTimeout(() => { const ae = document.activeElement as HTMLElement | null; if (!ae || ae === document.body || ae.offsetParent === null) focusEditor() }, 60) } },
     { id: 'focusTree', label: '파일 트리로 포커스', run: focusTree },
@@ -443,7 +459,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim])
 
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()
@@ -583,6 +599,23 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (tab) focusTabPane(tab.getId())
   }
 
+  // 탭 제목의 맥락 메뉴 자리 (DESIGN §40). 오른쪽 클릭한 탭을 먼저 고른다 — 메뉴의 명령은 활성 탭에 돈다
+  const wrap = useRef<HTMLDivElement>(null)
+  const tabSpot = useRef<SpotReader>(() => null)
+  tabSpot.current = (target, point): TabSpot | null => {
+    const button = target.closest<HTMLElement>('[id^="flexlayout-tabbutton-"]')
+    if (!button) return null
+    const tab = docTabs().find((t) => tabButtonId(t.getId()) === button.id)
+    if (!tab) return null
+    if (point) selectTab(tab)
+    const r = button.getBoundingClientRect()
+    return { zone: 'tab', title: tab.getName(), anchor: { x: r.left + 8, y: r.bottom + 2 }, path: (tab.getConfig()?.path as string | undefined) ?? null }
+  }
+  useEffect(() => {
+    const el = wrap.current
+    return el ? registerSpotReader(el, (t, pt) => tabSpot.current(t, pt)) : undefined
+  }, [])
+
   const onModelChange = (m: Model, action: Action) => {
     try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
     setActiveDoc(activePath())
@@ -613,7 +646,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
 
   // display: contents — 레이아웃엔 영향이 없고 탭 제목 클릭만 받는다
   return (
-    <div style={{ display: 'contents' }} onClick={onLayoutClick}>
+    <div ref={wrap} style={{ display: 'contents' }} onClick={onLayoutClick}>
       <DocPaneCountContext.Provider value={paneCount}>
         <Layout
           model={model}

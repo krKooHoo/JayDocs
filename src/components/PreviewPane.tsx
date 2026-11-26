@@ -398,7 +398,8 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
       case 'ArrowLeft': e.preventDefault(); moveSel('left'); return
       case 'ArrowRight': e.preventDefault(); moveSel('right'); return
       case 'Tab': e.preventDefault(); moveSel(e.shiftKey ? 'left' : 'right'); return
-      case 'Enter': case 'F2': e.preventDefault(); startEdit('edit'); return
+      case 'Enter': if (e.altKey) return; e.preventDefault(); startEdit('edit'); return // Alt+Enter 는 맥락 메뉴
+      case 'F2': e.preventDefault(); startEdit('edit'); return
       case 'Escape': e.preventDefault(); setSel(null); return
       case 'Delete': case 'Backspace': {
         e.preventDefault()
@@ -429,7 +430,7 @@ export function TsvView({ body, mdPath }: { body: string; mdPath: string }) {
   const isMermaid = spec.render === 'mermaid'
 
   return (
-    <div className={'tsv-view' + (isMermaid ? ' is-mermaid' : '')}>
+    <div className={'tsv-view' + (isMermaid ? ' is-mermaid' : '')} data-tsv-file={file}>
       <div className="tsv-view-bar">
         <span className="tsv-view-file" onClick={() => openPath(file)} title="그리드에서 열기">⊞ {file}</span>
         <span className="tsv-view-count">{result.rows.length}{result.rows.length !== result.total ? ` / ${result.total}` : ''}행</span>
@@ -599,7 +600,8 @@ export function mdComponents(mdPath: string, weight: MdWeight = 'rich'): Compone
       if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('#')) {
         const target = resolveLink(href.split('#')[0], mdPath)
         if (isDocName(target)) {
-          return <a href={href} {...rest} onClick={(e) => { e.preventDefault(); openPath(target) }}>{children}</a>
+          // data-doc-link: 맥락 메뉴 · 팔레트의 "링크 열기 · 오른쪽 창에 열기" 가 읽는다 (DESIGN §40)
+          return <a href={href} data-doc-link={target} {...rest} onClick={(e) => { e.preventDefault(); openPath(target) }}>{children}</a>
         }
       }
       return <a href={href} target="_blank" rel="noreferrer" {...rest}>{children}</a>

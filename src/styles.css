@@ -273,16 +273,6 @@ button.tree-search {
 .tree-warn { color: var(--dirty); font-size: 11px; margin-left: 4px; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 
-/* ---- 트리 컨텍스트 메뉴 ---- */
-.ctx-menu {
-  position: fixed; z-index: 100; min-width: 200px; padding: 4px 0;
-  background: var(--elev); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow);
-}
-.ctx-menu .ctx-title { padding: 4px 10px 6px; color: var(--muted); font-size: 11px; border-bottom: 1px solid var(--border); margin-bottom: 3px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctx-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 5px 12px; }
-.ctx-menu button:hover, .ctx-menu button:focus { background: var(--hover); outline: none; }
-.ctx-menu button.is-danger { color: var(--danger); }
-
 /* ---- flexlayout 보정 ---- */
 .flexlayout__layout { font-family: var(--font); font-size: 13px; }
 .flexlayout__tab { background: var(--bg); overflow: hidden; }
@@ -501,6 +491,13 @@ button.tree-search {
 .palette-hint { color: var(--muted); font-size: 11px; font-family: var(--mono); white-space: nowrap; }
 .palette-recent { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .palette-empty { padding: 14px; color: var(--muted); }
+/* 맥락 메뉴 (Alt+Enter · Shift+F10 · 오른쪽 클릭, DESIGN §40) — 팔레트 틀을 자리 옆에 작게. 어둡게 덮지 않는다 */
+.overlay.is-menu { background: transparent; display: block; padding: 0; }
+.palette.is-menu { position: fixed; width: min(380px, 92vw); max-height: min(62vh, 480px); border-radius: 6px; }
+.palette.is-menu .palette-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette.is-menu .palette-input { margin: 5px 8px; padding: 4px 8px; font-size: 13px; }
+.palette.is-menu .palette-item { padding: 4px 12px; }
+.palette.is-menu kbd.palette-hint { font-size: 11px; }
 /* 폴더 가져오기 */
 .palette.import { max-height: 80vh; }
 .import-row { display: flex; align-items: center; gap: 8px; padding: 0 10px; }
@@ -582,7 +579,7 @@ button.is-primary { background: var(--accent); color: var(--badge-fg); border-co
 @media (forced-colors: active) {
   :root .tree-body:focus-visible, :root .empty-pane:focus-visible, :root .preview:focus-visible, :root .outline-list:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
   :root .path-bar button.path-seg:focus-visible, :root .skim-resizer:focus-visible { outline: 2px solid Highlight; outline-offset: 1px; }
-  :root .palette-item.is-hl, :root .path-item.is-hl, :root .grid-dropdown div.is-hl, :root .tree-body:focus .tree-row.is-cursor, :root .outline-item.is-cursor, :root .ctx-menu button:focus, :root .ql-card:focus {
+  :root .palette-item.is-hl, :root .path-item.is-hl, :root .grid-dropdown div.is-hl, :root .tree-body:focus .tree-row.is-cursor, :root .outline-item.is-cursor, :root .ql-card:focus {
     forced-color-adjust: none; background: Highlight; color: HighlightText;
   }
   :root .tree-row.is-cursor, :root .tree-row.is-active, :root .outline-item.is-active { outline: 1px solid CanvasText; outline-offset: -1px; }

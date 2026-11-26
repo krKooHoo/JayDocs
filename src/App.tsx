@@ -34,6 +34,7 @@ import { useTreeDrop } from './lib/treeDrop'
 import { copyText } from './lib/copyText'
 import { DOC_EXTS_LABEL, fileTypeOf } from './lib/filetypes.mjs'
 import { recentCommands, recentFiles, recentRanks, recordRecentCommand } from './lib/recents'
+import { anchorOf, availableContextCommands, spotAt, type SpotAnchor } from './lib/contextMenu'
 
 type Phase =
   | { kind: 'loading' }
@@ -159,11 +160,13 @@ type Overlay =
   | { kind: 'rootInfo'; root: RootDetail; guess: string; copyPath?: string }
   /** 새 문서 창 (PLAN-skim SK8). dir: 트리에서 고른 폴더 */
   | { kind: 'newDoc'; dir: string }
+  /** 맥락 메뉴 (DESIGN §40) — 연 때 계산한 자리의 명령 */
+  | { kind: 'context'; title: string; items: PaletteItem[]; anchor: SpotAnchor }
   | null
 
 /** 그 창을 여는 명령 — 떠 있는 동안 같은 키를 다시 누르면 닫는다 (DESIGN §24.7 X5) */
 const OVERLAY_COMMAND: Partial<Record<NonNullable<Overlay>['kind'], string>> = {
-  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder', newDoc: 'newFile',
+  palette: 'palette', files: 'fileSearch', help: 'help', import: 'importFolder', newDoc: 'newFile', context: 'contextMenu',
 }
 /** 찾아보는 창(팔레트 · 파일 검색 · 도움말)끼리는 서로의 키로 바로 넘어간다. 입력을 받는 창(가져오기 · 폴더 정보 · 연결 도우미)에서는 안 넘어간다 */
 const LOOKUP_OVERLAYS = new Set(['palette', 'files', 'help'])
@@ -659,7 +662,56 @@ function Workspace({ layoutId }: { layoutId: string }) {
   useEffect(() => registerCommands((mounts ?? []).flatMap((m) => [
     { id: `unmount:${m.alias}`, label: `가져온 폴더 해제 — @${m.alias}`, run: () => void unmount(m.alias) },
     { id: `toggleReadOnly:${m.alias}`, label: `${m.readOnly ? '읽기 전용 끄기' : '읽기 전용 켜기'} — @${m.alias}`, run: () => void toggleReadOnly(m.alias) },
-  ])), [mounts, unmount, toggleReadOnly])
+    { id: `editRoot:${m.alias}`, label: `가져온 ${m.file ? '파일' : '폴더'} 상세 경로 편집 — @${m.alias}`, run: () => void editRoot(m.alias) },
+  ])), [mounts, unmount, toggleReadOnly, editRoot])
+
+  // ---- 맥락 메뉴 (Alt+Enter · Shift+F10 · 오른쪽 클릭, DESIGN §40). 자리 판단은 lib/contextMenu.ts, 항목은 등록부의 명령
+  /** 메뉴를 연 자리 — 닫으면 포커스를 여기로 돌린다 */
+  const contextOrigin = useRef<HTMLElement | null>(null)
+  /** 팔레트를 열기 전의 포커스 — 팔레트에서 "맥락 메뉴" 를 고르면 그 자리의 메뉴 */
+  const beforeOverlay = useRef<Element | null>(null)
+  /** 마지막으로 키보드로 메뉴를 연 때 — Shift+F10 · 메뉴 키 뒤에 브라우저가 이어서 내는 contextmenu 를 삼킨다 */
+  const lastContextAt = useRef(0)
+  /** target 의 자리 메뉴를 연다. point: 오른쪽 클릭한 화면 자리 (키보드면 null — 커서 · 셀 · 트리 항목 옆에) */
+  const openContext = useCallback((target: Element | null, point: SpotAnchor | null) => {
+    if (dialogOpen()) return
+    if (!point) lastContextAt.current = Date.now()
+    const spot = spotAt(target, point)
+    // 셀 편집 중의 Alt+Enter 는 칸 안 줄바꿈이라 그리드가 먼저 받는다 — 여기 오는 것은 편집 중 오른쪽 클릭뿐
+    if (spot.zone === 'grid' && spot.editing) return
+    const cmds = availableContextCommands(spot)
+    if (!cmds.length) { notify('이 자리에서 쓸 수 있는 명령이 없습니다 — 모든 명령은 명령 팔레트에', { key: 'context' }); return }
+    const ae = document.activeElement
+    contextOrigin.current = ae instanceof HTMLElement && ae !== document.body ? ae : target instanceof HTMLElement ? target : null
+    const anchor = point ?? spot.anchor ?? anchorOf(target) ?? { x: Math.max(8, window.innerWidth / 2 - 190), y: window.innerHeight * 0.15 }
+    setOverlay({ kind: 'context', title: spot.title, items: cmds.map((c) => ({ id: c.id, label: c.label, hint: c.keys })), anchor })
+  }, [])
+  /** 팔레트 명령 "맥락 메뉴" · Alt+Enter — 지금 포커스의 자리. 팔레트에서 골랐으면 팔레트를 열기 전 자리로 돌아가서 */
+  const contextMenuHere = useCallback(() => {
+    const ae = document.activeElement
+    if (ae && ae !== document.body && !ae.closest('.overlay')) { openContext(ae, null); return }
+    const before = beforeOverlay.current
+    window.setTimeout(() => {
+      if (before instanceof HTMLElement && before.isConnected) before.focus({ preventScroll: true })
+      openContext(document.activeElement === document.body ? null : document.activeElement, null)
+    }, 0)
+  }, [openContext])
+
+  // 오른쪽 클릭 = 같은 메뉴. Shift+오른쪽 클릭과 입력 칸(찾기 막대 · 이름 칸 …)은 브라우저 메뉴 그대로 (붙여넣기 · 맞춤법)
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      if (e.shiftKey || e.defaultPrevented) return
+      if (Date.now() - lastContextAt.current < 400) { e.preventDefault(); return }
+      if (dialogOpen() || overlayRef.current) return
+      const t = e.target as Element
+      if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || (t instanceof HTMLTextAreaElement && !t.matches('.grid-input, .tsv-view-input'))) return
+      if (!t.closest('.workbench')) return
+      e.preventDefault()
+      openContext(t, { x: e.clientX, y: e.clientY })
+    }
+    window.addEventListener('contextmenu', onContextMenu)
+    return () => window.removeEventListener('contextmenu', onContextMenu)
+  }, [openContext])
 
   // ---- 전역 명령
   const tableActive = () => { const p = bench.current?.activePath(); return !!p && isTsvPath(p) }
@@ -669,12 +721,14 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
     { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
     { id: 'copyActivePath', label: '현재 문서의 전체 경로 복사', run: () => { const p = bench.current?.activePath(); if (p) copyPathOf(p) }, enabled: () => !!bench.current?.activePath() },
+    { id: 'copyRootPath', label: '문서 폴더의 전체 경로 복사', run: () => copyPathOf('') },
     { id: 'installApp', label: '앱으로 설치', run: () => void app.install(), enabled: () => app.canInstall },
     { id: 'checkUpdate', label: '업데이트 확인', run: () => void checkForUpdate(updateNotice), enabled: () => app.canCheck },
     { id: 'applyUpdate', label: '새 버전 지금 적용', run: applyUpdate, enabled: () => app.updateReady },
     { id: 'save', label: '저장', run: () => bench.current?.saveActive() },
     { id: 'saveAll', label: '모두 저장', run: () => void store.saveAll(), enabled: () => store.anyDirty() },
-    { id: 'palette', label: '명령 팔레트', run: () => setOverlay({ kind: 'palette' }) },
+    { id: 'palette', label: '명령 팔레트', run: () => { beforeOverlay.current = document.activeElement; setOverlay({ kind: 'palette' }) } },
+    { id: 'contextMenu', label: '맥락 메뉴 — 지금 자리(셀 · 트리 항목 · 커서 · 탭)에서 쓸 수 있는 명령', run: contextMenuHere },
     { id: 'fileSearch', label: '파일 검색', run: () => setOverlay({ kind: 'files' }) },
     { id: 'help', label: '단축키 도움말', run: () => setOverlay({ kind: 'help' }) },
     { id: 'toggleTheme', label: '다크 / 라이트 전환', run: toggleTheme },
@@ -685,14 +739,45 @@ function Workspace({ layoutId }: { layoutId: string }) {
     { id: 'exportDtoAs', label: 'C# DTO 내보내기 — 경로 · 클래스 이름 바꾸기…', run: () => void exportDto(true), enabled: tableActive },
     { id: 'refreshTree', label: '파일 트리 새로고침', run: () => void refreshTree() },
     { id: 'dismissNotices', label: '알림 모두 닫기', run: dismissAllNotices, enabled: () => noticeList().length > 0 },
-  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, copyPathOf])
+  ]), [newFile, saveAsTemplate, newFolder, exportDto, refreshTree, switchFolder, applyUpdate, app, editRoot, copyPathOf, contextMenuHere])
 
   const closeOverlay = useCallback(() => { setOverlay(null); runCommand('focusEditor') }, [])
+
+  /** 맥락 메뉴를 닫고 포커스를 연 자리로 돌려준다. 그 자리가 없어졌으면 false */
+  const restoreContextFocus = useCallback((): boolean => {
+    const el = contextOrigin.current
+    contextOrigin.current = null
+    if (!el || !el.isConnected) return false
+    el.focus({ preventScroll: true })
+    return document.activeElement === el
+  }, [])
+  const closeContext = useCallback(() => {
+    setOverlay(null)
+    if (!restoreContextFocus()) runCommand('focusEditor')
+  }, [restoreContextFocus])
+  /** 메뉴의 항목 실행 — 포커스를 연 자리로 먼저 돌린 뒤 명령을 돌린다 (명령이 "지금 자리" 를 읽고, 명령이 띄운 대화상자는 닫힐 때 그 자리로 돌아간다) */
+  const pickContext = useCallback((id: string) => {
+    setOverlay(null)
+    restoreContextFocus()
+    runCommand(id)
+    window.setTimeout(() => {
+      if (overlayRef.current) return
+      const ae = document.activeElement
+      if (!ae || ae === document.body) runCommand('focusEditor')
+    }, 80)
+  }, [restoreContextFocus])
 
   // ---- 전역 키 처리. 창(에디터·그리드)이 먼저 처리해 preventDefault 한 키는 건드리지 않는다
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing) return
+      // 키보드의 메뉴 키 = Alt+Enter (맥락 메뉴). 이어서 오는 브라우저의 contextmenu 는 위에서 삼킨다
+      if (e.key === 'ContextMenu' && !dialogOpen()) {
+        e.preventDefault()
+        if (overlayRef.current?.kind === 'context') closeContext()
+        else if (!overlayRef.current) runCommand('contextMenu')
+        return
+      }
       const combo = comboFromEvent(e)
       if (!combo) return
       const id = commandByCombo.get(combo)
@@ -705,7 +790,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
       const ov = overlayRef.current
       if (ov) {
         e.preventDefault()
-        if (id === OVERLAY_COMMAND[ov.kind] || (ov.kind === 'import' && id === 'importFile')) closeOverlay()
+        if (ov.kind === 'context' && id === 'contextMenu') closeContext()
+        else if (id === OVERLAY_COMMAND[ov.kind] || (ov.kind === 'import' && id === 'importFile')) closeOverlay()
         else if (LOOKUP_OVERLAYS.has(ov.kind) && LOOKUP_COMMANDS.has(id)) runCommand(id)
         return
       }
@@ -720,7 +806,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('beforeunload', onBeforeUnload)
     }
-  }, [closeOverlay])
+  }, [closeOverlay, closeContext])
 
   // 글자를 칠 때마다가 아니라 저장 안 한 문서의 구성이 바뀔 때만 다시 그린다
   const dirtyCount = useDirtyPaths().size
@@ -810,6 +896,9 @@ function Workspace({ layoutId }: { layoutId: string }) {
       )}
       {overlay?.kind === 'files' && (
         <Palette title="파일 검색" placeholder="파일 이름이나 경로…" items={paletteItems} onClose={closeOverlay} onPick={(id) => { setOverlay(null); bench.current?.openFile(id, true) }} />
+      )}
+      {overlay?.kind === 'context' && (
+        <Palette title={overlay.title} placeholder="거르기…" items={overlay.items} anchor={overlay.anchor} onClose={closeContext} onPick={pickContext} />
       )}
       {overlay?.kind === 'help' && <HelpDialog onClose={closeOverlay} />}
       {overlay?.kind === 'import' && <ImportDialog initial={overlay.handle} pick={overlay.pick} onClose={closeOverlay} onImported={(m) => void onImported(m)} />}

@@ -79,6 +79,11 @@ export function hasCommand(id: string) {
   return registry.has(id)
 }
 
+/** 등록된 명령 하나 (없으면 undefined) — 맥락 메뉴가 자리의 id 로 찾는다 */
+export function getCommand(id: string): Command | undefined {
+  return registry.get(id)
+}
+
 export function allCommands(): Command[] {
   return [...registry.values()].filter((c) => !c.hidden).sort((a, b) => a.label.localeCompare(b.label, 'ko'))
 }
