@@ -684,7 +684,8 @@ function Workspace({ layoutId }: { layoutId: string }) {
   // ---- 전역 명령
   const tableActive = () => { const p = bench.current?.activePath(); return !!p && isTsvPath(p) }
   useEffect(() => registerCommands([
-    { id: 'importFolder', label: '폴더 가져오기…', run: () => setOverlay({ kind: 'import' }) },
+    // 가져오기는 창 하나 — 키(Ctrl+Shift+O)는 importFolder 에만. importFile 은 같은 창을 "파일 고르기…" 에 포커스를 두고 연다 (DESIGN §44, K4)
+    { id: 'importFolder', label: '가져오기… (폴더 · 파일)', run: () => setOverlay({ kind: 'import' }) },
     { id: 'importFile', label: '파일 가져오기… (파일 하나를 원래 자리에서 열기)', run: () => setOverlay({ kind: 'import', pick: 'file' }) },
     { id: 'switchFolder', label: '문서 폴더 바꾸기…', run: () => void switchFolder() },
     { id: 'editRoot', label: '문서 폴더 별칭 · 상세 경로 편집…', run: () => void editRoot(null) },
@@ -725,7 +726,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
       const ov = overlayRef.current
       if (ov) {
         e.preventDefault()
-        if (id === OVERLAY_COMMAND[ov.kind] || (ov.kind === 'import' && id === 'importFile')) closeOverlay()
+        if (id === OVERLAY_COMMAND[ov.kind]) closeOverlay()
         else if (LOOKUP_OVERLAYS.has(ov.kind) && LOOKUP_COMMANDS.has(id)) runCommand(id)
         return
       }
@@ -798,7 +799,7 @@ function Workspace({ layoutId }: { layoutId: string }) {
         {error && <span className="topbar-error" title={error}>오류: {error}</span>}
         <UpdateButton notify={updateNotice} onApply={applyUpdate} />
         {app.canInstall && <button data-command="installApp" onClick={() => void app.install()} title="시작 메뉴에서 열고 폴더 권한을 유지합니다">앱으로 설치</button>}
-        <button data-command="importFolder" onClick={() => setOverlay({ kind: 'import' })} title={tip('폴더 가져오기 — 다른 폴더를 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
+        <button data-command="importFolder" onClick={() => setOverlay({ kind: 'import' })} title={tip('가져오기 — 다른 폴더나 파일을 원래 자리에서 열기', 'importFolder')}>📂 가져오기</button>
         <span className={'conn' + (watching ? ' is-on' : '')} title={watching ? '파일 변경 감시 중' : '이 브라우저는 실시간 감시가 없어 몇 초마다 확인합니다'}>●</span>
         {/* 상단의 "저장" · "오른쪽에 분할" 은 뺐다 — 창마다 같은 버튼이 있고(어느 문서인지 분명하다) Ctrl+S · Ctrl+\ · 팔레트로도 된다 (DESIGN §24.7 X10) */}
         <button data-command="palette" onClick={() => setOverlay({ kind: 'palette' })} title={tip('명령 팔레트', 'palette')}>명령</button>

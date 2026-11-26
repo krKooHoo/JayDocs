@@ -1463,6 +1463,26 @@ UI/UX 개편 K3(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(�
 
 - 실제 폴더(디스크)에서 만들기 · 한글 조합 중 `/` 입력.
 
+## 44. 가져오기를 하나로 (2026-11-26)
+
+UI/UX 개편 K4(`docs/research/apple-uiux/ADOPT.md`). 원칙 확인: 1 맞음(단축키 규칙 4 — 같은 "가져오기" 는 같은 키, 규칙 6 — Mac 의 ⌘⌥I 가 Chrome 개발자 도구와 겹치던 문제가 없어진다), 4 맞음(흩어진 곳을 끌어오는 길이 하나), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| IM1 | `Ctrl+Shift+O`(`importFolder`)가 가져오기 창을 연다 — 창 안의 **폴더 고르기…** · **파일 고르기…** 중 고른다(처음 포커스는 폴더 고르기). 끌어다 놓기는 그대로 | ADOPT K4. 창은 이미 두 단추를 갖고 있었다 |
+| IM2 | **`Ctrl+Alt+I`(`importFile`)의 키를 없앴다.** 팔레트 "파일 가져오기…" 는 **남긴다** — 같은 창을 **파일 고르기…** 에 포커스를 두고 연다 | 키는 하나로 줄이되, 팔레트에서 "파일" 로 찾는 사람이 닿는 길은 둔다(규칙 2 — 키 없는 동작은 팔레트로). 창이 하나라 동작이 갈라지지 않는다. 선택 창을 바로 띄우지 않는 것은 그대로(읽기 전용을 먼저 고를 수 있게) |
+| IM3 | 이름을 "가져오기" 로 맞췄다 — 팔레트 `가져오기… (폴더 · 파일)`, 맨 위 📂 단추 툴팁, 빈 트리 안내의 단추 | 창이 폴더 · 파일 둘 다 받는다 |
+
+코드: `App.tsx`(명령 이름 · 툴팁 · 창이 떠 있을 때 `importFile` 키로 닫던 예외 삭제), `ImportDialog.tsx`(주석), `FileTree.tsx`(빈 트리 단추), `shortcuts-table.mjs`, `docs/guide/workspace.md`.
+
+### 44.1 확인한 것
+
+dev `?opfs` + 내장 브라우저(키는 이벤트로): `Ctrl+Shift+O` → 가져오기 창, 포커스 **폴더 고르기…** → 다시 `Ctrl+Shift+O` 로 닫힘. 팔레트 명령 `importFile` → 같은 창, 포커스 **파일 고르기…**. `Ctrl+Alt+I` → 아무것도 열리지 않음. 팔레트에 `가져오기… (폴더 · 파일)` 옆 `Ctrl+Shift+O`, "파일 가져오기…" 는 키 없음.
+
+### 44.2 확인하지 못한 것 (TESTCASES §38)
+
+- 실제 폴더 · 파일 선택 창(자동화가 못 누른다)과 그 뒤의 가져오기, 파일 탐색기에서 끌어다 놓기.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

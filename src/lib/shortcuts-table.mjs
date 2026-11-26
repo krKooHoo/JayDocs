@@ -23,8 +23,7 @@ export const SHORTCUTS = [
       { keys: 'Ctrl+S', label: '저장', command: 'save' },
       { keys: 'Ctrl+Shift+S', label: '모두 저장', command: 'saveAll' },
       { keys: 'Ctrl+Alt+N', label: '새 문서 창 — 빈 문서 · 예시 · 내 템플릿(_templates/)에서 골라 이름을 넣어 만든다 (트리에서 고른 폴더 아래). 이름 끝에 / 를 치면 새 폴더', command: 'newFile' },
-      { keys: 'Ctrl+Shift+O', label: '폴더 가져오기 — 다른 폴더를 원래 자리에서 @별칭 으로 열기 (해제·읽기 전용은 트리 오른쪽 클릭 또는 팔레트). 파일 탐색기에서 폴더를 파일 트리에 끌어다 놓아도 된다', command: 'importFolder' },
-      { keys: 'Ctrl+Alt+I', label: '파일 가져오기 — 파일 하나를 원래 자리에서 @별칭 으로 열기 (그 파일을 고치는 것만 된다). 파일 탐색기에서 파일을 파일 트리에 끌어다 놓아도 된다', command: 'importFile' },
+      { keys: 'Ctrl+Shift+O', label: '가져오기 창 — 창 안의 "폴더 고르기…" · "파일 고르기…" 로 다른 폴더나 파일 하나를 원래 자리에서 @별칭 으로 연다 (파일 하나면 그 파일을 고치는 것만 된다. 해제·읽기 전용은 트리 오른쪽 클릭 또는 팔레트). 파일 탐색기에서 폴더 · 파일을 파일 트리에 끌어다 놓아도 된다', command: 'importFolder' },
       { keys: 'Ctrl+Alt+D', label: '다크 / 라이트 전환', command: 'toggleTheme' },
       { keys: 'Esc', label: '팔레트 · 도움말 · 대화상자 · 메뉴 · 드롭다운 닫기, 셀 편집 취소' },
     ],
@@ -179,7 +178,7 @@ export const SHORTCUTS = [
       { keys: '↑ / ↓', label: '항목 이동' },
       { keys: 'Enter', label: '실행 / 열기' },
       { keys: 'Esc', label: '닫기' },
-      { keys: 'Ctrl+Shift+P / Ctrl+P / F1 (창이 떠 있을 때)', label: '그 창을 연 키를 다시 누르면 닫는다. 팔레트 · 파일 검색 · 도움말끼리는 서로의 키로 바로 넘어간다 (폴더 가져오기는 Ctrl+Shift+O 로 닫는다)' },
+      { keys: 'Ctrl+Shift+P / Ctrl+P / F1 (창이 떠 있을 때)', label: '그 창을 연 키를 다시 누르면 닫는다. 팔레트 · 파일 검색 · 도움말끼리는 서로의 키로 바로 넘어간다 (가져오기 창은 Ctrl+Shift+O 로 닫는다)' },
     ],
   },
 ]
