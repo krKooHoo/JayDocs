@@ -5,7 +5,12 @@ import { backend } from '../../lib/backend'
 import { store, useDocVersion, useDocVersions, useFieldsVersion, useTreeVersion } from '../../store/documents'
 import { applyCalc, calcLookupFiles, calcTemplate, computeCalc, parseCalcRules, siblingCalcPath, type CalcCell, type CalcResult, type LookupSource } from '../../lib/calc/calc'
 import { cellAt, type TsvTable } from '../../lib/tsv/model'
-import { canMoveRows, deleteColumns, deleteRows, duplicateRows, fillDown, fillRight, insertColumns, insertRows, moveColumns, moveRows, seedHeaderTable, seedTypedTable, setCell, type CellRange } from '../../lib/tsv/edits'
+import { canMoveRows, deleteColumns, deleteRows, duplicateRows, fillDown, fillRight, insertColumns, insertRows, moveColumns, moveRows, seedHeaderTable, seedTypedTable, setCell, setCells, type CellEdit, type CellRange } from '../../lib/tsv/edits'
+import {
+  actualRows, deleteRowSet, distinctValues, emptyView, filterOf, hasView, hideColumns, makeRowView, mapDelete, mapInsert, mapMove, remapColumns, rowsViewed,
+  showAllColumns, viewOrder, visibleColumn, withFilter, withoutFilters, withoutSort, withSort, VIEW_BLOCKED, type ColumnMap, type ViewSpec,
+} from '../../lib/tsv/view'
+import { ColumnFilter } from './ColumnFilter'
 import { findMatches, matchIndex, replaceAll, replaceInCell, stepMatch, type FindHit, type FindOptions } from '../../lib/tsv/find'
 import { baseName, columnLetter, deriveSchema, isFieldFile, isNumericType, stabilizeSchema, type TableSchema } from '../../lib/tsv/schema'
 import { parseFieldBlocks } from '../../lib/tsv/field'
@@ -70,9 +75,10 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     store.retain(path)
     return () => store.release(path)
   }, [path])
-  // 미리보기의 tsv-view 행이나 diff 항목에서 "이 행으로" 요청이 오면 활성 셀을 옮긴다.
+  // 미리보기의 tsv-view 행이나 diff 항목에서 "이 행으로" 요청이 오면 활성 셀을 옮긴다 — 걸러 숨긴 행 · 숨긴 열이면 보기를 푼다.
   // 탭이 바뀌는 중이면 포커스가 날아가므로 한 프레임 뒤에 준다
-  useEffect(() => onSelectRequest(path, (pos) => { setActive(pos); window.setTimeout(() => grid.current?.focus(), 50) }), [path])
+  const revealRef = useRef<(pos: CellPos) => void>(() => {})
+  useEffect(() => onSelectRequest(path, (pos) => { revealRef.current(pos); setActive(pos); window.setTimeout(() => grid.current?.focus(), 50) }), [path])
 
   /**
    * 방금 한 동작의 결과를 알림 줄에 (DESIGN §24.6). 이 표에서 온 알림은 하나만 남는다.
@@ -116,7 +122,29 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     prevSchema.current = { path, schema: next }
     return next
   }, [table, path, fields])
+  // 검증(Key 중복 등)은 보기와 상관없이 늘 파일 전체 — 걸러 숨긴 행도 본다 (DESIGN §61)
   const validation = useMemo(() => (table && schema ? validateTable(table, schema) : null), [table, schema])
+
+  // ---- 보기: 정렬 · 값 필터 · 열 숨기기 (열 머리 메뉴, DESIGN §61). 파일은 그대로 두고 이 창의 그리드에만 — 문서에 남기지 않는다
+  const [view, setView] = useState<ViewSpec>(() => emptyView(table?.width ?? 0))
+  const viewOk = !!table && view.width === table.width
+  /** 보일 행 순서. 정렬 · 필터를 고른 때 정하고, 셀을 고쳐도 그대로 둔다 — 행 수 · 머리글 행 수가 바뀌면 다시 */
+  const frozen = useRef<{ view: ViewSpec; len: number; headerRows: number; order: number[] } | null>(null)
+  const rowView = useMemo(() => {
+    if (!table || !schema || !viewOk || !rowsViewed(view)) { frozen.current = null; return null }
+    const h = schema.headerRows
+    let f = frozen.current
+    if (!f || f.view !== view || f.len !== table.rows.length || f.headerRows !== h) {
+      f = { view, len: table.rows.length, headerRows: h, order: viewOrder(table, h, view) }
+      frozen.current = f
+    }
+    return makeRowView(table, h, f.order)
+  }, [table, schema, view, viewOk])
+  const hiddenCols = useMemo<ReadonlySet<number>>(() => (viewOk && view.hidden.length ? new Set(view.hidden) : NO_KEYS), [view, viewOk])
+  const filteredCols = useMemo<ReadonlySet<number>>(() => (viewOk && view.filters.length ? new Set(view.filters.map((f) => f.c)) : NO_KEYS), [view, viewOk])
+  /** 보이는 행 ↔ 실제 행 */
+  const toA = (vr: number) => (rowView ? rowView.toActual(vr) : vr)
+  const toV = (r: number) => (rowView ? rowView.toView(r) : r)
 
   // ---- 계산식 (같은 폴더 X_Calc.tsv, DESIGN §17). 결과는 F9 로 값 열에 써 넣는다
   const calcPath = siblingCalcPath(path)
@@ -176,13 +204,21 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     if (a === 'calc') runCalc()
   }), [path, runCalc])
 
-  // 표가 줄어들면 활성 셀을 안으로
+  // 표가 줄어들면 활성 셀을 안으로. 걸러 숨긴 행이면 첫 보이는 행으로, 숨긴 열이면 옆의 보이는 열로
   useEffect(() => {
     if (!table) return
-    const r = Math.min(active.r, Math.max(0, table.rows.length - 1))
-    const c = Math.min(active.c, Math.max(0, table.width - 1))
+    let r = Math.min(active.r, Math.max(0, table.rows.length - 1))
+    let c = Math.min(active.c, Math.max(0, table.width - 1))
+    if (rowView && rowView.toView(r) < 0) r = rowView.order[0] ?? Math.max(0, rowView.headerRows - 1)
+    if (hiddenCols.has(c)) c = visibleColumn(c, 1, table.width, hiddenCols)
     if (r !== active.r || c !== active.c) setActive({ r, c })
-  }, [table, active])
+  }, [table, active, rowView, hiddenCols])
+  // 열 수가 바뀌면(바깥에서 바뀐 파일 · 열 조작의 되돌리기) 열 번호가 어긋나므로 보기를 푼다. 이 창의 열 조작은 보기를 함께 옮겨 여기 오지 않는다
+  useEffect(() => {
+    if (!table || view.width === table.width) return
+    if (hasView(view)) notify('열 수가 바뀌어 정렬 · 필터 · 숨긴 열을 풀었습니다', { key: `grid:${path}` })
+    setView(emptyView(table.width))
+  }, [table, view, path])
 
   /** 표를 고친다. 실제로 바뀌었으면 true (읽기 전용이거나 바뀐 것이 없으면 false) */
   const edit = useCallback((fn: (t: TsvTable) => TsvTable): boolean => {
@@ -199,10 +235,25 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const redo = useCallback(() => store.redo(path), [path])
   const refocus = () => window.setTimeout(() => grid.current?.focus(), 0)
 
-  const currentRange = (): CellRange => grid.current?.range() ?? { r1: active.r, c1: active.c, r2: active.r, c2: active.c }
+  /** 그리드의 선택 범위 — 보이는 행 번호 (정렬 · 필터 중이 아니면 실제와 같다) */
+  const currentRange = (): CellRange => {
+    const g = grid.current?.range()
+    if (g) return g
+    const r = Math.max(0, toV(active.r))
+    return { r1: r, c1: active.c, r2: r, c2: active.c }
+  }
 
   const rowOp = useCallback((kind: RowOp, g: CellRange) => {
     if (!table) return
+    // 정렬 · 필터 중에는 행 넣기 · 복제 · 옮기기를 막는다 — 보이는 자리가 파일의 어디인지 정할 수 없다. 지우기는 보이는 행을 그대로 지운다 (DESIGN §61)
+    if (rowView) {
+      if (kind !== 'del') { showNotice(VIEW_BLOCKED); refocus(); return }
+      const rows = actualRows(rowView, g.r1, g.r2)
+      if (edit((t) => deleteRowSet(t, rows))) showNotice(`보이는 행 ${rows.length}개를 지웠습니다 (파일의 행 ${rows.map((r) => r + 1).slice(0, 6).join(', ')}${rows.length > 6 ? ' …' : ''})`, { undo: true })
+      grid.current?.clearRange()
+      refocus()
+      return
+    }
     const n = g.r2 - g.r1 + 1
     switch (kind) {
       case 'above': edit((t) => insertRows(t, g.r1, n)); break
@@ -229,7 +280,13 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       }
     }
     refocus()
-  }, [table, schema, path, edit, active.c, showNotice])
+  }, [table, schema, path, edit, active.c, showNotice, rowView])
+
+  /** 이 창의 열 조작 뒤 — 정렬 · 필터 · 숨긴 열이 같은 열을 따라간다 */
+  const followColumns = useCallback((map: ColumnMap) => {
+    const w = tableOf(path)?.width
+    if (w !== undefined) setView((v) => remapColumns(v, map, w))
+  }, [path])
 
   // 열을 넣고 · 지우고 · 옮기면 모든 행이 다시 조립된다. 예전에는 그때마다 확인 창으로 물었지만
   // Ctrl+Z 로 돌아오는 조작이라 묻지 않고 실행한 뒤, 같은 사실을 알림에 적고 되돌리기 버튼을 단다 (DESIGN §24.6 N6)
@@ -241,11 +298,12 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     switch (kind) {
       case 'left':
         done = edit((t) => insertColumns(t, g.c1, n))
-        if (done) showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
+        if (done) { followColumns(mapInsert(g.c1, n)); showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true }) }
         break
       case 'right':
         done = edit((t) => insertColumns(t, g.c2 + 1, n))
         if (done) {
+          followColumns(mapInsert(g.c2 + 1, n))
           showNotice(`열 ${n}개를 넣었습니다 — ${note}`, { undo: true })
           grid.current?.clearRange()
           setActive({ r: active.r, c: g.c2 + 1 })
@@ -254,21 +312,23 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'del':
         if (n >= table.width) { showNotice('열을 전부 지울 수는 없습니다'); break }
         done = edit((t) => deleteColumns(t, g.c1, n))
-        if (done) showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true })
+        if (done) { followColumns(mapDelete(g.c1, n)); showNotice(`열 ${n}개를 지웠습니다 — ${note}`, { undo: true }) }
         grid.current?.clearRange()
         break
     }
     refocus()
     return done
-  }, [table, edit, active.r, showNotice])
+  }, [table, edit, active.r, showNotice, followColumns])
 
   /** 열 글자를 끌어 옮기기 (Grid 에서). 열 삽입 · 삭제처럼 묻지 않고 옮긴 뒤 알림에 되돌리기를 단다. 옮겼으면 true */
   const moveCols = useCallback((from: number, count: number, to: number): boolean => {
+    const width = tableOf(path)?.width ?? 0
     const moved = edit((t) => moveColumns(t, from, count, to))
+    if (moved) followColumns(mapMove(width, from, count, to))
     if (moved) showNotice(`열 ${count}개를 옮겼습니다 — 모든 행이 다시 조립되어 git diff 에 전체 행이 나옵니다`, { undo: true })
     refocus()
     return moved
-  }, [edit, showNotice])
+  }, [edit, showNotice, followColumns, path])
 
   // ---- 찾기 / 바꾸기 (툴바와 그리드 사이의 막대)
   const [findOpen, setFindOpen] = useState(false)
@@ -284,13 +344,21 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   // 찾을 말 입력 칸은 바로 반응하고, 표 전체를 훑는 찾기는 한 박자 뒤(입력이 이어지면 건너뛰고)에 돈다 — 2만 행 표에서 한 글자마다 수십 ms 가 걸렸다
   const deferredQuery = useDeferredValue(query)
   const hitsStale = deferredQuery !== query
-  const hits = useMemo(() => (findOpen && table ? findMatches(table, deferredQuery, findOpts) : NO_HITS), [findOpen, table, deferredQuery, findOpts])
+  // 찾기는 보이는 셀만 — 보이는 순서로, 걸러 숨긴 행 · 숨긴 열은 빼고 (DESIGN §61). 결과의 행 번호는 보이는 행 번호다
+  const findIn = useCallback((t: TsvTable, q: string): FindHit[] => {
+    const vt = !rowView ? t : t === table ? rowView.table : makeRowView(t, rowView.headerRows, rowView.order).table
+    const hs = findMatches(vt, q, findOpts)
+    return hiddenCols.size ? hs.filter((h) => !hiddenCols.has(h.c)) : hs
+  }, [rowView, table, findOpts, hiddenCols])
+  const hits = useMemo(() => (findOpen && table ? findIn(table, deferredQuery) : NO_HITS), [findOpen, table, deferredQuery, findIn])
   /** 눌렀을 때의 결과 — 막 친 글자가 아직 반영 전이면 지금 말로 바로 찾는다 */
-  const currentHits = (): FindHit[] => (!table ? NO_HITS : hitsStale ? findMatches(table, query, findOpts) : hits)
+  const currentHits = (): FindHit[] => (!table ? NO_HITS : hitsStale ? findIn(table, query) : hits)
   const hitKeys = useMemo<ReadonlySet<number>>(
-    () => (table && hits.length ? new Set(hits.map((h) => issueKey(table.width, h.r, h.c))) : NO_KEYS),
-    [hits, table],
+    () => (table && hits.length ? new Set(hits.map((h) => issueKey(table.width, rowView ? rowView.toActual(h.r) : h.r, h.c))) : NO_KEYS),
+    [hits, table, rowView],
   )
+  /** 활성 셀의 보이는 자리 (찾기 결과와 견준다) */
+  const activeV = { r: toV(active.r), c: active.c }
 
   useEffect(() => {
     if (!findFocus) return
@@ -318,22 +386,23 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     grid.current?.focus()
   }, [])
 
+  /** 찾기 결과(보이는 행 번호)로 */
   const goTo = (h: FindHit) => {
     grid.current?.clearRange()
-    setActive({ r: h.r, c: h.c })
+    setActive({ r: toA(h.r), c: h.c })
   }
 
   /** 활성 셀 다음(1) / 이전(-1) 결과로. 끝에 닿으면 반대쪽 처음으로 돈다 */
   const findStep = useCallback((dir: 1 | -1) => {
     if (!table) return
     if (!query) { openFind(false); return }
-    const list = findOpen && !hitsStale ? hits : findMatches(table, query, findOpts)
+    const list = findOpen && !hitsStale ? hits : findIn(table, query)
     if (!findOpen) setFindOpen(true)
-    const i = stepMatch(list, active, dir)
+    const i = stepMatch(list, { r: rowView ? rowView.toView(active.r) : active.r, c: active.c }, dir)
     if (i < 0) { showNotice(`찾지 못했습니다: ${query}`); return }
     grid.current?.clearRange()
-    setActive({ r: list[i].r, c: list[i].c })
-  }, [table, query, findOpen, hits, hitsStale, findOpts, active, openFind, showNotice])
+    setActive({ r: rowView ? rowView.toActual(list[i].r) : list[i].r, c: list[i].c })
+  }, [table, query, findOpen, hits, hitsStale, findIn, active, openFind, showNotice, rowView])
 
   const cleanReplacement = (): string => {
     const [rep, changed] = sanitizeFor(table?.format, replacement)
@@ -347,12 +416,12 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     const rep = cleanReplacement()
     const { r, c } = active
     let after = table
-    if (matchIndex(currentHits(), active) >= 0) {
+    if (matchIndex(currentHits(), activeV) >= 0) {
       after = setCell(table, r, c, replaceInCell(cellAt(table, r, c), query, rep, findOpts))
       edit((t) => setCell(t, r, c, replaceInCell(cellAt(t, r, c), query, rep, findOpts)))
     }
-    const list = findMatches(after, query, findOpts)
-    const i = stepMatch(list, active, 1)
+    const list = findIn(after, query)
+    const i = stepMatch(list, activeV, 1)
     if (i >= 0) goTo(list[i])
     else if (after === table) showNotice(`찾지 못했습니다: ${query}`)
   }
@@ -361,6 +430,19 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const replaceEvery = () => {
     if (!table || !query) return
     const rep = cleanReplacement()
+    // 정렬 · 필터 · 숨긴 열이 있으면 보이는 셀만 바꾼다 (찾기와 같다)
+    if (rowView || hiddenCols.size) {
+      const edits: CellEdit[] = []
+      for (const h of findIn(table, query)) {
+        const r = toA(h.r)
+        const v = cellAt(table, r, h.c)
+        const next = replaceInCell(v, query, rep, findOpts)
+        if (next !== v) edits.push({ r, c: h.c, v: next })
+      }
+      if (edits.length === 0) { showNotice('바꿀 셀이 없습니다'); return }
+      if (edit((t) => setCells(t, edits))) showNotice(`보이는 셀 ${edits.length}개 바꿈 (숨긴 행 · 열은 그대로)`, { undo: true })
+      return
+    }
     const { count } = replaceAll(table, query, rep, findOpts)
     if (count === 0) { showNotice('바꿀 셀이 없습니다'); return }
     if (edit((t) => replaceAll(t, query, rep, findOpts).table)) showNotice(`${count}개 셀 바꿈`, { undo: true })
@@ -383,7 +465,7 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     }
   }
 
-  const hitIdx = findOpen ? matchIndex(hits, active) : -1
+  const hitIdx = findOpen ? matchIndex(hits, activeV) : -1
   let findCount = ''
   if (query) findCount = hits.length ? `${hitIdx >= 0 ? hitIdx + 1 : '–'} / ${hits.length}` : hitsStale ? '…' : '결과 없음'
 
@@ -398,7 +480,15 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
 
   // 경로 막대의 마지막 단계 (DESIGN §31): 활성 셀의 열, `_Field` 시트는 활성 셀이 든 블록
   const fieldBlocks = useMemo(() => (table && isFieldFile(path) ? parseFieldBlocks(path, table).blocks : null), [table, path])
-  const goCell = (pos: CellPos) => { setActive(pos); refocus() }
+  /** pos(실제 행)가 걸러졌거나 숨긴 열이면 보기를 푼다 — 다른 곳에서 "이 셀로" 가 왔을 때 */
+  revealRef.current = (pos: CellPos) => {
+    const lostRow = !!rowView && pos.r >= rowView.headerRows && rowView.toView(pos.r) < 0
+    const lostCol = hiddenCols.has(pos.c)
+    if (!lostRow && !lostCol) return
+    setView((v) => (lostRow ? withoutFilters(lostCol ? showAllColumns(v) : v) : showAllColumns(v)))
+    showNotice(lostRow ? '그 행이 필터로 숨겨져 있어 필터를 풀었습니다' : '그 열이 숨겨져 있어 숨긴 열을 모두 보입니다')
+  }
+  const goCell = (pos: CellPos) => { revealRef.current(pos); setActive(pos); refocus() }
   let pathTail: PathTail | null = null
   if (table && schema && fieldBlocks) {
     // 블록 사이의 빈 줄은 위 블록에 붙여 본다
@@ -420,11 +510,69 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     }
   }
 
+  // ---- 열 머리 메뉴 (DESIGN §61)
+  const colName = (c: number) => { const name = schema?.columns[c]?.name; return name ? `${columnLetter(c)} · ${name}` : `${columnLetter(c)}열` }
+  /** 값으로 거르기 창 — 열과 띄울 자리 */
+  const [filterAt, setFilterAt] = useState<{ c: number; anchor: { x: number; y: number } } | null>(null)
+  const openFilter = (c: number) => {
+    const el = paneRoot.current?.querySelector(`[data-letter="${c}"]`) ?? paneRoot.current?.querySelector('.grid-input')
+    const r = el?.getBoundingClientRect()
+    setFilterAt({ c, anchor: r ? { x: r.left, y: r.bottom + 2 } : { x: 200, y: 120 } })
+  }
+  const applyFilter = (c: number, excluded: string[]) => {
+    setFilterAt(null)
+    setView((v) => withFilter(v, c, excluded))
+    showNotice(excluded.length ? `${colName(c)} — 값 ${excluded.length}개를 감춰 봅니다 (파일은 그대로)` : `${colName(c)} 의 필터를 풀었습니다`)
+    refocus()
+  }
+  const runView = (id: string) => {
+    if (!table) return
+    const g = currentRange()
+    const c = active.c
+    switch (id) {
+      case 'gridSortAsc':
+      case 'gridSortDesc': {
+        const dir = id === 'gridSortAsc' ? 1 : -1
+        setView((v) => withSort(v, c, dir))
+        showNotice(`${colName(c)} ${dir > 0 ? '오름차순' : '내림차순'}으로 봅니다 — 파일의 행 순서는 그대로`)
+        break
+      }
+      case 'gridSortClear':
+        if (!view.sort) { showNotice('정렬하지 않았습니다'); break }
+        setView(withoutSort)
+        showNotice('정렬을 풀었습니다 — 파일 순서')
+        break
+      case 'gridFilter': openFilter(c); return
+      case 'gridFilterClear':
+        if (!view.filters.length) { showNotice('거르지 않았습니다'); break }
+        setView(withoutFilters)
+        showNotice('필터를 풀었습니다 — 모든 행')
+        break
+      case 'gridHideCols': {
+        const next = hideColumns(viewOk ? view : emptyView(table.width), g.c1, g.c2)
+        if (!next) { showNotice('모든 열을 숨길 수는 없습니다'); break }
+        setView(next)
+        const n = next.hidden.length - (viewOk ? view.hidden.length : 0)
+        showNotice(`열 ${g.c1 === g.c2 ? columnLetter(g.c1) : `${columnLetter(g.c1)}:${columnLetter(g.c2)}`} 숨김${n > 0 ? '' : ' (이미 숨김)'} — 상태 줄의 "모두 보이기"로 되돌립니다`)
+        break
+      }
+      case 'gridShowCols':
+        if (!view.hidden.length) { showNotice('숨긴 열이 없습니다'); break }
+        setView(showAllColumns)
+        break
+      case 'gridFitCols': grid.current?.fitColumns(g.c1, g.c2); break
+    }
+    refocus()
+  }
+
   // 막대 단추와 팔레트 명령 (DESIGN §36) — 같은 처리. 팔레트 명령은 활성 탭의 창 하나에만 온다
   const paneRoot = useRef<HTMLDivElement>(null)
   const runPane = (id: string) => {
     if (!table) return
     switch (id) {
+      case 'gridSortAsc': case 'gridSortDesc': case 'gridSortClear': case 'gridFilter': case 'gridFilterClear':
+      case 'gridHideCols': case 'gridShowCols': case 'gridFitCols':
+        runView(id); break
       case 'gridUndo': undo(); refocus(); break
       case 'gridRedo': redo(); refocus(); break
       case 'gridRowAbove': rowOp('above', currentRange()); break
@@ -437,8 +585,9 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       case 'gridColLeft': colOp('left', currentRange()); break
       case 'gridColRight': colOp('right', currentRange()); break
       case 'gridColDel': colOp('del', currentRange()); break
-      case 'gridFillDown': { const g = currentRange(); edit((t) => fillDown(t, g)); refocus(); break }
-      case 'gridFillRight': { const g = currentRange(); edit((t) => fillRight(t, g)); refocus(); break }
+      // 채우기는 정렬 · 필터 중에 막는다 (DESIGN §61). 그 밖에는 그리드의 Ctrl+D / Ctrl+R 과 같다
+      case 'gridFillDown': { if (rowView) { showNotice(VIEW_BLOCKED); refocus(); break } const g = currentRange(); edit((t) => fillDown(t, g)); refocus(); break }
+      case 'gridFillRight': { if (rowView) { showNotice(VIEW_BLOCKED); refocus(); break } const g = currentRange(); edit((t) => fillRight(t, g)); refocus(); break }
       case 'gridFind': openFind(false); break
       case 'gridReplace': openFind(true); break
       case 'gridCalcFile': if (hasCalc) openPath(calcPath); else void createCalc(); break
@@ -455,8 +604,10 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   spotRef.current = (): GridSpot | null => {
     if (!table) return null
     const g = currentRange()
-    const wholeCols = table.rows.length > 0 && g.r1 === 0 && g.r2 === table.rows.length - 1
-    const at = (r: number, c: number) => `${columnLetter(c)}${r + 1}`
+    const shownRows = rowView ? rowView.table.rows.length : table.rows.length
+    const wholeCols = shownRows > 0 && g.r1 === 0 && g.r2 === shownRows - 1
+    // 셀 주소는 파일의 행 번호로 (정렬 · 필터 중이면 보이는 행 → 실제 행)
+    const at = (r: number, c: number) => `${columnLetter(c)}${toA(r) + 1}`
     let where = g.r1 === g.r2 && g.c1 === g.c2 ? at(g.r1, g.c1) : `${at(g.r1, g.c1)}:${at(g.r2, g.c2)}`
     if (wholeCols) where = g.c1 === g.c2 ? `${columnLetter(g.c1)}열` : `${columnLetter(g.c1)}:${columnLetter(g.c2)}열`
     const input = paneRoot.current?.querySelector<HTMLElement>('.grid-input')
@@ -468,6 +619,9 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
       readOnly: store.isReadOnly(path),
       empty: table.rows.length === 0,
       wholeCols,
+      sorted: viewOk && !!view.sort,
+      filtered: viewOk && view.filters.length > 0,
+      hiddenCols: viewOk && view.hidden.length > 0,
     }
   }
   const hasTable = !!table
@@ -480,8 +634,8 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
   const summaryKeys = useSummaryKeys()
   const summary = useMemo(() => {
     if (!table || !schema || !range || (range.r1 === range.r2 && range.c1 === range.c2)) return null
-    return summaryParts(summarizeRange(table, schema, range), summaryKeys)
-  }, [table, schema, range, summaryKeys])
+    return summaryParts(summarizeRange(rowView ? rowView.table : table, schema, range), summaryKeys)
+  }, [table, schema, range, summaryKeys, rowView])
   let statusCell: ReactNode = null
   let statusExtra: ReactNode = null
   if (table && schema && validation) {
@@ -500,6 +654,20 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
     statusExtra = (
       <>
         <span className="ds-item ds-opt">{table.rows.length}행 × {table.width}열</span>
+        {/* 보기 상태와 푸는 단추 (DESIGN §61) — 정렬 · 필터 · 숨긴 열 */}
+        {viewOk && hasView(view) && (
+          <span className="ds-item ds-view" title="보기만 바뀐 상태 — 파일의 행 순서 · 내용은 그대로">
+            {[
+              view.sort ? `정렬 ${colName(view.sort.c)} ${view.sort.dir > 0 ? '↑' : '↓'}` : '',
+              view.filters.length ? `필터 ${view.filters.map((f) => columnLetter(f.c)).join(' · ')}` : '',
+              rowView ? `보이는 행 ${rowView.order.length} / ${Math.max(0, table.rows.length - rowView.headerRows)}` : '',
+              view.hidden.length ? `숨긴 열 ${view.hidden.map(columnLetter).join(' · ')}` : '',
+            ].filter(Boolean).join(' · ')}
+          </span>
+        )}
+        {viewOk && view.sort && <button className="ds-btn" data-command="gridSortClear" title={cmdTitle('gridSortClear')} onClick={() => runPane('gridSortClear')}>정렬 해제</button>}
+        {viewOk && view.filters.length > 0 && <button className="ds-btn" data-command="gridFilterClear" title={cmdTitle('gridFilterClear')} onClick={() => runPane('gridFilterClear')}>필터 해제</button>}
+        {viewOk && view.hidden.length > 0 && <button className="ds-btn" data-command="gridShowCols" title={cmdTitle('gridShowCols')} onClick={() => runPane('gridShowCols')}>모두 보이기</button>}
         <span className={'ds-item' + (validation.count ? ' is-err' : ' ds-opt')}>{validation.count ? `오류 ${validation.count}` : '오류 없음'}</span>
         <span className="ds-item ds-opt">{schemaLabel}</span>
         {hasCalc && calcRules && <span className="ds-item ds-opt" title={calcPath}>계산식 {calcRules.rules.length}개{calcResult?.staleCount ? ` · 바뀔 셀 ${calcResult.staleCount}` : ''}</span>}
@@ -650,8 +818,23 @@ export function GridPane({ path, onSplit }: { path: string; onSplit: () => void 
               onCalc={runCalc}
               widthsKey={`jaydocs.colw:${path}`}
               onRangeChange={setRange}
+              rowView={rowView}
+              hiddenCols={hiddenCols}
+              sort={viewOk ? view.sort : null}
+              filteredCols={filteredCols}
             />
           </PaneErrorBoundary>
+          {filterAt && filterAt.c < table.width && (
+            <ColumnFilter
+              key={filterAt.c}
+              title={colName(filterAt.c)}
+              values={distinctValues(table, schema.headerRows, filterAt.c)}
+              excluded={(viewOk && filterOf(view, filterAt.c)?.excluded) || []}
+              anchor={filterAt.anchor}
+              onApply={(ex) => applyFilter(filterAt.c, ex)}
+              onClose={() => { setFilterAt(null); refocus() }}
+            />
+          )}
         </>
       )}
       <DocStatus path={path} cell={statusCell} summary={summary} extra={statusExtra} />

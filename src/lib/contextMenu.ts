@@ -32,6 +32,10 @@ export interface GridSpot extends SpotBase {
   empty: boolean
   /** 열 전체를 골랐다 (`Ctrl+Space`, 열 글자 클릭) — 열 명령이 위로 온다 */
   wholeCols: boolean
+  /** 보기 상태 (열 머리 메뉴, DESIGN §61) — 정렬 · 필터 · 숨긴 열이 있으면 푸는 명령이 보이고, 정렬 · 필터 중에는 행 넣기 · 옮기기 · 채우기가 빠진다 */
+  sorted?: boolean
+  filtered?: boolean
+  hiddenCols?: boolean
 }
 
 /** 파일 트리의 항목 */
@@ -101,14 +105,28 @@ const EDIT_IDS = new Set([
 const ROW_IDS = ['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridRowDel']
 const COL_IDS = ['gridColLeft', 'gridColRight', 'gridColDel']
 
-/** 그리드 셀 · 열 머리. 열 전체를 골랐으면 열 명령이 먼저. 편집 중이면 빈 목록 (그 `Alt+Enter` 는 칸 안 줄바꿈) */
+/** 정렬 · 필터 중에 막는 편집 (DESIGN §61) — 보이는 순서가 파일의 행 순서와 달라서 */
+const VIEW_BLOCKED_IDS = new Set(['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridFillDown', 'gridFillRight'])
+
+/** 열 머리 메뉴 (DESIGN §61) — 보기만 바꾼다. 푸는 명령은 걸려 있을 때만 */
+function viewIds(s: GridSpot): string[] {
+  const ids = ['gridSortAsc', 'gridSortDesc', 'gridFilter', 'gridHideCols', 'gridFitCols']
+  if (s.sorted) ids.push('gridSortClear')
+  if (s.filtered) ids.push('gridFilterClear')
+  if (s.hiddenCols) ids.push('gridShowCols')
+  return ids
+}
+
+/** 그리드 셀 · 열 머리. 열 전체를 골랐으면 열 명령(열 머리 메뉴 먼저)이 먼저. 편집 중이면 빈 목록 (그 `Alt+Enter` 는 칸 안 줄바꿈) */
 export function gridContextIds(s: GridSpot): string[] {
   if (s.editing) return []
-  const ids: string[] = []
+  let ids: string[] = []
   if (s.empty) ids.push('gridSeedHeader')
-  ids.push(...(s.wholeCols ? [...COL_IDS, ...ROW_IDS] : [...ROW_IDS, ...COL_IDS]))
+  if (s.wholeCols) ids.push(...viewIds(s), ...COL_IDS, ...ROW_IDS)
+  else ids.push(...ROW_IDS, ...COL_IDS, ...(s.empty ? [] : viewIds(s)))
   if (!s.empty) ids.push('gridFillDown', 'gridFillRight')
   ids.push('gridFind', 'gridReplace', 'calc', 'gridCalcFile', 'exportDto', 'exportDtoAs', 'gridUndo', 'gridRedo', 'toggleInvisibles', ...DOC_TAIL_IDS)
+  if (s.sorted || s.filtered) ids = ids.filter((id) => !VIEW_BLOCKED_IDS.has(id))
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids
 }
 

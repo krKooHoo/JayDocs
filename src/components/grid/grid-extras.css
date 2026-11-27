@@ -41,3 +41,46 @@
 
 /* 보이지 않는 문자 (DESIGN §55) — 셀 앞뒤 공백 */
 .grid-ws { color: var(--muted); opacity: 0.8; }
+
+/* ---- 열 머리 메뉴 (DESIGN §61) — 보기만 바꾼다 */
+/* 열 글자의 ▾: 마우스용. 올리거나 고른 열 · 보기가 걸린 열에서 보인다 */
+.grid-colmenu {
+  position: absolute; right: 5px; top: 3px; width: 13px; height: 15px; line-height: 15px; text-align: center;
+  border-radius: 3px; font-size: 10px; color: var(--muted); opacity: 0; cursor: pointer;
+}
+.grid-letter:hover .grid-colmenu, .grid-letter.is-active-col .grid-colmenu, .grid-letter.is-viewed .grid-colmenu { opacity: 1; }
+.grid-colmenu:hover { background: var(--accent-soft); color: var(--accent); }
+.grid-letter .grid-errcount { right: auto; left: 6px; }
+/* 정렬 · 거르는 중인 열 */
+.grid-letter.is-viewed { color: var(--accent); font-weight: 600; }
+.grid-colmark { margin-left: 3px; font-size: 10px; color: var(--accent); }
+svg.grid-colmark { flex: 0 0 auto; }
+/* 숨긴 열이 있는 경계 — 두 줄 */
+.grid-letter.has-hidden-before { box-shadow: inset 3px 0 0 -1px var(--accent); }
+.grid-letter.has-hidden-after { box-shadow: inset -3px 0 0 -1px var(--accent); }
+/* 정렬 · 필터 중의 행 번호 — 파일의 행 번호라 띄엄띄엄하다 (Excel 처럼 색으로 알린다) */
+.grid-rownum.is-viewed { color: var(--accent); }
+/* 상태 줄의 보기 상태 */
+.ds-view { color: var(--accent); }
+
+/* 값으로 거르기 창 */
+.grid-colfilter {
+  position: fixed; z-index: 50; width: 280px; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 7px; box-shadow: var(--shadow); font-size: 12.5px;
+}
+.grid-colfilter-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid-colfilter-search { width: auto; }
+.grid-colfilter-list { max-height: min(320px, 50vh); overflow: auto; border: 1px solid var(--border); border-radius: 5px; padding: 2px 0; }
+.grid-colfilter-item { display: flex; align-items: center; gap: 6px; padding: 2px 8px; cursor: pointer; user-select: none; }
+.grid-colfilter-item input { margin: 0; flex: 0 0 auto; }
+.grid-colfilter-item.is-all { border-bottom: 1px solid var(--border); }
+.grid-colfilter-item.is-hl { background: var(--accent-soft); }
+.grid-colfilter-item.is-blank .grid-colfilter-value { color: var(--muted); font-style: italic; }
+.grid-colfilter-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-colfilter-count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grid-colfilter-empty { padding: 4px 8px; }
+.grid-colfilter-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.grid-colfilter-foot .muted { flex: 1 1 100%; font-size: 11px; }
+.grid-colfilter-foot button { padding: 2px 12px; white-space: nowrap; }
+.grid-colfilter-foot button:first-of-type { margin-left: auto; }

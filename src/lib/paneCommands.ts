@@ -47,6 +47,15 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'gridReplace', label: '표: 바꾸기', title: '바꾸기', scope: 'grid' },
   { id: 'gridCalcFile', label: '표: 계산식 파일 열기 · 만들기 (같은 폴더의 _Calc.tsv)', title: '계산식 파일 열기 — 없으면 만들어 연다', scope: 'grid' },
   { id: 'gridSeedHeader', label: '표: 타입 행 · 머리글 행 만들기 (빈 표)', title: '첫 줄에 머리글(CSV) · 타입 행과 머리글(TSV)을 만든다', scope: 'grid', edits: true },
+  // ---- 열 머리 메뉴 (DESIGN §61) — 보기만 바꾼다(파일의 행 순서 · 내용은 그대로). 읽기 전용에서도 된다. 키는 없고 맥락 메뉴 · 팔레트 · 열 글자의 ▾
+  { id: 'gridSortAsc', label: '표: 이 열로 오름차순 정렬 (보기만 — 파일의 행 순서는 그대로)', title: '오름차순 정렬', scope: 'grid', noButton: true },
+  { id: 'gridSortDesc', label: '표: 이 열로 내림차순 정렬 (보기만 — 파일의 행 순서는 그대로)', title: '내림차순 정렬', scope: 'grid', noButton: true },
+  { id: 'gridSortClear', label: '표: 정렬 해제 (파일 순서로)', title: '정렬 해제 — 파일의 행 순서로', scope: 'grid' },
+  { id: 'gridFilter', label: '표: 이 열의 값으로 거르기… (보기만)', title: '값으로 거르기', scope: 'grid', noButton: true },
+  { id: 'gridFilterClear', label: '표: 필터 모두 해제', title: '필터 해제 — 모든 행 보이기', scope: 'grid' },
+  { id: 'gridHideCols', label: '표: 고른 열 숨기기 (보기만)', title: '열 숨기기', scope: 'grid', noButton: true },
+  { id: 'gridShowCols', label: '표: 숨긴 열 모두 보이기', title: '숨긴 열 모두 보이기', scope: 'grid' },
+  { id: 'gridFitCols', label: '표: 열 폭을 내용에 맞추기 (열 경계 두 번 누르기와 같다)', title: '폭을 내용에 맞추기', scope: 'grid', noButton: true },
   { id: 'gridTrailingNewline', label: '표: 파일 끝 개행 추가', title: '파일 끝에 개행을 넣는다. 끝 개행이 없으면 행을 덧붙일 때마다 마지막 줄이 git diff 에 같이 나온다 (.editorconfig 도 끝 개행을 요구한다)', scope: 'grid', edits: true },
   // ---- 마크다운 창 막대 — 보기 모드 (순환은 Ctrl+Shift+V, 전역 명령 cycleMdMode)
   { id: 'viewSource', label: '보기: 소스', title: '소스만', scope: 'md' },
