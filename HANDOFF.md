@@ -190,4 +190,4 @@ Markdown(+Mermaid)과 TSV/CSV 를 탭 · 분할로 편집하는 로컬 PWA. Edge
 - 포커스 명령 뒤 바로 키를 보내면 포커스 이동(한 프레임)보다 앞설 수 있다.
 - flexlayout 의 숨은 탭은 높이 0 이라 그리드 행이 안 그려진다 — 보이는 창만 고르고 탭을 바꾼 뒤 기다린다.
 - 내장 브라우저 창이 가려지면 프레임이 스크린샷 때만 돌아 시간 초과가 난다 — DOM 과 `document.activeElement` 로 확인한다.
-- 개발 서버를 껐다 켠 뒤 `?opfs` 의 OPFS 가 비고 샘플 넣기가 `NotFoundError` 로 멈춘 일이 두 번 있다(원인 모름, `devSeed.ts` 의 `put`). 다시 열거나 멈춘 파일을 같은 API 로 만들면 나머지가 채워졌다.
+- `?opfs` 의 샘플 폴더(OPFS)가 깨져 샘플 넣기가 `NotFoundError` 로 멈추면(파일만 사라진 상태, 원인 재현 못 함) 이제 경고 한 줄을 남기고 `dev-docs` · `dev-mount` 를 지워 다시 깐다 — 그 안에 둔 시험 파일도 사라진다. 실제 폴더에는 해당하지 않는다(DESIGN §24.7 X14). `preview_start` 는 `?opfs` 없는 주소로 탭을 여니 서버를 다시 띄운 뒤에는 `?opfs` 로 다시 간다.
