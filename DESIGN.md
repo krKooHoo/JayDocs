@@ -1822,6 +1822,29 @@ UI/UX 개편 C3(`docs/research/apple-uiux/ADOPT.md`). 원칙 5 "모으기 → �
 
 `npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: `Ctrl+Alt+N` → 예시 줄 "마크다운 .md | 결론 문서 .md | TSV 표 …", 결론 문서로 만든 문서의 미리보기 — H1 하나, H2 문제 정의 · 근거 · 솔루션 · 결론 · 다음 행동, H3 안 A · 안 B, 링크 "관련 문서", 표 인용 예는 코드 블록으로(오류 없음). 콘솔 오류 없음. (시험 문서는 지웠다)
 
+## 55. 보이지 않는 문자 · 다른 인코딩으로 다시 열기 (2026-11-27)
+
+UI/UX 개편 C4(`docs/research/apple-uiux/ADOPT.md`). 탭 split · EOL 보존 계약(§2)을 깨는 것(몰래 들어간 탭 · 앞뒤 공백)을 눈으로 보고, 인코딩 짐작이 틀렸을 때 고칠 길을 낸다(Pages 의 보이지 않는 문자, TextEdit 의 열기 인코딩). 원칙 확인: 7 맞음(화면에만 그리고, 디스크는 그대로), 2 맞음(기본은 꺼짐 — 켰을 때만 그린다), 1 맞음(팔레트 · 맥락 메뉴 · 안내 막대의 선택 칸, 키는 주지 않는다 — 드문 동작), 6 맞음, 3 · 4 · 5 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| IV1 | 팔레트 **보이지 않는 문자 보이기 / 숨기기**(이름이 지금 상태를 따라간다), 맥락 메뉴(편집기 · 그리드). 앱 전체에 하나, 이 브라우저에 남긴다(`jaydocs.invisibles`). 기본은 꺼짐. 키는 주지 않는다 | ADOPT C4 |
+| IV2 | 편집기(.md · .txt · .json): 공백 `·` · 탭 `→`(CodeMirror `highlightWhitespace`), 줄 끝 공백은 칠하고, 줄바꿈마다 `↵`(마지막 줄 뒤에는 없다 — 끝 개행이 없는 파일은 마지막 줄에 `↵` 가 없다). 열린 편집기 모두 바로 바뀐다(Compartment) | |
+| IV3 | 그리드: 셀 앞뒤 공백 `·`, 칸 안 탭 `→`(CSV). 칸 안 줄바꿈 `↵` 는 전부터 늘 보인다 | ADOPT C4 "셀 안의 앞뒤 공백 · 칸 줄바꿈" |
+| EN1 | **다른 인코딩으로 다시 열기** — UTF-8 이 아닌 파일(EUC-KR 로 짐작해 읽기 전용으로 연 것)의 안내 막대에 선택 칸, 팔레트 **다른 인코딩으로 다시 열기: …**. EUC-KR · UTF-8(깨진 바이트는 �) · Shift_JIS · GBK · Big5 · Windows-1252 | ADOPT C4. UTF-8 로 읽힌 파일은 짐작이 틀릴 일이 거의 없어 내놓지 않는다 |
+| EN2 | 디스크의 바이트를 그 인코딩으로 다시 해석해 **화면만** 바꾼다. 문서는 계속 **읽기 전용**이고, 쓰기는 "UTF-8 로 바꿔 저장" 만 — `fsaBackend.write` 가 디스크 바이트로 다시 검사한다(고른 인코딩과 상관없이). 상태 줄 · 안내 막대에 고른 인코딩. 이 창을 띄운 동안 그 문서는 고른 인코딩으로 다시 읽는다(바깥에서 바뀌어 다시 읽을 때도). UTF-16 · 바이너리는 골라도 열지 않는다 | 원칙 7 |
+
+코드: `lib/encodings.ts`(인코딩 표 · 이름) · `lib/encodings.test.ts`, `lib/fsa/fsaBackend.ts`(`decodeText(buf, forced)` · `read(path, {encoding})`), `lib/backend.ts`, `store/documents.ts`(`reopenWithEncoding` · `forcedEncoding`), `ReadOnlyBanner.tsx`(선택 칸 · `reopenAs`), `DocStatus.tsx`, `lib/invisibles.ts`(상태 · 편집기 확장 · 셀 앞뒤 공백), `MarkdownPane.tsx`(Compartment), `grid/Grid.tsx`(`inv`), `Workbench.tsx`(팔레트), `lib/contextMenu.ts`.
+
+### 55.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: Shift_JIS 바이트(`あいう`) 파일 → EUC-KR 로 짐작해 "궇궋궎", 안내 막대 선택 칸에서 Shift_JIS → "あいう", 상태 줄 SHIFT_JIS, 읽기 전용 그대로, 디스크 바이트는 `82 a0 82 a2 82 a4 0a` 그대로. 팔레트 "보이지 않는 문자 보이기" → 편집기에 `↵` · 공백 · 탭 · 줄 끝 공백 표시, 그리드 셀 `··pad··`, 다시 팔레트(이름이 "숨기기" 로) → 모두 사라짐. 콘솔 오류 없음. (시험 파일은 지웠다)
+
+### 55.2 확인하지 못한 것 · 알아 둘 것 (TESTCASES §49)
+
+- 실제 EUC-KR · Shift_JIS 파일(옛 메모장 · 일본어 자료), 실제 폴더에서 다시 연 뒤 "UTF-8 로 바꿔 저장", 큰 문서에서 보이지 않는 문자 켬.
+- dev `?opfs` 샘플 폴더가 또 열리지 않았다 — 이번에는 `docs/` 안의 샘플 파일들과 `메모.txt` 가 사라져 있었다(시험 파일을 지우고 레이아웃의 탭이 그 파일을 가리킨 채 서버를 멈춘 뒤). 원인은 확인하지 않았다. `dev-docs` · `dev-mount` · `jaydocs.layout.v1:dev` 를 지우면 다시 만든다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

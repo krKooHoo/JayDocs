@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { store } from '../store/documents'
 import { confirmConvertToUtf8 } from './ReadOnlyBanner'
 import './DocStatus.css'
+import { encodingName } from '../lib/encodings'
 
 /**
  * 문서 상태 줄 (ADOPT A2 · DESIGN §32). 모든 문서 창의 맨 아래 한 줄.
@@ -32,7 +33,7 @@ export function DocStatus({ path, cell, summary, extra }: Props) {
   const status = d.saving ? '저장 중…' : d.conflict ? '충돌' : readOnly ? '🔒 읽기 전용' : dirty ? '● 수정됨' : '저장됨'
   const eol = d.kind === 'tsv' ? d.table.eol : d.eol
   const bom = d.kind === 'tsv' ? d.table.bom : d.bom
-  const encoding = d.encoding.toUpperCase()
+  const encoding = encodingName(d.encoding)
   const utf8 = d.encoding === 'utf-8'
 
   return (

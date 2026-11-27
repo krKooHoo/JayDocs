@@ -38,3 +38,6 @@
   background: var(--accent); pointer-events: none;
 }
 .grid-wrap.is-col-moving, .grid-wrap.is-col-moving * { cursor: grabbing !important; }
+
+/* 보이지 않는 문자 (DESIGN §55) — 셀 앞뒤 공백 */
+.grid-ws { color: var(--muted); opacity: 0.8; }

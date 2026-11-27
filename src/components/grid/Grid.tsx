@@ -8,6 +8,7 @@ import { formatClipboardTsv, parseClipboardTsv } from '../../lib/tsv/clipboard'
 import { parseHtmlTable, parseMarkdownTable } from '../../lib/tsv/mdTable'
 import { sanitizeFor } from '../../lib/tsv/table'
 import type { CalcCell } from '../../lib/calc/calc'
+import { splitCellSpaces, useInvisibles } from '../../lib/invisibles'
 
 /**
  * 자체 DOM 그리드 (DESIGN D3). 상태는 활성 셀(부모가 쥔다)과 범위 선택의 기준점(anchor)뿐이고
@@ -165,9 +166,26 @@ interface CellProps {
   calc: CalcCell | undefined
   issue: string | undefined
   head: boolean
+  /** 보이지 않는 문자 보이기 (DESIGN §55) — 앞뒤 공백 · 탭 */
+  inv: boolean
 }
 
-const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill, calc, issue, head }: CellProps) {
+/** 셀 글 — 칸 안 줄바꿈은 늘 ↵, 보이지 않는 문자를 켜면 앞뒤 공백 · · 탭 → */
+function cellText(v: string, inv: boolean) {
+  const t = v.includes('\n') ? v.replace(/\r?\n/g, ' ↵ ') : v
+  if (!inv) return t
+  const [lead, core, trail] = splitCellSpaces(t)
+  if (!lead && !trail && core === t) return t
+  return (
+    <>
+      {lead > 0 && <span className="grid-ws">{'·'.repeat(lead)}</span>}
+      {core}
+      {trail > 0 && <span className="grid-ws">{'·'.repeat(trail)}</span>}
+    </>
+  )
+}
+
+const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill, calc, issue, head, inv }: CellProps) {
   let cls = 'grid-cell'
   if (col.type === 'comment') cls += ' is-comment'
   if (col.isKey) cls += ' is-key'
@@ -192,7 +210,7 @@ const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill
         </span>
       ) : (
         // CSV 칸 안 줄바꿈은 한 줄 높이에 ↵ 로 보인다 (편집하면 그대로 나온다)
-        v.includes('\n') ? v.replace(/\r?\n/g, ' ↵ ') : v
+        cellText(v, inv)
       )}
     </div>
   )
@@ -219,9 +237,10 @@ interface RowProps {
   head: boolean
   /** 본문 행의 세로 위치(px). style 객체를 props 로 넘기면 매 렌더 새 객체라 memo 가 깨져 스크롤마다 모든 행이 다시 그려진다 */
   top?: number
+  inv: boolean
 }
 
-const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, top }: RowProps) {
+const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, top, inv }: RowProps) {
   let cls = 'grid-row'
   cls += head ? ' is-head' : ' is-body'
   if (head && schema.typed && r === 0) cls += ' is-type'
@@ -243,6 +262,7 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
           calc={calcCells.size > 0 ? calcCells.get(issueKey(tableWidth, r, c)) : undefined}
           issue={validation.issues.get(issueKey(tableWidth, r, c))}
           head={head}
+          inv={inv}
         />
       ))}
     </div>
@@ -260,6 +280,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const ta = useRef<HTMLTextAreaElement>(null)
+  const inv = useInvisibles()
   const [scroll, setScroll] = useState({ top: 0, left: 0 })
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState('')
@@ -989,7 +1010,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
               const s = rowSel(r)
               const f = fillSel(r)
               return (
-                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} calcCells={calcCells} rowSelected={wholeRow && s.c1 >= 0} head />
+                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} calcCells={calcCells} rowSelected={wholeRow && s.c1 >= 0} head inv={inv} />
               )
             })}
             {handleInHead && handle}
@@ -1018,6 +1039,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 rowSelected={wholeRow && s.c1 >= 0}
                 head={false}
                 top={headerH + vi.start}
+                inv={inv}
               />
             )
           })}

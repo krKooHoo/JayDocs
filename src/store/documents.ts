@@ -208,6 +208,27 @@ class DocumentStore {
   }
 
   /** 왜 읽기 전용인가. 가져온 폴더가 우선 (그때는 UTF-8 변환도 막는다) */
+  /**
+   * 다른 인코딩으로 다시 열기 (DESIGN §55) — 이 창을 띄운 동안 그 문서는 고른 인코딩으로 읽는다 (바깥 변경으로 다시 읽을 때도).
+   * 화면만 바뀐다: 문서는 계속 읽기 전용이고, 쓰기는 "UTF-8 로 바꿔 저장" 만 (fsaBackend.write 가 디스크 바이트로 다시 검사한다)
+   */
+  private forcedEncoding = new Map<string, string>()
+
+  /** 이미 있는 바이트를 그 인코딩으로 다시 해석한다. UTF-8 로 읽힌 문서 · 저장 안 한 문서는 하지 않는다 — 그 까닭을 돌려준다 */
+  async reopenWithEncoding(path: string, encoding: string): Promise<string | null> {
+    const d = this.docs.get(path)
+    if (!d || d.status !== 'ready') return '문서가 아직 열리지 않았습니다'
+    if (d.encoding === 'utf-8') return 'UTF-8 로 읽힌 문서입니다 — 다시 열 필요가 없습니다'
+    if (this.isDirty(path)) return '저장하지 않은 변경이 있습니다'
+    let f
+    try { f = await backend().read(path, { encoding }) } catch (e) { return (e as Error).message }
+    if (this.docs.get(path) !== d) return null
+    this.forcedEncoding.set(path, encoding)
+    this.replaceAll(d, f.text, f.mtime, encoding)
+    this.touch(path)
+    return null
+  }
+
   readOnlyReason(path: string): 'mount' | 'encoding' | null {
     const { alias } = splitRootPath(path)
     if (alias !== null && this.readOnlyAliases.has(alias)) return 'mount'
@@ -299,7 +320,7 @@ class DocumentStore {
     this.docs.set(path, d)
     this.touch(path)
     try {
-      const f = await backend().read(path)
+      const f = await backend().read(path, { encoding: this.forcedEncoding.get(path) })
       if (this.docs.get(path) !== d) return // 읽는 사이 닫힘
       d.encoding = f.encoding ?? 'utf-8'
       if (d.kind === 'tsv') {
@@ -554,6 +575,7 @@ class DocumentStore {
   async convertToUtf8(path: string) {
     const d = this.docs.get(path)
     if (!d || d.status !== 'ready' || d.encoding === 'utf-8') return
+    this.forcedEncoding.delete(path)
     // CSV 는 BOM 을 붙인다 — Excel 은 BOM 없는 UTF-8 CSV 의 한글을 깨뜨린다 ("CSV UTF-8" 저장 형식과 같다)
     if (d.kind === 'tsv' && d.table.format === 'csv' && !d.table.bom) {
       d.table = { ...d.table, bom: true }
@@ -610,7 +632,7 @@ class DocumentStore {
     }
     if (d.status !== 'ready' || d.saving) return
     let f
-    try { f = await backend().read(e.path) } catch { return } // 삭제 등
+    try { f = await backend().read(e.path, { encoding: this.forcedEncoding.get(e.path) }) } catch { return } // 삭제 등
     if (d.mtime !== null && Math.abs(f.mtime - d.mtime) < 1) return
     const encoding = f.encoding ?? 'utf-8'
     if (!this.isDirty(e.path)) this.replaceAll(d, f.text, f.mtime, encoding)

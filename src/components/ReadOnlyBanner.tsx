@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { backend } from '../lib/backend'
 import { runCommand } from '../lib/commands'
 import { askConfirm } from '../lib/dialogs'
-import { notifyError } from '../lib/notices'
+import { notify, notifyError } from '../lib/notices'
 import { splitRootPath } from '../lib/roots.mjs'
 import { store, useDocVersion } from '../store/documents'
+import { REOPEN_ENCODINGS, encodingName } from '../lib/encodings'
 
 /**
  * UTF-8 이 아닌 파일을 묻고 UTF-8 로 바꿔 저장한다 — 안내 막대 · 상태 줄의 인코딩 · 팔레트가 같이 쓴다.
@@ -12,7 +13,7 @@ import { store, useDocVersion } from '../store/documents'
  * onBusy: 답을 받고 쓰는 동안 true. 답을 기다리는 동안 탭이 닫혔거나 이미 바뀌었으면 convertToUtf8 이 아무 일도 하지 않는다
  */
 export async function confirmConvertToUtf8(path: string, onBusy?: (busy: boolean) => void): Promise<void> {
-  const encoding = (store.get(path)?.encoding ?? '').toUpperCase()
+  const encoding = encodingName(store.get(path)?.encoding ?? '')
   const ok = await askConfirm({
     title: 'UTF-8 로 바꿔 저장',
     message: `지금 보이는 내용 그대로 UTF-8 로 다시 저장합니다. 이 파일을 ${encoding} 로만 읽는 프로그램이 있다면 한글이 깨져 보일 수 있습니다. 계속할까요?`,
@@ -25,6 +26,13 @@ export async function confirmConvertToUtf8(path: string, onBusy?: (busy: boolean
   try { await store.convertToUtf8(path) } finally { onBusy?.(false) }
   // 바뀌면 안내 막대(와 포커스가 돌아와 있던 버튼)가 사라진다 — 포커스가 body 로 빠지면 문서 창으로
   window.setTimeout(() => { if (document.activeElement === document.body) runCommand('focusEditor') }, 0)
+}
+
+/** 다른 인코딩으로 다시 열기 (DESIGN §55) — 안내 막대 · 팔레트가 같이 쓴다. 못 하면 까닭을 알린다 */
+export async function reopenAs(path: string, encoding: string): Promise<void> {
+  const why = await store.reopenWithEncoding(path, encoding)
+  if (why) notifyError(`다시 열지 못했습니다: ${why}`, { key: `reopen:${path}` })
+  else notify(`${encodingName(encoding)} 로 다시 읽었습니다 — 화면만 바뀌고 파일은 그대로입니다`, { key: `reopen:${path}` })
 }
 
 /**
@@ -54,12 +62,21 @@ export function ReadOnlyBanner({ path }: { path: string }) {
     )
   }
 
-  const encoding = (store.get(path)?.encoding ?? '').toUpperCase()
+  const current = store.get(path)?.encoding ?? ''
+  const encoding = encodingName(current)
   // 묻는 동안은 단추를 살려 둔다 — 대화상자가 닫히며 포커스를 돌려줄 곳이다
   const convert = () => confirmConvertToUtf8(path, setBusy)
   return (
     <div className="banner">
       🔒 UTF-8 이 아닌 파일입니다 ({encoding} 로 읽음) — 읽기 전용.
+      {/* 다른 인코딩으로 다시 열기 (DESIGN §55) — 글이 깨져 보이면. 화면만 바뀌고 디스크는 그대로 */}
+      <label className="banner-select" title="글이 깨져 보이면 다른 인코딩으로 다시 읽는다 — 화면만 바뀌고 파일은 그대로 (팔레트 '다른 인코딩으로 다시 열기: …')">
+        다른 인코딩으로 다시 열기
+        <select value={current} disabled={busy} onChange={(e) => void reopenAs(path, e.target.value)}>
+          {!REOPEN_ENCODINGS.some((c) => c.id === current) && <option value={current}>{encoding}</option>}
+          {REOPEN_ENCODINGS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </label>
       <button onClick={() => void convert()} disabled={busy}>UTF-8 로 바꿔 저장</button>
     </div>
   )

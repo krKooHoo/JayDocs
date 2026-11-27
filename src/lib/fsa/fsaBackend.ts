@@ -3,6 +3,7 @@ import { DOC_EXTS, MAX_TEXT_BYTES } from '../filetypes.mjs'
 import { checkPath, cleanPath, joinLocal } from '../localPath'
 import { MOUNT_IGNORE_DIRS, MOUNT_SCAN_LIMIT, isValidAlias, joinRootPath, makeAlias, splitRootPath } from '../roots.mjs'
 import { requestRoot, type StoredRoot, type Workspace } from './workspace'
+import { decoderName } from '../encodings'
 
 type Dir = FileSystemDirectoryHandle
 
@@ -38,9 +39,11 @@ const EUCKR = new TextDecoder('euc-kr', { ignoreBOM: true })
  * 아니면 EUC-KR(CP949) 로 읽고 encoding 으로 알린다 — 앱은 읽기 전용으로 연다.
  * NUL 바이트나 UTF-16 BOM 이 있으면 텍스트 파일이 아니다.
  */
-export function decodeText(buf: Uint8Array): { text: string; encoding: string } {
+export function decodeText(buf: Uint8Array, forced?: string): { text: string; encoding: string } {
   if ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff)) throw new Error('UTF-16 파일은 열 수 없습니다 — UTF-8 로 저장한 뒤 여세요')
   if (buf.includes(0)) throw new Error('텍스트 파일이 아닙니다 (바이너리)')
+  // 다른 인코딩으로 다시 열기 (DESIGN §55) — 짐작하지 않고 그 인코딩으로. 읽지 못하는 바이트는 � 로
+  if (forced) return { text: new TextDecoder(decoderName(forced), { ignoreBOM: true }).decode(buf), encoding: forced }
   try {
     return { text: UTF8.decode(buf), encoding: 'utf-8' }
   } catch {
@@ -438,11 +441,11 @@ export class FsaBackend implements Backend {
   }
 
   // ---------------------------------------------------------------- 파일
-  async read(path: string): Promise<FileData> {
+  async read(path: string, opts: { encoding?: string } = {}): Promise<FileData> {
     const l = await this.locate(path)
     try {
       const file = await (await this.fileOf(l)).getFile()
-      return { path: l.rel, mtime: file.lastModified, ...decodeText(await readLimited(file)) }
+      return { path: l.rel, mtime: file.lastModified, ...decodeText(await readLimited(file), opts.encoding) }
     } catch (e) {
       throw fsFail(e, '읽지 못했습니다')
     }

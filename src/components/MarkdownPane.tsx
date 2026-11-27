@@ -9,6 +9,7 @@ import { onLineRequest, onPaneAction } from '../lib/nav'
 import { noteLineJump, registerLineSource } from '../lib/navHistory'
 import { foldAllSections, foldSectionAtCursor, foldedKeys, hasFoldEffects, loadFolds, restoreFolds, saveFolds, unfoldAllSections, unfoldSectionAtCursor } from '../lib/md/folding'
 import { runSectionAction, type SectionAction } from '../lib/md/sections'
+import { invisiblesExtension, invisiblesOn, onInvisibles } from '../lib/invisibles'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -60,6 +61,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   /** 목차로 포커스를 옮기는 함수 — 목차 띠가 넣는다. 띠가 숨겨져 있으면 false */
   const outlineFocus = useRef<(() => boolean) | null>(null)
   const hybridComp = useRef(new Compartment())
+  /** 보이지 않는 문자 보이기 (DESIGN §55) */
+  const invComp = useRef(new Compartment())
   const [mode, setModeState] = useState<Mode>(() => loadMode(path))
   /** 보기 모드 순환(전역 명령)이 지금 모드를 읽는 곳 — 구독 클로저가 낡은 값을 보지 않게 */
   const modeRef = useRef<Mode>(mode)
@@ -195,6 +198,7 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         extensions: [
           ...baseExtensions(path, { save: () => void store.save(path), readOnly }),
           hybridComp.current.of(isMd && loadMode(path) === 'hybrid' ? hybrid(path) : []),
+          invComp.current.of(invisiblesOn() ? invisiblesExtension() : []),
           isMd ? mdTableExtension() : [],
           EditorView.updateListener.of((u) => {
             if (u.docChanged || u.selectionSet || u.geometryChanged) skimPing.current?.()
@@ -237,7 +241,10 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       line: () => view.state.doc.lineAt(view.state.selection.main.head).number,
       focused: () => view.hasFocus,
     })
+    // 보이지 않는 문자 켜고 끄기 — 열린 편집기 모두
+    const unInv = onInvisibles(() => view.dispatch({ effects: invComp.current.reconfigure(invisiblesOn() ? invisiblesExtension() : []) }))
     return () => {
+      unInv()
       window.clearTimeout(foldTimer)
       if (foldPending) saveFolds(path, foldedKeys(foldPending)) // 닫기 직전에 접은 것도 남긴다
       unSource()

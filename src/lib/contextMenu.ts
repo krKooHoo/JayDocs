@@ -108,7 +108,7 @@ export function gridContextIds(s: GridSpot): string[] {
   if (s.empty) ids.push('gridSeedHeader')
   ids.push(...(s.wholeCols ? [...COL_IDS, ...ROW_IDS] : [...ROW_IDS, ...COL_IDS]))
   if (!s.empty) ids.push('gridFillDown', 'gridFillRight')
-  ids.push('gridFind', 'gridReplace', 'calc', 'gridCalcFile', 'exportDto', 'exportDtoAs', 'gridUndo', 'gridRedo', ...DOC_TAIL_IDS)
+  ids.push('gridFind', 'gridReplace', 'calc', 'gridCalcFile', 'exportDto', 'exportDtoAs', 'gridUndo', 'gridRedo', 'toggleInvisibles', ...DOC_TAIL_IDS)
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids
 }
 
@@ -152,7 +152,7 @@ export function markdownContextIds(s: MarkdownSpot): string[] {
     // 절 옮기기 · 단계 (DESIGN §53)
     if (s.mode !== 'preview') ids.push('mdSectionUp', 'mdSectionDown', 'mdSectionDemote', 'mdSectionPromote')
   }
-  ids.push('toggleSkim', ...DOC_TAIL_IDS, 'saveAsTemplate')
+  ids.push('toggleSkim', 'toggleInvisibles', ...DOC_TAIL_IDS, 'saveAsTemplate')
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids
 }
 
