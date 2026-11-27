@@ -92,7 +92,7 @@ export type ContextZone = ContextSpot['zone']
 // ---------------------------------------------------------------- 자리 판단 함수
 
 /** 문서 어디서나 (맨 아래) — 저장 · 되돌리기 · 분할 · 경로 복사 · 인코딩 */
-export const DOC_TAIL_IDS = ['save', 'revertToSaved', 'split', 'pinActive', 'copyActivePath', 'convertUtf8'] as const
+export const DOC_TAIL_IDS = ['save', 'revertToSaved', 'split', 'pinActive', 'copyActivePath', 'convertUtf8', 'closeTab'] as const
 
 /** 표 · 글을 고치는 명령 — 읽기 전용 문서에서는 뺀다 (등록부의 `enabled()` 도 끄지만, K7 처럼 등록부 없이 볼 때를 위해 여기서도) */
 const EDIT_IDS = new Set([

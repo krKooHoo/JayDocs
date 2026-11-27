@@ -569,7 +569,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'nextTab', label: '다음 탭', run: () => cycleTab(1) },
     { id: 'prevTab', label: '이전 탭', run: () => cycleTab(-1) },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `tab${i + 1}`, label: `${i + 1}번째 탭`, hidden: true, run: () => selectTabIndex(i) })),
-    { id: 'closeTab', label: '탭 닫기', run: closeActive },
+    { id: 'closeTab', label: '현재 문서 닫기 (탭 닫기)', run: closeActive },
     { id: 'closeOtherTabs', label: '다른 탭 닫기 (같은 탭 묶음에서 이 탭만 남긴다)', run: () => void closeOthers(), enabled: () => (activeTabSet()?.getChildren().length ?? 0) > 1 },
     // 커서 · 포커스의 문서 링크 · tsv-view (맥락 메뉴 · DESIGN §40) — 미리보기의 링크에 포커스가 있으면 그것, 아니면 마지막 마크다운 편집기의 커서
     { id: 'openLinkAtCursor', label: '커서의 링크 열기 (문서 링크)', run: () => { const t = currentLink(); if (t) openFile(t, true) }, enabled: () => currentLink() !== null },

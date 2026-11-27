@@ -37,24 +37,13 @@ function readView(): View {
 
 const sig = (v: View) => v.place + '\n' + [...v.items, ...v.footer].map((h) => `${h.keys}\t${h.label}`).join('\n')
 
-/**
- * 파일 트리의 오른쪽 끝 — 안내 창의 왼쪽. 트리가 접혀 있으면 화면 왼쪽.
- * 그 자리에 하이브리드 목차 띠가 있으면 띠의 오른쪽으로 (목차를 가리지 않게)
- */
-function leftEdge(): number {
-  const r = document.querySelector('.tree')?.getBoundingClientRect()
-  let left = r && r.width > 0 ? r.right : 0
-  for (const el of document.querySelectorAll('.outline-panel')) {
-    const o = el.getBoundingClientRect()
-    if (o.width > 0 && o.left <= left + 40 && o.right > left) left = o.right
-  }
-  return Math.round(left) + 10
-}
+/** 안내 창의 높이를 알림 줄에 알린다 — 알림이 안내 창 위로 쌓이게 (같은 오른쪽 아래, DESIGN §46 KH6) */
+const HEIGHT_VAR = '--key-hints-h'
 
 export function KeyHints({ hidden }: { hidden: boolean }) {
   const { on, folded } = useKeyHintsState()
   const [view, setView] = useState<View | null>(null)
-  const [left, setLeft] = useState(10)
+  const box = useRef<HTMLElement>(null)
   const [promo, setPromo] = useState<KeyHint | null>(null)
   const [dialog, setDialog] = useState(dialogOpen())
   const last = useRef('')
@@ -69,7 +58,6 @@ export function KeyHints({ hidden }: { hidden: boolean }) {
       const v = readView()
       const s = sig(v)
       if (s !== last.current) { last.current = s; setView(v) }
-      setLeft(leftEdge())
     }
     // 포커스가 옮겨 간 뒤 (같은 이벤트 안에서는 아직 옛 자리를 읽을 수 있어 한 틱 뒤에)
     const soon = () => { window.clearTimeout(timer); timer = window.setTimeout(refresh, 0) }
@@ -80,16 +68,12 @@ export function KeyHints({ hidden }: { hidden: boolean }) {
     document.addEventListener('pointerup', soon)
     document.addEventListener('keyup', idle)
     window.addEventListener('resize', soon)
-    const tree = document.querySelector('.tree')
-    const ro = tree ? new ResizeObserver(() => setLeft(leftEdge())) : null
-    if (tree) ro!.observe(tree)
     return () => {
       window.clearTimeout(timer)
       document.removeEventListener('focusin', soon)
       document.removeEventListener('pointerup', soon)
       document.removeEventListener('keyup', idle)
       window.removeEventListener('resize', soon)
-      ro?.disconnect()
       last.current = ''
     }
   }, [on])
@@ -101,7 +85,6 @@ export function KeyHints({ hidden }: { hidden: boolean }) {
       const v = readView()
       last.current = sig(v)
       setView(v)
-      setLeft(leftEdge())
     }, 0)
     return () => window.clearTimeout(t)
   }, [on, hidden, dialog])
@@ -125,11 +108,22 @@ export function KeyHints({ hidden }: { hidden: boolean }) {
     return () => { document.removeEventListener('click', onClick, true); window.clearTimeout(t); setPromo(null) }
   }, [on])
 
-  if (!on || hidden || dialog || !view) return null
+  // 보이는 동안 높이를 알림 줄에 — 안 보이면 0
+  const shown = on && !hidden && !dialog && !!view
+  useEffect(() => {
+    const el = box.current
+    const root = document.documentElement
+    if (!shown || !el || typeof ResizeObserver !== 'function') { root.style.removeProperty(HEIGHT_VAR); return }
+    const ro = new ResizeObserver(() => root.style.setProperty(HEIGHT_VAR, `${Math.ceil(el.getBoundingClientRect().height)}px`))
+    ro.observe(el)
+    return () => { ro.disconnect(); root.style.removeProperty(HEIGHT_VAR) }
+  }, [shown])
+
+  if (!shown) return null
 
   const keep = (e: React.MouseEvent) => e.preventDefault() // 단추를 눌러도 포커스는 제자리
   return (
-    <aside className={'key-hints' + (folded ? ' is-folded' : '')} style={{ left }} aria-label="단축키 안내">
+    <aside ref={box} className={'key-hints' + (folded ? ' is-folded' : '')} aria-label="단축키 안내">
       <div className="kh-head">
         <span className="kh-title">⌨ {PLACE_TITLE[view.place]}</span>
         <span className="spacer" />

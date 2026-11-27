@@ -169,7 +169,7 @@ kbd {
 .topbar-error { color: var(--danger); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 알림 줄 — 방금 한 동작의 결과와 실패 (components/NoticeHost.tsx). 대화상자(.overlay.is-dialog)보다 아래 */
 .notices {
-  position: fixed; right: 16px; bottom: 32px; z-index: 300; max-width: min(520px, 90vw); /* 그리드 아래 상태 줄을 가리지 않는 높이 */
+  position: fixed; right: 16px; bottom: calc(32px + var(--key-hints-h, 0px) + 6px); z-index: 300; max-width: min(520px, 90vw); /* 그리드 아래 상태 줄 · 단축키 안내 창(DESIGN §46 KH6)을 가리지 않는 높이 */
   display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
 }
 .toast {

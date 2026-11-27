@@ -1,6 +1,6 @@
-/* 단축키 안내 창 (DESIGN §46) — 문서 창 영역의 왼쪽 아래, 파일 트리 오른쪽. 오른쪽 아래는 알림 줄 자리라 피한다 */
+/* 단축키 안내 창 (DESIGN §46 KH6) — 오른쪽 아래(편집기 스크롤 막대 안쪽). 알림 줄은 이 창 위로 쌓인다(--key-hints-h) */
 .key-hints {
-  position: fixed; bottom: 32px; z-index: 250; /* 문서 상태 줄 위, 알림(300) · 대화상자 아래 */
+  position: fixed; right: 20px; bottom: 32px; z-index: 250; /* 문서 상태 줄 위, 알림(300) · 대화상자 아래 */
   width: 250px; max-width: 40vw; box-sizing: border-box;
   background: var(--elev); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); font-size: 12px; line-height: 18px;

@@ -125,7 +125,7 @@ describe('자리 판단 함수', () => {
     expect(ids).not.toContain('viewHybrid')
     expect(ids).toContain('viewSource')
     expect(ids).toContain('focusOutline')
-    expect(ids.slice(-3)).toEqual(['copyActivePath', 'convertUtf8', 'saveAsTemplate'])
+    expect(ids.slice(-3)).toEqual(['convertUtf8', 'closeTab', 'saveAsTemplate'])
     // 표 · 링크가 아닌 자리에는 그 명령이 없다
     expect(markdownContextIds(md())).not.toContain('mdTableRowBelow')
     expect(markdownContextIds(md())).not.toContain('openLinkAtCursor')
