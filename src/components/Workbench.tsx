@@ -24,6 +24,7 @@ import { SUMMARY_KEYS, SUMMARY_LABELS, toggleSummaryKey, useSummaryKeys } from '
 import { confirmConvertToUtf8, reopenAs } from './ReadOnlyBanner'
 import { REOPEN_ENCODINGS } from '../lib/encodings'
 import { invisiblesOn, toggleInvisibles, useInvisibles } from '../lib/invisibles'
+import { scrollSyncOn, toggleScrollSync, useScrollSync } from '../lib/md/scrollSync'
 import { EditorView } from '@codemirror/view'
 import { revertTextInView } from '../lib/revert'
 import { PANE_COMMANDS, type PaneScope } from '../lib/paneCommands'
@@ -500,6 +501,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()
   const invOn = useInvisibles()
+  const syncOn = useScrollSync()
   useEffect(() => registerCommands([
     ...SUMMARY_KEYS.map((k) => ({
       id: `selSummary:${k}`,
@@ -514,6 +516,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     },
     // 보이지 않는 문자 보이기 (DESIGN §55) — 앱 전체에 하나, 기본은 꺼짐
     { id: 'toggleInvisibles', label: `보이지 않는 문자 ${invisiblesOn() ? '숨기기' : '보이기'} (공백 · · 탭 → · 줄 끝 ↵, 표는 셀 앞뒤 공백)`, run: () => { const on = toggleInvisibles(); notify(on ? '보이지 않는 문자를 보입니다 — 공백 · · 탭 → · 줄 끝 ↵' : '보이지 않는 문자를 숨깁니다', { key: 'invisibles' }) } },
+    // 분할 보기 스크롤 맞추기 (DESIGN §56) — 앱 전체에 하나, 기본 켜짐
+    { id: 'splitScrollSync', label: `분할 보기: 스크롤 맞추기 ${scrollSyncOn() ? '끄기' : '켜기'} (마크다운 분할 모드에서 소스 ↔ 미리보기)`, run: () => { const on = toggleScrollSync(); notify(on ? '분할 보기에서 소스와 미리보기의 스크롤을 맞춥니다' : '분할 보기에서 소스와 미리보기를 따로 스크롤합니다', { key: 'scrollSync' }) } },
     // 다른 인코딩으로 다시 열기 (DESIGN §55) — UTF-8 이 아닌 현재 문서. 화면만 바뀐다
     ...REOPEN_ENCODINGS.map((c) => ({
       id: `reopenEncoding:${c.id}`,
@@ -521,7 +525,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       run: () => { const path = activePath(); if (path) void reopenAs(path, c.id) },
       enabled: () => { const path = activePath(); const d = path ? store.get(path) : undefined; return !!d && d.status === 'ready' && d.encoding !== 'utf-8' && d.encoding !== c.id && !store.isDirty(path!) },
     })),
-  ]), [summaryKeys, activePath, invOn])
+  ]), [summaryKeys, activePath, invOn, syncOn])
 
   // 창 막대 단추의 팔레트 명령 (DESIGN §36) — 활성 탭의 창 하나에만 보낸다. 충돌 배너의 두 선택도 팔레트에
   useEffect(() => {

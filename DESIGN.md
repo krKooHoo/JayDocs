@@ -1845,6 +1845,28 @@ UI/UX 개편 C4(`docs/research/apple-uiux/ADOPT.md`). 탭 split · EOL 보존 �
 - 실제 EUC-KR · Shift_JIS 파일(옛 메모장 · 일본어 자료), 실제 폴더에서 다시 연 뒤 "UTF-8 로 바꿔 저장", 큰 문서에서 보이지 않는 문자 켬.
 - dev `?opfs` 샘플 폴더가 또 열리지 않았다 — 이번에는 `docs/` 안의 샘플 파일들과 `메모.txt` 가 사라져 있었다(시험 파일을 지우고 레이아웃의 탭이 그 파일을 가리킨 채 서버를 멈춘 뒤). 원인은 확인하지 않았다. `dev-docs` · `dev-mount` · `jaydocs.layout.v1:dev` 를 지우면 다시 만든다.
 
+## 56. 분할 보기 스크롤 맞추기 (2026-11-27)
+
+UI/UX 개편 C5(`docs/research/apple-uiux/ADOPT.md`, Jay 요청 2026-11-26). 마크다운 분할 모드에서 소스를 스크롤하면 미리보기가, 미리보기를 스크롤하면 소스가 같은 곳으로 따라온다(VS Code 마크다운 미리보기의 스크롤 동기화). 전에는 두 칸이 따로 스크롤됐다. 원칙 확인: 1 맞음(키 없이 동작, 켜고 끄기는 팔레트), 2 맞음(지도는 내용 · 크기가 바뀔 때만 다시 재고, 스크롤에는 한 프레임에 한 번), 3 맞음(한 문서 창 안의 두 칸만 — 오른쪽에 분할한 다른 창은 건드리지 않는다), 5 맞음, 7 맞음(켜고 끄기만 브라우저에 남는다), 4 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| SS1 | 마크다운 **분할** 모드에서만. 기본 **켜짐**, 앱 전체에 하나, 이 브라우저에 남긴다(`jaydocs.splitScrollSync`). 팔레트 **분할 보기: 스크롤 맞추기 켜기 / 끄기**(이름이 지금 상태를 따라간다). 키는 주지 않는다 | ADOPT C5 |
+| SS2 | 기준은 **각 칸 맨 위에 보이는 줄**(소수 줄). 줄 ↔ 위치는 훑어보기 패널과 같은 지도(`lib/skim/lineMap.ts`, 미리보기의 `data-line`) — 조각 사이는 고르게 나눈다. 켜져 있을 때만 미리보기가 `data-line` 을 찍는다 | 원문 높이와 렌더 높이는 비례하지 않는다(PLAN-skim SK7) |
+| SS3 | **사람이 만지는 쪽을 따른다** — 휠 · 누르기(스크롤 막대 포함) · 키가 들어온 쪽이 기준이다. 반대쪽에 맞춰 준 스크롤은 100ms 동안 되울림으로 보고 무시한다(편집기가 줄 높이를 재며 몇 px 고치는 것까지). 기준이 아닌 쪽이 되울림 아닌데 움직이면(목차 · 찾기로 뛰었다) 그쪽이 새 기준 | 시간만으로 막았더니 편집기에 포커스를 둔 채 미리보기를 굴릴 때 그 스크롤이 되울림으로 묻혔다(아래 56.1) |
+| SS4 | 미리보기의 지도는 내용 · 크기가 바뀔 때만 다시 잰다(ResizeObserver · MutationObserver — Mermaid · 그림이 늦게 그려져 높이가 바뀌어도). 다시 잰 뒤 기준 쪽에 다시 맞춘다. 글을 치면 기준은 편집기 — 편집기는 움직이지 않고 미리보기가 따라온다 | |
+| SS5 | 켜면 미리보기를 편집기에 바로 맞춘다. 끄면 두 칸이 그 자리에 선다 | |
+
+코드: `lib/md/scrollSync.ts`(상태 · `attachScrollSync` · `scrollTurn` · `createEchoGuard`) · `scrollSync.test.ts`, `lib/skim/scrollPos.ts`(편집기 · 미리보기의 줄 ↔ 스크롤 — 훑어보기 패널에서 꺼내 같이 쓴다), `MarkdownPane.tsx`(`syncShown`, 미리보기 `lines`), `SkimPanel.tsx`(꺼낸 함수를 쓴다), `Workbench.tsx`(팔레트).
+
+### 56.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(1400×900), 257줄 시험 문서(긴 문단 · 코드 블록 · Mermaid · 표): 편집기를 휠로 굴리면 미리보기 맨 위가 같은 줄(코드 블록 `const x2`), 미리보기를 굴리면 편집기가 따라온다(Mermaid 를 지나서도 — 절 10 · 절 15 가 두 칸에서 같은 높이). 처음 만든 것(시간으로만 막고, 내용이 바뀌면 포커스 쪽에 맞춤)은 편집기에 포커스를 둔 채 미리보기를 굴리면 Mermaid 가 그려지며 편집기 쪽으로 되맞춰지고 그 뒤의 휠이 묻혀 한 조각쯤 어긋났다 → SS3 로 고침. 글을 쳐도(줄 넣기) 두 칸 모두 움직이지 않음. 팔레트로 끄면 `data-line` 이 빠지고 미리보기는 그 자리, 편집기만 굴러감, 이름이 "켜기" 로. 다시 켜면 미리보기가 편집기 자리로. 훑어보기 패널(소스 · 미리보기 전용 모드)의 범위 상자가 스크롤을 따라감(함수를 옮긴 뒤). 콘솔 오류 없음. (시험 파일은 지웠다)
+
+### 56.2 확인하지 못한 것 (TESTCASES §50)
+
+- 아주 긴 문서(수천 줄)에서 굴릴 때 끊김, 트랙패드 · 터치, 문서 끝 근처(편집기가 먼저 바닥에 닿으면 미리보기의 마지막 몇 줄은 미리보기를 직접 굴려야 보인다), 실제 폴더.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

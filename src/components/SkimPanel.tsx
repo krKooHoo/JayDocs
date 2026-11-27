@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type MutableRefObject, type RefObject } from 'react'
 import { EditorView } from '@codemirror/view'
 import { LINE_ATTR } from '../lib/md/sourceLines'
+import { editorRange, editorScrollToLine, measurePreview } from '../lib/skim/scrollPos'
 import { PAGE_WIDTH } from '../lib/skim'
 import { blockAtLine, blockLineAtY, buildLineMap, followScroll, lineAtY, rangeBox, yAtLine, type LineBlock, type LineMap } from '../lib/skim/lineMap'
 import { SKIM_WIDTH_BIG_STEP, SKIM_WIDTH_MAX, SKIM_WIDTH_MIN, SKIM_WIDTH_STEP, nudgeSkimPanelWidth, setSkimPanelWidth, useSkimPanelState } from '../lib/skim/panel'
@@ -68,18 +69,6 @@ interface Driver {
   reveal(line: number): void
 }
 
-/** 문서 맨 위에서 `h` px 아래의 줄 (소수). 블록 하나가 여러 줄이면(하이브리드의 표 · 그림) 그 안을 고르게 나눈다 */
-function editorLineAt(view: EditorView, h: number): number {
-  const doc = view.state.doc
-  if (h <= 0) return 1
-  if (h >= view.contentHeight) return doc.lines + 1
-  const b = view.lineBlockAtHeight(h)
-  const from = doc.lineAt(b.from).number
-  const to = doc.lineAt(b.to).number
-  const f = b.height > 0 ? clamp((h - b.top) / b.height, 0, 1) : 0
-  return from + f * (to - from + 1)
-}
-
 function setCursor(view: EditorView, line: number, scroll: boolean) {
   const doc = view.state.doc
   const pos = doc.line(clamp(Math.floor(line), 1, doc.lines)).from
@@ -88,24 +77,12 @@ function setCursor(view: EditorView, line: number, scroll: boolean) {
 
 function editorDriver(view: EditorView): Driver {
   return {
-    range() {
-      const rect = view.scrollDOM.getBoundingClientRect()
-      if (rect.height <= 0) return null
-      const top = view.documentTop
-      return { first: editorLineAt(view, rect.top - top), last: editorLineAt(view, rect.bottom - top) }
-    },
+    range: () => editorRange(view),
     cursorLine() {
       const s = view.state
       return s.doc.lineAt(s.selection.main.head).number
     },
-    scrollTo(line) {
-      const doc = view.state.doc
-      const b = view.lineBlockAt(doc.line(clamp(Math.floor(line), 1, doc.lines)).from)
-      const from = doc.lineAt(b.from).number
-      const to = doc.lineAt(b.to).number
-      const h = b.top + clamp((line - from) / (to - from + 1), 0, 1) * b.height
-      view.scrollDOM.scrollTop += view.documentTop + h - view.scrollDOM.getBoundingClientRect().top
-    },
+    scrollTo: (line) => editorScrollToLine(view, line),
     reveal(line) {
       setCursor(view, line, true)
       view.focus()
@@ -119,21 +96,7 @@ function editorDriver(view: EditorView): Driver {
  */
 function previewDriver(el: HTMLElement, view: EditorView | null): Driver & { invalidate(): void } {
   let map: LineMap | null = null
-  const measure = (): LineMap => {
-    if (map) return map
-    const inner = el.querySelector<HTMLElement>('.preview-body')
-    const base = el.getBoundingClientRect().top - el.scrollTop
-    const blocks: LineBlock[] = []
-    for (const b of inner?.querySelectorAll<HTMLElement>(`:scope > [${LINE_ATTR}]`) ?? []) {
-      const r = b.getBoundingClientRect()
-      blocks.push({ line: Number(b.getAttribute(LINE_ATTR)), top: r.top - base, bottom: r.bottom - base })
-    }
-    // 아래의 빈 여백(40vh)은 글이 아니다 — 마지막 조각의 줄이 그 여백까지 늘어나지 않게 뺀다
-    let height = el.scrollHeight
-    if (inner) height = inner.getBoundingClientRect().bottom - base - (parseFloat(getComputedStyle(inner).paddingBottom) || 0)
-    map = buildLineMap(blocks, height, view?.state.doc.lines ?? 1)
-    return map
-  }
+  const measure = (): LineMap => (map ??= measurePreview(el, view?.state.doc.lines ?? 1))
   return {
     invalidate() { map = null },
     range() {

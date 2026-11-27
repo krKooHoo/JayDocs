@@ -10,6 +10,7 @@ import { noteLineJump, registerLineSource } from '../lib/navHistory'
 import { foldAllSections, foldSectionAtCursor, foldedKeys, hasFoldEffects, loadFolds, restoreFolds, saveFolds, unfoldAllSections, unfoldSectionAtCursor } from '../lib/md/folding'
 import { runSectionAction, type SectionAction } from '../lib/md/sections'
 import { invisiblesExtension, invisiblesOn, onInvisibles } from '../lib/invisibles'
+import { attachScrollSync, useScrollSync } from '../lib/md/scrollSync'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -282,6 +283,16 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
   const paneCount = useDocPaneCount()
   const skimShown = skimmable && skimOn && paneCount === 1 && ready
 
+  // 분할 보기 스크롤 맞추기 (DESIGN §56): 마크다운 · 분할 모드에서, 켜져 있을 때 — 이 창의 편집기와 미리보기만 잇는다
+  const syncOn = useScrollSync()
+  const syncShown = isMd && mode === 'split' && syncOn && ready
+  useEffect(() => {
+    const view = skimView
+    const preview = bodyRef.current?.querySelector<HTMLElement>(':scope > .preview')
+    if (!syncShown || !view || !preview) return
+    return attachScrollSync(view, preview)
+  }, [syncShown, skimView])
+
   // 목차 띠 (DESIGN §29): 마크다운 · 하이브리드 모드에서만, 켜져 있을 때
   const outlineOn = useOutlineOn()
   const outlineShown = isMd && mode === 'hybrid' && outlineOn && ready
@@ -393,8 +404,8 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
         {/* key 는 형제끼리 달라야 한다 — 목차 · 훑어보기가 같은 key(path)면 모드를 바꿀 때마다 목차가 지워지지 않고 쌓였다 */}
         {outlineShown && <OutlinePanel key={'outline:' + path} view={skimView} ping={outlinePing} focusRef={outlineFocus} />}
         <div className="editor-host" ref={host} style={{ display: mode === 'preview' ? 'none' : undefined }} />
-        {/* lines: 미리보기 전용 모드에서 훑어보기 패널이 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다. 그때만 찍는다 */}
-        {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={mode === 'preview' && skimShown} />}
+        {/* lines: 미리보기의 스크롤 위치를 줄로 바꾸는 데 쓴다 — 미리보기 전용 모드의 훑어보기 패널, 분할 모드의 스크롤 맞추기. 그때만 찍는다 */}
+        {(mode === 'split' || mode === 'preview') && ready && <PreviewPane path={path} lines={(mode === 'preview' && skimShown) || syncShown} />}
         {skimShown && <SkimPanel key={'skim:' + path} path={path} mode={mode} view={skimView} ping={skimPing} body={bodyRef} />}
       </div>
       <DocStatus path={path} />
