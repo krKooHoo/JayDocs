@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { stepWrap } from '../lib/listNav'
 import { matchScore } from '../lib/match'
 
 /**
@@ -91,8 +92,9 @@ export function Palette({ title, placeholder, items, onPick, onClose, anchor, so
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); setIndex((i) => Math.min(filtered.length - 1, i + 1)); break
-      case 'ArrowUp': e.preventDefault(); setIndex((i) => Math.max(0, i - 1)); break
+      // ↑ / ↓ 는 끝에서 반대쪽 끝으로 돈다 (lib/listNav)
+      case 'ArrowDown': e.preventDefault(); setIndex((i) => stepWrap(i, 1, filtered.length)); break
+      case 'ArrowUp': e.preventDefault(); setIndex((i) => stepWrap(i, -1, filtered.length)); break
       case 'PageDown': e.preventDefault(); setIndex((i) => Math.min(filtered.length - 1, i + 10)); break
       case 'PageUp': e.preventDefault(); setIndex((i) => Math.max(0, i - 10)); break
       case 'Home': if (query === '') { e.preventDefault(); setIndex(0) } break
