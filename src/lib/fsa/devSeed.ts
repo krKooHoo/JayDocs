@@ -93,22 +93,56 @@ const SAMPLE: Record<string, string> = {
   '설정.json': '{\n  "n": 1\n}\n',
 }
 
-export async function devWorkspace(): Promise<Workspace> {
-  const opfs = await navigator.storage.getDirectory()
-  const primary = await opfs.getDirectoryHandle('dev-docs', { create: true })
-  const mount = await opfs.getDirectoryHandle('dev-mount', { create: true })
-  const put = async (root: FileSystemDirectoryHandle, rel: string, text: string) => {
-    const parts = rel.split('/')
-    const name = parts.pop() as string
-    let d = root
-    for (const p of parts) d = await d.getDirectoryHandle(p, { create: true })
-    const h = await d.getFileHandle(name, { create: true })
-    if ((await h.getFile()).size > 0) return
-    const w = await h.createWritable()
-    await w.write(text)
-    await w.close()
+export const DEV_DOCS = 'dev-docs'
+export const DEV_MOUNT = 'dev-mount'
+
+/** 샘플 하나를 깐다. 내용이 이미 있으면 그대로 둔다 — 시험이 고친 파일을 덮지 않게 */
+async function put(root: FileSystemDirectoryHandle, rel: string, text: string) {
+  const parts = rel.split('/')
+  const name = parts.pop() as string
+  let d = root
+  for (const p of parts) d = await d.getDirectoryHandle(p, { create: true })
+  const h = await d.getFileHandle(name, { create: true })
+  if ((await h.getFile()).size > 0) return
+  const w = await h.createWritable()
+  await w.write(text)
+  await w.close()
+}
+
+/** 실패하면 어느 샘플에서인지 붙인다 (이름은 그대로 — NotFoundError 등) */
+async function putNamed(root: FileSystemDirectoryHandle, rel: string, text: string) {
+  try {
+    await put(root, rel, text)
+  } catch (e) {
+    const err = e as Error
+    throw Object.assign(new Error(`${root.name}/${rel}: ${err.message}`), { name: err.name, cause: e })
   }
-  for (const [rel, text] of Object.entries(SAMPLE)) await put(primary, rel, text)
-  await put(mount, '가져온 문서.md', '# 가져온 문서\n')
+}
+
+async function seedOnce(opfs: FileSystemDirectoryHandle): Promise<Workspace> {
+  const primary = await opfs.getDirectoryHandle(DEV_DOCS, { create: true })
+  const mount = await opfs.getDirectoryHandle(DEV_MOUNT, { create: true })
+  for (const [rel, text] of Object.entries(SAMPLE)) await putNamed(primary, rel, text)
+  await putNamed(mount, '가져온 문서.md', '# 가져온 문서\n')
   return { id: 'dev', primary, mounts: [{ alias: '가져온폴더', handle: mount, readOnly: false }], recent: [] }
+}
+
+/**
+ * 샘플 폴더를 깔고 작업 공간을 돌려준다.
+ * OPFS 의 샘플 폴더가 깨져 있으면(샘플 파일이 사라지고 같은 이름으로 새로 만들 때 NotFoundError — DESIGN §24.7 X14) 두 폴더를 지우고
+ * 한 번 다시 깐다. 전에는 이 오류가 시작 화면으로 떨어졌고, 손으로 두 폴더를 지워야 했다. 실제 폴더(File System Access)와는 상관없다.
+ */
+export async function seedDevWorkspace(opfs: FileSystemDirectoryHandle): Promise<Workspace> {
+  try {
+    return await seedOnce(opfs)
+  } catch (e) {
+    const err = e as Error
+    console.warn(`개발용 샘플 폴더(OPFS)를 새로 만듭니다 — ${err.name}: ${err.message}`)
+    for (const n of [DEV_DOCS, DEV_MOUNT]) await opfs.removeEntry(n, { recursive: true }).catch(() => { /* 없거나 못 지우면 아래에서 다시 실패한다 */ })
+    return await seedOnce(opfs)
+  }
+}
+
+export async function devWorkspace(): Promise<Workspace> {
+  return seedDevWorkspace(await navigator.storage.getDirectory())
 }
