@@ -71,6 +71,57 @@ const SAMPLE_MD = lines(
   '`tsv-view` 코드 블록에 `file: 표.tsv` 를 적으면 표 파일의 내용이 이 자리에 보인다.',
 )
 
+/**
+ * 결론 문서 (ADOPT C3 · DESIGN §54) — 문제 정의 → 근거 → 솔루션 → 결론 → 다음 행동. 원칙 5 의 "결론 쓰기" 틀.
+ * 절 제목에 번호를 달지 않는다 — 목차에서 절을 옮기면(§53) 번호가 어긋난다.
+ * 근거에는 문서 링크와 표 인용(tsv-view)의 예. tsv-view 예는 ```text 블록으로 둔다 — 없는 표를 가리키면 미리보기에 오류가 뜨고,
+ * 미리보기는 HTML 주석을 숨기지 않는다(HTML 을 그리지 않는다). 쓰는 사람이 text 를 tsv-view 로 바꾸고 경로를 고칠 때 살아난다.
+ */
+const SAMPLE_CONCLUSION = lines(
+  '# 무엇을 정하는 문서인가',
+  '',
+  '> 한 줄 결론 — 다 쓴 뒤 결론을 한 문장으로 여기에.',
+  '',
+  '## 문제 정의',
+  '',
+  '- 무엇이 문제인가:',
+  '- 누가 · 언제 겪는가:',
+  '- 풀리면 무엇이 달라지는가:',
+  '',
+  '## 근거',
+  '',
+  '- 관련 문서: [관련 문서](관련문서.md) — 미리보기에서 누르면 연다. 경로는 이 문서의 폴더에서부터',
+  '- 데이터: 표 파일의 일부를 이 자리에 인용한다. 아래 블록 첫 줄의 `text` 를 `tsv-view` 로, file 을 표 경로로 바꾼다',
+  '',
+  '```text',
+  'file: 근거.tsv',
+  'columns: [Key, DisplayName]',
+  '```',
+  '',
+  '## 솔루션',
+  '',
+  '### 안 A',
+  '',
+  '- 내용:',
+  '- 좋은 점:',
+  '- 걸리는 점:',
+  '',
+  '### 안 B',
+  '',
+  '- 내용:',
+  '- 좋은 점:',
+  '- 걸리는 점:',
+  '',
+  '## 결론',
+  '',
+  '- 고른 안:',
+  '- 이유:',
+  '',
+  '## 다음 행동',
+  '',
+  '- [ ] 누가 · 무엇을 · 언제까지',
+)
+
 // 칸 사이는 탭. 타입이 빈 마지막 열은 주석 열.
 // enum 열 이름은 §3 초안의 `Category` 가 아니라 `FoodGroup` — enum 후보는 같은 루트의 모든 `_Field` 파일에서 열 이름과 같은 블록을 찾는다.
 // `Category` 는 게임 데이터에 흔한 블록 이름이라(개발 샘플 `Item_Field.tsv` 에도 있다) 겹치면 Fruit · Vegetable 이 검증 오류가 된다
@@ -116,6 +167,7 @@ export const TEMPLATES: readonly DocTemplate[] = [
   { id: 'blank-json', ext: '.json', group: 'blank', title: '빈 JSON', desc: '빈 객체 {}', body: '{}\n' },
 
   { id: 'sample-md', ext: '.md', group: 'sample', title: '마크다운', desc: '제목 · 목록 · 표 · 그림이 있는 글. 보기 모드로 소스와 렌더를 오간다.', body: SAMPLE_MD },
+  { id: 'sample-conclusion', ext: '.md', group: 'sample', title: '결론 문서', desc: '문제 정의 → 근거 → 솔루션 → 결론 → 다음 행동. 근거에 문서 링크 · 표 인용 예가 있다. 목차에서 절을 옮기며 다듬는다.', body: SAMPLE_CONCLUSION },
   { id: 'sample-tsv', ext: '.tsv', group: 'sample', title: 'TSV 표', desc: '타입이 있는 표. 1행은 타입, 2행은 머리글, Key 는 파일 안에서 유일하다.', body: SAMPLE_TSV },
   { id: 'sample-csv', ext: '.csv', group: 'sample', title: 'CSV 표', desc: 'Excel 과 주고받는 표. 첫 줄이 머리글이다.', body: SAMPLE_CSV },
   { id: 'sample-txt', ext: '.txt', group: 'sample', title: '텍스트', desc: '꾸밈 없는 글. 쓴 그대로 저장된다.', body: SAMPLE_TXT },

@@ -14,10 +14,10 @@ const byId = (id: string) => {
 }
 
 describe('템플릿 표', () => {
-  it('형식 표의 모든 형식에 빈 문서 하나 · 예시 하나', () => {
+  it('형식 표의 모든 형식에 빈 문서 하나 · 예시 하나 이상 (마크다운은 결론 문서 틀도 — §54)', () => {
     for (const ft of FILE_TYPES) {
       expect(TEMPLATES.filter((t) => t.ext === ft.ext && t.group === 'blank').length, ft.ext).toBe(1)
-      expect(TEMPLATES.filter((t) => t.ext === ft.ext && t.group === 'sample').length, ft.ext).toBe(1)
+      expect(TEMPLATES.filter((t) => t.ext === ft.ext && t.group === 'sample').length, ft.ext).toBeGreaterThanOrEqual(1)
     }
     // 형식 표에 없는 확장자는 없다
     for (const t of TEMPLATES) expect(FILE_TYPES.some((ft) => ft.ext === t.ext), t.id).toBe(true)
@@ -82,6 +82,20 @@ describe('템플릿 표', () => {
     expect(t.rows[1].cells[3]).toBe('쉼표, 줄바꿈이 든 칸은 따옴표로 감싼다')
     expect(t.malformedCells ?? 0).toBe(0)
     expect(serializeTable(t)).toBe(body)
+  })
+
+  it('결론 문서 — 절 순서, 번호 없는 절 제목, 링크 · 주석 안의 tsv-view 예 (§54)', () => {
+    const body = byId('sample-conclusion').body
+    const lines = body.split('\n')
+    const h2 = lines.filter((l) => l.startsWith('## ')).map((l) => l.slice(3))
+    expect(h2).toEqual(['문제 정의', '근거', '솔루션', '결론', '다음 행동'])
+    expect(lines.filter((l) => l.startsWith('# '))).toHaveLength(1)
+    expect(h2.some((t) => /^\d/.test(t))).toBe(false)
+    expect(body).toMatch(/\[[^\]]+\]\([^)\s]+\.md\)/)
+    // tsv-view 예는 ```text 블록 — 살아 있는 tsv-view 가 없는 표를 가리키면 미리보기에 오류가 뜬다. HTML 주석은 미리보기가 숨기지 않는다
+    expect(body).not.toContain('```tsv-view')
+    expect(body).not.toContain('<!--')
+    expect(body).toMatch(/```text\nfile: [^\n]+\.tsv\n/)
   })
 
   it('JSON 예시 · 빈 JSON 은 문법에 맞다', () => {

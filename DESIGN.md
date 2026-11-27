@@ -1805,6 +1805,23 @@ UI/UX 개편 C2(`docs/research/apple-uiux/ADOPT.md`). 흩어진 생각을 문제
 - 실제 문서에서 옮긴 뒤 `git diff`(CRLF 파일 포함), 편집기 팔레트 명령 · 맥락 메뉴, 분할한 두 창에서 같은 문서, 큰 문서의 속도, 한글 IME 조합 중 `Tab`.
 - dev `?opfs` 샘플 폴더가 다시 열리지 않는 일이 이번 세션에 두 번 있었다("작업 공간을 읽지 못했습니다: NotFoundError", 시작 화면으로). `dev-docs` · `dev-mount` 를 지우면 다시 만든다. 원인은 확인하지 않았다 — 개발용 샘플만의 일인지, 실제 폴더에서도 생기는지 모른다.
 
+## 54. 결론 문서 템플릿 (2026-11-27)
+
+UI/UX 개편 C3(`docs/research/apple-uiux/ADOPT.md`). 원칙 5 "모으기 → 정의 → 결론" 의 결론 쓰기 틀 — Apple 조사가 아니라 원칙에서 나왔다. 원칙 확인: 5 맞음, 7 맞음(평범한 `.md`), 1 맞음(새 문서 창은 키보드로 고른다), 2 · 3 · 4 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| CT1 | 새 문서 창(`Ctrl+Alt+N`)의 **예시** 줄에 **결론 문서 .md** 카드 — 마크다운 예시 다음. 절은 **문제 정의 → 근거 → 솔루션(안 A · 안 B) → 결론 → 다음 행동**, 맨 위 인용 줄에 "한 줄 결론" | ADOPT C3 |
+| CT2 | 절 제목에 번호를 달지 않는다 — 목차에서 절을 옮기면(§53) 번호가 어긋난다 | §53 과 같이 쓴다 |
+| CT3 | 근거 절에 **문서 링크 예**(`[관련 문서](관련문서.md)`)와 **표 인용 예**. 표 인용은 ` ```text ` 블록에 `file:` · `columns:` 를 적어 두고 "`text` 를 `tsv-view` 로 바꾸라" 고 안내한다 — 살아 있는 `tsv-view` 가 없는 표를 가리키면 미리보기에 오류가 뜨고, 미리보기는 HTML 주석을 숨기지 않는다(처음 넣은 `<!-- -->` 는 화면 확인에서 글자 그대로 보여 바꿨다) | 새 문서가 오류로 시작하지 않게 |
+| CT4 | 형식 표의 계약은 "형식마다 빈 문서 하나 · **예시 하나 이상**" 으로 바꿨다(테스트). 형식은 늘지 않는다. 자기 틀은 지금처럼 주 폴더의 `_templates/` | `templates.test.ts` |
+
+코드: `lib/templates.ts`(`SAMPLE_CONCLUSION`, `sample-conclusion`) · `.test.ts`(절 순서 · 번호 없음 · 링크 · 표 인용 예).
+
+### 54.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: `Ctrl+Alt+N` → 예시 줄 "마크다운 .md | 결론 문서 .md | TSV 표 …", 결론 문서로 만든 문서의 미리보기 — H1 하나, H2 문제 정의 · 근거 · 솔루션 · 결론 · 다음 행동, H3 안 A · 안 B, 링크 "관련 문서", 표 인용 예는 코드 블록으로(오류 없음). 콘솔 오류 없음. (시험 문서는 지웠다)
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
