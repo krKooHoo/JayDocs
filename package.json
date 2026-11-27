@@ -1,6 +1,6 @@
 {
   "name": "jaydocs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Markdown(+Mermaid) 과 TSV 를 나란히 편집하는 브라우저 문서 편집기 (로컬 폴더를 직접 읽고 쓴다)",
