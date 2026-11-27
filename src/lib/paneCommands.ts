@@ -58,6 +58,11 @@ export const PANE_COMMANDS: readonly PaneCommand[] = [
   { id: 'mdUnfold', label: '마크다운: 커서가 든 절 펴기', title: '절 펴기', scope: 'md', noButton: true },
   { id: 'mdFoldAll', label: '마크다운: 모든 절 접기 (개요처럼)', title: '모두 접기', scope: 'md', noButton: true },
   { id: 'mdUnfoldAll', label: '마크다운: 모든 절 펴기', title: '모두 펴기', scope: 'md', noButton: true },
+  // ---- 절 옮기기 · 단계 (DESIGN §53) — 커서가 든 절. 목차에서는 Alt+↑ / ↓ · Tab / Shift+Tab
+  { id: 'mdSectionUp', label: '마크다운: 현재 절을 위로 (같은 단계의 앞 절과 자리 바꾸기)', title: '절 위로', scope: 'md', edits: true, noButton: true },
+  { id: 'mdSectionDown', label: '마크다운: 현재 절을 아래로', title: '절 아래로', scope: 'md', edits: true, noButton: true },
+  { id: 'mdSectionDemote', label: '마크다운: 현재 절 단계 내리기 (# 하나 더, 하위 제목까지)', title: '단계 내리기', scope: 'md', edits: true, noButton: true },
+  { id: 'mdSectionPromote', label: '마크다운: 현재 절 단계 올리기 (# 하나 빼기, 하위 제목까지)', title: '단계 올리기', scope: 'md', edits: true, noButton: true },
   // ---- 글 편집기 (막대 단추 없음 — 키는 편집기가 직접 받는다, DESIGN §45)
   { id: 'editorFind', label: '편집기: 찾기', title: '찾기', scope: 'editor', noButton: true },
   { id: 'editorReplace', label: '편집기: 바꾸기', title: '바꾸기', scope: 'editor', noButton: true },

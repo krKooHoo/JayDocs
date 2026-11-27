@@ -8,6 +8,7 @@ import { cmdTitle, runCommand, tip } from '../lib/commands'
 import { onLineRequest, onPaneAction } from '../lib/nav'
 import { noteLineJump, registerLineSource } from '../lib/navHistory'
 import { foldAllSections, foldSectionAtCursor, foldedKeys, hasFoldEffects, loadFolds, restoreFolds, saveFolds, unfoldAllSections, unfoldSectionAtCursor } from '../lib/md/folding'
+import { runSectionAction, type SectionAction } from '../lib/md/sections'
 import { isSkimPath, useSkimPanelState } from '../lib/skim/panel'
 import { fileTypeOf } from '../lib/filetypes.mjs'
 import { formatJson, jsonError } from '../lib/jsonText'
@@ -110,6 +111,18 @@ export function MarkdownPane({ path, onSplit }: { path: string; onSplit: () => v
       if (modeRef.current === 'preview') { notify('미리보기 전용 모드에서는 접을 수 없습니다 — 보기 모드 순환은 Ctrl+Shift+V', { key: 'fold' }); return }
       const done = id === 'mdFold' ? foldSectionAtCursor(view) : id === 'mdUnfold' ? unfoldSectionAtCursor(view) : id === 'mdFoldAll' ? foldAllSections(view) : unfoldAllSections(view)
       if (!done) notify(id === 'mdFold' || id === 'mdFoldAll' ? '접을 절이 없습니다 — 커서가 제목 아래에 있어야 합니다' : '펼 절이 없습니다', { key: 'fold' })
+      view.focus()
+      return
+    }
+    // 절 옮기기 · 단계 (DESIGN §53) — 커서가 든 절
+    const SECTION: Record<string, SectionAction> = { mdSectionUp: 'up', mdSectionDown: 'down', mdSectionDemote: 'demote', mdSectionPromote: 'promote' }
+    if (SECTION[id]) {
+      const view = viewRef.current
+      if (!view) return
+      if (modeRef.current === 'preview') { notify('미리보기 전용 모드에서는 절을 옮길 수 없습니다 — 보기 모드 순환은 Ctrl+Shift+V', { key: 'section' }); return }
+      const r = runSectionAction(view, SECTION[id])
+      if ('error' in r) notify(r.error, { key: 'section' })
+      else dismissNotice('section')
       view.focus()
       return
     }

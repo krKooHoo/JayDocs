@@ -3,6 +3,8 @@ import { EditorView } from '@codemirror/view'
 import { activeIndex, outlineOf, sameOutline, type OutlineItem } from '../lib/md/outline'
 import { noteLineJump } from '../lib/navHistory'
 import { foldHeading, foldedHeadingLines, parentHeading, unfoldHeading } from '../lib/md/folding'
+import { runSectionAction, type SectionAction } from '../lib/md/sections'
+import { dismissNotice, notify } from '../lib/notices'
 import { mdViewPathOf } from './mdContext'
 import './OutlinePanel.css'
 
@@ -43,6 +45,8 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
   const [cursor, setCursor] = useState(0)
   const [focused, setFocused] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  /** 절을 옮긴 뒤 목차 커서가 따라갈 제목 줄의 처음 (DESIGN §53) */
+  const follow = useRef<number | null>(null)
   const itemsRef = useRef(items)
   itemsRef.current = items
 
@@ -54,6 +58,11 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
       timer = null
       const next = outlineOf(view.state)
       setItems((prev) => (sameOutline(prev, next) ? prev : next))
+      if (follow.current !== null) {
+        const at = next.findIndex((it) => it.from === follow.current)
+        follow.current = null
+        if (at >= 0) setCursor(at)
+      }
       const f = foldedHeadingLines(view.state, next)
       setFolded((prev) => (prev.size === f.size && [...f].every((l) => prev.has(l)) ? prev : f))
     }
@@ -126,7 +135,30 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
     if (focusEditor) view.focus()
   }
 
+  /** 절 옮기기 · 단계 (DESIGN §53) — 목차에 남아 옮긴 제목을 따라간다 */
+  const section = (action: SectionAction) => {
+    const it = items[cursor]
+    if (!view || !it) return
+    const r = runSectionAction(view, action, it.from)
+    if ('error' in r) { notify(r.error, { key: 'section' }); return }
+    dismissNotice('section')
+    follow.current = r.at
+    ping.current?.()
+  }
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.nativeEvent.isComposing) return
+    // Alt+↑ / ↓ — 절 옮기기 (편집기의 줄 옮기기와 같은 키). Tab / Shift+Tab — 단계 내리기 · 올리기 (Keynote 개요)
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault()
+      section(e.key === 'ArrowUp' ? 'up' : 'down')
+      return
+    }
+    if (e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      section(e.shiftKey ? 'promote' : 'demote')
+      return
+    }
     if (e.altKey || e.ctrlKey || e.metaKey) return
     const last = items.length - 1
     const move = (to: number) => { e.preventDefault(); setCursor(Math.max(0, Math.min(last, to))) }
@@ -165,7 +197,7 @@ export function OutlinePanel({ view, ping, focusRef }: OutlinePanelProps) {
         className="outline-list"
         tabIndex={0}
         role="listbox"
-        aria-label="목차 — ↑ ↓ 로 고르고 Enter 로 이동, ← → 로 절 접기 · 펴기"
+        aria-label="목차 — ↑ ↓ 로 고르고 Enter 로 이동, ← → 로 절 접기 · 펴기, Alt+↑ ↓ 로 절 옮기기, Tab · Shift+Tab 으로 단계"
         aria-activedescendant={focused && items.length ? `outline-${cursor}` : undefined}
         onKeyDown={onKeyDown}
         onFocus={() => { setFocused(true); setCursor((c) => (active >= 0 ? active : Math.min(c, Math.max(0, items.length - 1)))) }}

@@ -1781,6 +1781,30 @@ UI/UX 개편 C1(`docs/research/apple-uiux/ADOPT.md`). 긴 메모를 개요처럼
 
 - Mac ⌘⌥[ · ⌘⌥], 설치한 Edge 앱, 한글 자판의 `Ctrl+Alt+[`(일부 자판은 AltGr), 큰 문서의 모두 접기 속도, 분할한 두 창에서 같은 문서를 접을 때(문서마다 하나를 남겨 마지막 것이 남는다).
 
+## 53. 목차에서 절 옮기기 · 단계 바꾸기 (2026-11-26)
+
+UI/UX 개편 C2(`docs/research/apple-uiux/ADOPT.md`). 흩어진 생각을 문제정의 → 솔루션 → 결론 순서로 재배치한다(Keynote 의 편집하는 개요). 원칙 확인: 5 맞음(구조 잡기), 1 맞음(목차 키 · 팔레트 · 맥락 메뉴), **7 주의 → 절 범위를 순수 함수로 먼저 테스트**(코드 펜스 · tsv-view 안의 `#`, 인용 · 목록 안의 제목, 끝 개행 없는 문서, 되돌리면 바이트가 같은지), 2 · 3 · 4 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| SE1 | **절** = 문서 바로 아래(인용 · 목록 밖)의 제목 줄부터 같거나 높은 단계의 다음 제목 앞까지. 제목은 구문 트리에서 — 코드 펜스(tsv-view 포함) 안의 `#` 은 제목이 아니다. 첫 제목 앞의 글(머리말)은 어느 절에도 들지 않아 움직이지 않는다 | `lib/md/sections.ts` `topHeadings` · `sectionEnd` |
+| SE2 | **목차에서 `Alt+↑ / Alt+↓`** → 고른 절(하위 절 · 펜스까지 통째로)을 같은 부모 안의 앞 · 뒤 형제 절과 자리를 바꾼다. 형제가 없으면(부모의 처음 · 끝, 높은 단계 제목이 막을 때) "그쪽에 같은 단계의 절이 없습니다". 목차 커서는 옮긴 제목을 따라간다 | ADOPT C2 — 편집기의 줄 옮기기와 같은 키 |
+| SE3 | **목차에서 `Tab` · `Shift+Tab`** → 단계 내리기(`#` 하나 더) · 올리기 — 그 제목과 하위 제목을 함께(구조가 그대로 내려가고 올라간다). 1 ~ 6 을 넘으면 · 밑줄 제목(`===` · `---`)이 들면 하지 않고 알린다. 인용 · 목록 안의 제목도 알린다. 목차에서 나가는 길은 `Esc` · `F6` · `Ctrl+Alt+T` | ADOPT C2 — Keynote 개요 · 편집기 들여쓰기와 같은 뜻. `Alt+Shift+← / →` 는 Windows 입력 언어 전환이라 쓰지 않는다 |
+| SE4 | **편집 한 번** — 두 절을 이어 붙인 범위를 한 트랜잭션으로 바꿔 쓴다. `Ctrl+Z` 한 번으로 되돌리고, 되돌리면 바이트가 같다. 문서 끝에 개행이 없으면 바꾼 뒤에도 더하지 않는다. 그 범위 밖의 줄은 그대로라 diff 에는 옮긴 절의 줄만 나온다 | ADOPT C2 "옮긴 줄만 diff 에" · 원칙 7 |
+| SE5 | 편집기에서는 팔레트 **마크다운: 현재 절을 위로 · 아래로 · 단계 내리기 · 단계 올리기**(커서가 든 절), 맥락 메뉴에도. 읽기 전용 · 미리보기 전용 모드에서는 하지 않고 알린다. 키는 주지 않는다 — 편집기의 `Alt+↑ / ↓` 는 줄 옮기기 | 단축키 규칙 2 |
+| SE6 | 옮긴 범위 안의 접힌 절(§52)은 펴진다 | 접기는 범위에 붙은 화면 상태 |
+
+코드: `lib/md/sections.ts`(제목 · 절 · 옮기기 · 단계 계획, `runSectionAction`) · `.test.ts`, `OutlinePanel.tsx`(`Alt+↑ / ↓` · `Tab` · 커서 따라가기), `MarkdownPane.tsx`(팔레트), `lib/paneCommands.ts`(`mdSectionUp` · `mdSectionDown` · `mdSectionDemote` · `mdSectionPromote`), `lib/contextMenu.ts`, `shortcuts-table.mjs`.
+
+### 53.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`(단위 테스트 12건 — 펜스 · tsv-view 안 `#`, 인용 · 목록 안 제목, 형제 없음, 끝 개행 없음, 아래로 갔다 위로 오면 처음과 같음, 단계 한계 · 밑줄 제목 · 들여 쓴 `#`). dev `?opfs` + 내장 브라우저(실제 키): 머리말 + `# A`(`## A-sub` · 코드 펜스 안 `# not heading`) · `# B` · `# C` 문서의 하이브리드 목차에서 A 에 `Alt+↓` → B · A(하위 절 · 펜스 통째로) · C, 목차 커서는 A 를 따라감. `Tab` → `## A`, `### A-sub`. `Alt+↑` → "그쪽에 같은 단계의 절이 없습니다". 편집기에서 `Ctrl+Z` 두 번 → 처음 글과 같고 수정됨 표시가 사라짐. 콘솔 오류 없음. (시험 문서는 지웠다)
+
+### 53.2 확인하지 못한 것 (TESTCASES §47)
+
+- 실제 문서에서 옮긴 뒤 `git diff`(CRLF 파일 포함), 편집기 팔레트 명령 · 맥락 메뉴, 분할한 두 창에서 같은 문서, 큰 문서의 속도, 한글 IME 조합 중 `Tab`.
+- dev `?opfs` 샘플 폴더가 다시 열리지 않는 일이 이번 세션에 두 번 있었다("작업 공간을 읽지 못했습니다: NotFoundError", 시작 화면으로). `dev-docs` · `dev-mount` 를 지우면 다시 만든다. 원인은 확인하지 않았다 — 개발용 샘플만의 일인지, 실제 폴더에서도 생기는지 모른다.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

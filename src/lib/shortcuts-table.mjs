@@ -85,6 +85,8 @@ export const SHORTCUTS = [
       { hint: { at: 'outline', label: '그 제목으로 가서 편집기로' }, keys: 'Enter (목차)', label: '고른 제목으로 가서 편집기로 — 제목이 편집기 맨 위에 오고 커서는 제목 글 앞' },
       { hint: { at: 'outline', label: '그 제목으로 가고 목차에 남기' }, keys: 'Space (목차)', label: '고른 제목으로 가고 목차에 남기' },
       { hint: { at: 'outline', label: '편집기로 돌아가기' }, keys: 'Esc (목차)', label: '편집기로 돌아가기' },
+      { hint: { at: 'outline', keys: 'Alt+↑ / ↓', label: '절 옮기기' }, keys: 'Alt+↑ / Alt+↓ (목차)', label: '고른 제목의 절(하위 절 · 코드 펜스까지 통째로)을 같은 단계의 앞 · 뒤 절과 자리 바꾸기 — 편집기의 줄 옮기기와 같은 키. Ctrl+Z 한 번으로 되돌린다. 목차 커서는 옮긴 제목을 따라간다. 편집기에서는 팔레트 "마크다운: 현재 절을 위로 / 아래로"' },
+      { hint: { at: 'outline', keys: 'Tab / Shift+Tab', label: '단계 내리기 · 올리기' }, keys: 'Tab / Shift+Tab (목차)', label: '고른 제목의 단계 내리기(# 하나 더) · 올리기(# 하나 빼기) — 하위 제목까지 함께. 1 ~ 6 을 넘으면 · 밑줄 제목(===)이 들면 하지 않는다. 목차에서 나가는 길은 Esc · F6 · Ctrl+Alt+T' },
       { hint: { at: 'outline', keys: '← / →', label: '절 접기 · 펴기' }, keys: '← / → (목차)', label: '고른 제목의 절 접기 · 펴기 (트리의 ← / → 와 같다). 접힌 제목은 ▸ 로 보인다. 이미 접혀 있으면 ← 는 위 단계 제목으로' },
       { keys: '← / → (훑어보기 패널 너비 손잡이)', label: '패널 넓히기 / 좁히기 — 손잡이는 패널 왼쪽 가장자리, Shift 를 누르면 크게, Home / End 는 가장 넓게 / 좁게. 팔레트의 "훑어보기 패널 넓히기 / 좁히기" 도 같다' },
     ],

@@ -95,6 +95,7 @@ const EDIT_IDS = new Set([
   'gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridRowDel', 'gridColLeft', 'gridColRight', 'gridColDel',
   'gridFillDown', 'gridFillRight', 'gridReplace', 'gridSeedHeader', 'calc',
   'mdTableRowBelow', 'mdTableColRight', 'mdTableDeleteRow', 'mdTableDeleteCol', 'formatJson', 'editorReplace', 'revertToSaved',
+  'mdSectionUp', 'mdSectionDown', 'mdSectionDemote', 'mdSectionPromote',
 ])
 
 const ROW_IDS = ['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridRowDel']
@@ -148,6 +149,8 @@ export function markdownContextIds(s: MarkdownSpot): string[] {
     if (s.mode === 'hybrid') ids.push('focusOutline', 'toggleOutline')
     // 제목 접기 (DESIGN §52) — 편집기가 보일 때
     if (s.mode !== 'preview') ids.push('mdFold', 'mdUnfold', 'mdFoldAll', 'mdUnfoldAll')
+    // 절 옮기기 · 단계 (DESIGN §53)
+    if (s.mode !== 'preview') ids.push('mdSectionUp', 'mdSectionDown', 'mdSectionDemote', 'mdSectionPromote')
   }
   ids.push('toggleSkim', ...DOC_TAIL_IDS, 'saveAsTemplate')
   return s.readOnly ? ids.filter((id) => !EDIT_IDS.has(id)) : ids
