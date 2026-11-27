@@ -36,6 +36,7 @@ const md = (o: Partial<MarkdownSpot> = {}): MarkdownSpot => ({ zone: 'md', title
 /** 자리마다 나올 수 있는 경우를 넓게 */
 const SPOTS: ContextSpot[] = [
   grid(), grid({ wholeCols: true }), grid({ empty: true }), grid({ readOnly: true }),
+  grid({ sorted: true, filtered: true, hiddenCols: true }), grid({ wholeCols: true, readOnly: true, sorted: true }),
   tree(), tree({ isDir: true, path: 'docs', title: 'docs' }), tree({ path: '', isDir: true }),
   tree({ path: '@Lib', isDir: true, mountAlias: 'Lib', isMountRoot: true }), tree({ path: '@Lib/x.md', mountAlias: 'Lib', writable: false }),
   md(), md({ mode: 'hybrid', table: true, link: 'b.md', tsvView: 'c.tsv', mermaid: true }), md({ markdown: false, json: true }), md({ readOnly: true, table: true }),
@@ -64,9 +65,27 @@ describe('자리 판단 함수', () => {
     expect(gridContextIds(grid({ editing: true }))).toEqual([])
   })
 
-  it('그리드 — 열 전체를 골랐으면 열 명령이 먼저, 아니면 행 명령이 먼저', () => {
+  it('그리드 — 열 전체를 골랐으면 열 머리 메뉴 · 열 명령이 먼저, 아니면 행 명령이 먼저', () => {
     expect(gridContextIds(grid()).slice(0, 2)).toEqual(['gridRowAbove', 'gridRowBelow'])
-    expect(gridContextIds(grid({ wholeCols: true })).slice(0, 3)).toEqual(['gridColLeft', 'gridColRight', 'gridColDel'])
+    const cols = gridContextIds(grid({ wholeCols: true }))
+    expect(cols.slice(0, 5)).toEqual(['gridSortAsc', 'gridSortDesc', 'gridFilter', 'gridHideCols', 'gridFitCols'])
+    expect(cols.slice(5, 8)).toEqual(['gridColLeft', 'gridColRight', 'gridColDel'])
+  })
+
+  it('그리드 — 열 머리 메뉴 (DESIGN §61): 푸는 명령은 걸려 있을 때만, 정렬 · 필터 중에는 행 넣기 · 옮기기 · 채우기가 빠진다', () => {
+    const plain = gridContextIds(grid())
+    expect(plain).toContain('gridSortAsc')
+    expect(plain).not.toContain('gridSortClear')
+    expect(plain).not.toContain('gridShowCols')
+    const viewed = gridContextIds(grid({ sorted: true, filtered: true }))
+    expect(viewed).toEqual(expect.arrayContaining(['gridSortClear', 'gridFilterClear', 'gridRowDel', 'gridColLeft']))
+    for (const id of ['gridRowAbove', 'gridRowBelow', 'gridRowAppend', 'gridRowUp', 'gridRowDown', 'gridRowDup', 'gridFillDown', 'gridFillRight']) expect(viewed).not.toContain(id)
+    // 숨긴 열만 있으면 행 편집은 그대로
+    const hid = gridContextIds(grid({ hiddenCols: true }))
+    expect(hid).toContain('gridShowCols')
+    expect(hid).toContain('gridRowBelow')
+    // 보기 명령은 파일을 고치지 않으니 읽기 전용에서도 남는다
+    expect(gridContextIds(grid({ readOnly: true, sorted: true }))).toEqual(expect.arrayContaining(['gridSortAsc', 'gridFilter', 'gridSortClear', 'gridFitCols']))
   })
 
   it('그리드 — 빈 표는 타입 행 · 머리글 만들기가 맨 위, 채우기는 없다', () => {

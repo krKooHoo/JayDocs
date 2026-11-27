@@ -1911,7 +1911,51 @@ UI/UX 개편 D2(`docs/research/apple-uiux/ADOPT.md`, Xcode 의 이탤릭 탭). �
 
 - 창이 둘일 때(임시 탭은 활성 묶음마다), 임시 탭을 다른 묶음으로 끌기, 탭 맥락 메뉴의 "탭 유지", 실제 폴더.
 
-## 15. 출처
+## 61. 열 머리 메뉴 — 보기 전용 정렬 · 거르기 · 열 숨기기 · 폭 맞춤 (2026-11-27)
+
+UI/UX 개편 E1(`docs/research/apple-uiux/ADOPT.md`, Numbers 의 열 메뉴 · 빠른 필터). 표에서 필요한 행만 보며 문서를 쓰게 한다. 원칙 확인: 3 · 5 맞음(창마다 제 보기, 필요한 행만 앞에 놓는다), 1 맞음(키는 주지 않고 `Ctrl+Space` → `Alt+Enter` 맥락 메뉴 · 팔레트, 거르기 창도 키보드로 끝난다), 2 맞음(보기 계산은 고를 때 한 번 — 2만 행 정렬 25~45 ms, 보기가 없으면 비용 0), **7 걸림 → 보기 전용으로 해결**(파일의 행 순서 · 내용은 그대로, 바꾼 셀의 행만 diff), 4 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| CM1 | **보기 전용.** 그리드는 "보이는 행"(머리글 행 + 고른 본문 행, 행 객체는 원래 것)을 그리고 그 번호로 움직인다. 고치면 보이는 표에 대한 편집을 실제 행에 옮긴다(`editInView`) — 바뀐 행 객체만 제자리에 들어가 파일에서 그 행만 바뀐다. 활성 셀 · 검증 · 찾기 · 계산식 셀은 실제 행 번호 그대로 | §2 포맷 계약, ADOPT E1 |
+| CM2 | **정렬**은 한 열, 본문만(타입 행 · 머리글은 그대로). 숫자끼리는 수로, 숫자가 글자보다 앞, 글자는 한국어 · 자연 순서(Item2 < Item10, `Intl.Collator('ko', { numeric })`). 빈 칸은 방향과 상관없이 맨 뒤, 같은 값은 파일 순서 | Sheets · Excel 과 같다 |
+| CM3 | **거르기**는 값 목록에서 체크를 푼 값을 기억한다(새로 생긴 값은 보인다). 열 여럿이면 모두 맞아야. 값 목록은 다른 필터와 상관없이 본문 전체의 값과 개수, 500개까지 보이고 찾기 칸으로 좁힌다. 모든 값을 풀면 적용되지 않는다 | Sheets 의 "값으로 필터링" |
+| CM4 | 보일 순서는 **고른 때 한 번** 정하고 셀을 고쳐도 그대로 둔다 — 고친 행이 눈앞에서 사라지거나 튀지 않게. 행 수 · 머리글 행 수가 바뀌면(행 삭제 · 되돌리기) 다시 계산한다. 다시 맞추려면 정렬 · 거르기를 다시 고른다 | Excel 의 정렬은 한 번 하는 일 |
+| CM5 | **정렬 · 거르는 중에는 행 넣기(위 · 아래 · 끝) · 복제 · 옮기기 · 채우기(`Ctrl+D` · `Ctrl+R` · 채우기 핸들)를 막고** 알림으로 이유를 보인다. 맥락 메뉴에서는 빠지고 채우기 핸들은 감춘다. 열만 숨겼을 때는 막지 않는다 | ADOPT 권고 — 보이는 자리가 파일의 어디인지 정할 수 없다 |
+| CM6 | **붙여넣기**는 보이는 행에 차례로(숨은 행은 건너뛴다). 행이 늘어나야 하는 붙여넣기(보이는 행을 넘는 블록 · 머리글이 있는 마크다운/HTML 표)는 막고 알린다. 한 칸 → 범위 채우기 · 비우기 · 잘라내기도 보이는 칸만. 복사는 보이는 행만이고, 범위 안의 숨긴 열은 함께 복사된다 | 보이는 대로 들어간다. 숨긴 열은 Excel 과 같다 |
+| CM7 | **행 삭제**는 된다 — 고른 보이는 행을 지운다(파일에서 띄엄띄엄일 수 있다). 알림에 파일의 행 번호와 되돌리기 | 보이는 행을 지우는 것은 뜻이 분명하다 (Excel 도 된다) |
+| CM8 | **찾기 · 바꾸기**는 보이는 셀만, 보이는 순서로. 모두 바꾸기도 보이는 셀만이고 알림에 그렇게 적는다 | 찾은 칸으로 갈 수 있어야 한다 |
+| CM9 | **검증은 늘 파일 전체** — Key 중복 · 타입 오류는 걸러 숨긴 행도 본다. 상태 줄 "오류 N" · 열 글자의 오류 수도 전체 | ADOPT "Key 중복 검사는 숨긴 행도 포함" |
+| CM10 | **열 숨기기**: 고른 열을 폭 0 으로 그리지 않고, 방향키 · `Home` · `End` · `Tab` 이 건너뛴다. 숨긴 자리의 경계에 선. 모든 열을 숨기지는 않는다 | Excel 의 열 숨기기 |
+| CM11 | 이 창의 **열 넣기 · 지우기 · 끌어 옮기기** 뒤에는 정렬 · 거르기 · 숨김이 같은 열을 따라간다(지운 열의 것은 사라진다). 그 밖의 이유로 열 수가 바뀌면(열 조작의 되돌리기 · 바깥에서 바뀐 파일) 보기를 풀고 알린다 | 열 번호가 어긋난 채 남지 않게 |
+| CM12 | **표시**: 열 글자에 `↑` / `↓` · 깔때기(파란 글자), 정렬 · 거르는 중의 행 번호는 **파일의 행 번호**를 파란색으로(띄엄띄엄 · 뒤섞임이 보인다). 상태 줄에 `정렬 B · Name ↑ · 필터 C · 보이는 행 5 / 7 · 숨긴 열 D` 와 푸는 단추 **정렬 해제 · 필터 해제 · 모두 보이기**(`data-command`, 팔레트 명령) | ADOPT "정렬 · 필터 중임을 머리와 상태 줄에 표시" |
+| CM13 | **키는 주지 않는다.** 맥락 메뉴(`Alt+Enter`)에 넣는다 — 열 전체를 골랐으면 맨 위, 셀이면 행 · 열 명령 뒤. 푸는 명령은 걸려 있을 때만. 열 글자의 `▾`(올리거나 고른 열에서 보인다)는 그 열을 고르고 같은 메뉴를 그 아래에 연다. 팔레트 명령 8개(`gridSortAsc` · `gridSortDesc` · `gridSortClear` · `gridFilter` · `gridFilterClear` · `gridHideCols` · `gridShowCols` · `gridFitCols`). 파일을 고치지 않으니 읽기 전용 문서에서도 된다 | ADOPT E1 키, 원칙 1 단축키 규칙 2 |
+| CM14 | **폭 맞춤**: 열 경계 두 번 누르기 · 메뉴. 모든 행(머리글 포함)의 글 폭 어림 + 18 px, 56 ~ 840 px. 고른 여러 열 안의 경계면 그 열 모두. 폭은 지금처럼 브라우저에 남는다 | Excel 의 경계 두 번 누르기 |
+| CM15 | **보기 상태는 남기지 않는다** — 창(GridPane)마다 메모리에만 있고, 탭을 닫거나 새로 고치면 풀린다. 분할한 두 창은 서로 다른 보기를 가진다 | 다시 열었을 때 행이 숨어 있으면 "행이 없어졌다" 로 읽히고, 행 넣기가 왜 막혔는지 모른다(원칙 7 의 "화면 상태는 남겨도 된다" 보다 오해가 크다). 창마다 따로는 원칙 3. 필요하면 나중에 "정렬만 남기기" 를 더한다 |
+| CM16 | 다른 곳(tsv-view 행 · diff · 경로 막대)에서 "이 셀로" 가 걸러 숨긴 행 · 숨긴 열이면 거르기 · 숨김을 풀고 알린다. 걸러져 안 보이게 된 활성 셀은 첫 보이는 행으로, 숨긴 열은 옆의 보이는 열로 | 가려고 한 곳이 늘 보이게 |
+
+코드: `lib/tsv/view.ts`(순수 계산 — `viewOrder` · `makeRowView`(보이는 행 ↔ 실제 행) · `editInView` · `deleteRowSet` · `distinctValues` · `remapColumns` · `fitColumnWidth`) · `view.test.ts`, `components/grid/Grid.tsx`(`rowView` · `hiddenCols` props — 보이는 행 번호로 움직이고 실제 행 번호로 올린다, `▾` · 경계 두 번 누르기, 막는 편집), `GridPane.tsx`(보기 상태 · 순서 고정 · 행 삭제 · 열 조작 따라가기 · 찾기 · 상태 줄 · 명령), `ColumnFilter.tsx`(값으로 거르기 창), `grid-extras.css`, `lib/contextMenu.ts`(`viewIds` · 정렬 · 거르는 중에 빼는 명령), `lib/paneCommands.ts`, `shortcuts-table.mjs`(설명 줄 둘, 키 없음).
+
+### 61.1 확인한 것
+
+`npx vitest run --exclude ".claude/**"`(664 통과) · `npm run build` · `npm run lint`(새 경고 없음). dev `?opfs` + 내장 브라우저(1280×800):
+
+- `Item_Table.tsv` 에서 `Ctrl+Space` → `Alt+Enter` — 열 명령이 맨 위. "내림차순" 으로 거르고 `Enter` → 120 · 100 · 90 · 45 · 35 · 30 · -5, 행 번호 3 · 7 · 4 · 6 · 9 · 5 · 8(파란색), 열 글자 `E↓`, 상태 줄 `정렬 E · BuildCost ↓ · 보이는 행 7 / 7` · "정렬 해제". 문서는 수정됨이 되지 않음.
+- 시험 파일(`E1_Test.tsv`, 같은 내용)에서 열 E 의 `▾` 를 눌러 메뉴 → 오름차순. 정렬한 채 Scroll 행의 B 를 `scrollX` 로 고치고 `Enter`(아래로 — 보이는 다음 행으로 감) → `Ctrl+S`. 파일을 원본과 견주니 **6행 하나만** 바뀌고 줄 수 · 다른 행 순서 그대로.
+- C 열 `Alt+Enter` → "값으로" → 거르기 창: 값 · 개수, `↓ ↓ Space`(Armor) `↓ ↓ Space`(Weapn) `Enter` → 파일 4 · 7행이 빠지고 `보이는 행 5 / 7`, 활성 셀이 숨은 행에서 첫 보이는 행으로. 상태 줄 "오류 5" 는 숨은 행의 오류도 셈.
+- 정렬 · 거르는 중 `Ctrl+Alt+=` · `Ctrl+D` → 알림만, 문서 그대로. 팔레트 "표: 행 삭제" → 보이는 행(파일 3행)만 지움 · 알림 · `Ctrl+Z` 로 돌아옴. 보이는 마지막 행에서 두 줄 붙여넣기(`ClipboardEvent`) → 막고 알림.
+- B 열 숨기기(맥락 메뉴) → B 가 사라지고 활성 셀이 C 로, `←` 가 B 를 건너 A 로. 팔레트 "숨긴 열 모두 보이기" → 돌아옴.
+- G 열을 75 px 로 끈 뒤 경계 두 번 누르기 → 217 px(가장 긴 칸).
+- 찾기 "Weap" → 보이는 2건만(숨은 Weapn 행 빼고). 상태 줄 "필터 해제" · "정렬 해제" → 파일 순서, 활성 셀은 같은 행에.
+- `목록.csv` — 머리글 1행은 그대로, 본문만 내림차순.
+- 2만 행 × 30 열(브라우저에서 `view.ts` 를 직접 불러) — 정렬 25 ~ 45 ms, 거르기 4 ms, 값 목록 7 ms, 보이는 표 만들기(편집마다) 1 ms.
+- 콘솔 오류 없음. 시험 파일은 지웠다.
+
+### 61.2 확인하지 못한 것 (TESTCASES §55)
+
+- 자동화의 `Ctrl+Alt+-` 가 그리드에 닿지 않아 행 삭제는 팔레트로만 봤다(같은 처리를 탄다). `Alt+↑/↓` · `Shift+Alt+↓` 를 막는 것은 같은 `rowOp` 분기라 따로 누르지 않았다.
+- 실제 마우스로 `▾` 에 올리기(투명 → 보임), 오른쪽 클릭으로 연 메뉴, 같은 문서를 분할한 두 창의 서로 다른 보기, tsv-view · diff 에서 숨은 행으로 가기, 열 조작 뒤 보기가 따라가는 것(단위 테스트만), Mac · Edge 앱 · 실제 폴더.
+
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588
 - 마크다운: CodeMirror changelog https://codemirror.net/docs/changelog/ · composition 이슈 https://github.com/codemirror/dev/issues?q=is%3Aissue+composition · @atomic-editor/editor https://github.com/kenforthewin/atomic-editor · codemirror-markdown-hybrid https://github.com/tiagosimoes/codemirror-markdown-hybrid · ProseMirror changelog https://prosemirror.net/docs/changelog/ · TipTap markdown https://tiptap.dev/blog/release-notes/introducing-bidirectional-markdown-support-in-tiptap · Milkdown https://github.com/Milkdown/milkdown · MDXEditor code blocks https://mdxeditor.dev/editor/docs/code-blocks · mdast-util-to-markdown https://github.com/syntax-tree/mdast-util-to-markdown

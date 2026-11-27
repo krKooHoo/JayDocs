@@ -9,6 +9,7 @@ import { parseHtmlTable, parseMarkdownTable } from '../../lib/tsv/mdTable'
 import { sanitizeFor } from '../../lib/tsv/table'
 import type { CalcCell } from '../../lib/calc/calc'
 import { splitCellSpaces, useInvisibles } from '../../lib/invisibles'
+import { editInView, fitColumnWidth, stepColumn, textWidth, visibleColumn, VIEW_BLOCKED, VIEW_PASTE_BLOCKED, type RowView, type SortSpec } from '../../lib/tsv/view'
 
 /**
  * 자체 DOM 그리드 (DESIGN D3). 상태는 활성 셀(부모가 쥔다)과 범위 선택의 기준점(anchor)뿐이고
@@ -41,6 +42,8 @@ export interface GridHandle {
   clearRange(): void
   /** 선택(기준점 · 활성 셀)을 dr 행만큼 옮긴다 — 행을 옮기거나 복제한 뒤 선택이 그 행을 따라가게 */
   shiftRows(dr: number): void
+  /** 열 c1..c2 의 폭을 내용에 맞춘다 (숨긴 열은 빼고) — 열 경계 두 번 누르기와 같다 (DESIGN §61) */
+  fitColumns(c1: number, c2: number): void
 }
 
 /** dup: 복제하고 선택을 복제본으로 (Shift+Alt+↓), dupKeep: 복제하고 선택은 그대로 (Shift+Alt+↑), moveUp · moveDown: 한 칸 옮기기 (Alt+↑ / ↓) */
@@ -78,7 +81,20 @@ export interface GridProps {
   widthsKey: string
   /** 선택 범위가 바뀌면 (상태 줄의 선택 요약 — DESIGN §32) */
   onRangeChange?: (range: CellRange) => void
+  /**
+   * 정렬 · 필터 중이면 보이는 행 (DESIGN §61). 그리드는 보이는 행 번호로 움직이고 그린다 —
+   * active · onActiveChange 는 실제 행 번호 그대로, onEdit 은 보이는 표에 대한 편집을 실제 표로 옮겨 부른다.
+   * range() · onRangeChange 의 범위는 보이는 행 번호다
+   */
+  rowView?: RowView | null
+  /** 숨긴 열 — 폭 0 으로 그리지 않고, 방향키는 건너뛴다 */
+  hiddenCols?: ReadonlySet<number>
+  /** 열 글자의 표시 — 정렬한 열 · 거른 열 */
+  sort?: SortSpec | null
+  filteredCols?: ReadonlySet<number>
 }
+
+const NO_COLS: ReadonlySet<number> = new Set()
 
 interface Editing {
   r: number
@@ -89,15 +105,6 @@ interface Editing {
 type Move = 'up' | 'down' | 'left' | 'right'
 
 // ---------------------------------------------------------------- 열 너비
-function textWidth(s: string): number {
-  let w = 0
-  for (const ch of s) {
-    const code = ch.codePointAt(0) ?? 0
-    w += code > 0x2e80 ? 13 : code < 0x80 ? 7.3 : 9
-  }
-  return w
-}
-
 function estimateWidths(table: TsvTable): number[] {
   const out: number[] = []
   const limit = Math.min(table.rows.length, 300)
@@ -219,6 +226,8 @@ const Cell = memo(function Cell({ r, c, v, col, w, active, selected, match, fill
 interface RowProps {
   row: TsvRow
   r: number
+  /** 실제 행 번호 (정렬 · 필터 중이 아니면 r 과 같다) — 행 번호 칸 · 검증 · 찾기 · 계산식 셀의 키 */
+  ar: number
   widths: number[]
   schema: TableSchema
   validation: Validation
@@ -240,14 +249,19 @@ interface RowProps {
   inv: boolean
 }
 
-const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, top, inv }: RowProps) {
+const Row = memo(function Row({ row, r, ar, widths, schema, validation, tableWidth, totalWidth, activeC, selC1, selC2, fillC1, fillC2, matches, calcCells, rowSelected, head, top, inv }: RowProps) {
   let cls = 'grid-row'
   cls += head ? ' is-head' : ' is-body'
   if (head && schema.typed && r === 0) cls += ' is-type'
+  let numCls = 'grid-rownum'
+  if (activeC >= 0 || rowSelected) numCls += ' is-active-row'
+  if (ar !== r) numCls += ' is-viewed'
   return (
     <div className={cls} style={top === undefined ? { width: totalWidth } : { transform: `translateY(${top}px)`, width: totalWidth }}>
-      <div className={'grid-rownum' + (activeC >= 0 || rowSelected ? ' is-active-row' : '')} data-rownum={r} title="클릭: 행 선택">{r + 1}</div>
-      {widths.map((w, c) => (
+      {/* 정렬 · 필터 중에도 행 번호는 파일의 행 번호 (Excel 처럼) */}
+      <div className={numCls} data-rownum={r} title={ar !== r ? `파일의 ${ar + 1}행 · 클릭: 행 선택` : '클릭: 행 선택'}>{ar + 1}</div>
+      {/* 숨긴 열은 폭 0 — 그리지 않는다 */}
+      {widths.map((w, c) => w === 0 ? null : (
         <Cell
           key={c}
           r={r}
@@ -257,10 +271,10 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
           w={w}
           active={activeC === c}
           selected={selC1 >= 0 && c >= selC1 && c <= selC2}
-          match={matches.size > 0 && matches.has(issueKey(tableWidth, r, c))}
+          match={matches.size > 0 && matches.has(issueKey(tableWidth, ar, c))}
           fill={fillC1 >= 0 && c >= fillC1 && c <= fillC2}
-          calc={calcCells.size > 0 ? calcCells.get(issueKey(tableWidth, r, c)) : undefined}
-          issue={validation.issues.get(issueKey(tableWidth, r, c))}
+          calc={calcCells.size > 0 ? calcCells.get(issueKey(tableWidth, ar, c)) : undefined}
+          issue={validation.issues.get(issueKey(tableWidth, ar, c))}
           head={head}
           inv={inv}
         />
@@ -271,7 +285,21 @@ const Row = memo(function Row({ row, r, widths, schema, validation, tableWidth, 
 
 // ---------------------------------------------------------------- 그리드
 export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
-  const { table, schema, validation, active, onActiveChange, onEdit, onUndo, onRedo, onNotice, onRowOp, onColOp, onMoveColumns, onFind, onFindStep, matches, calcCells, onCalc } = p
+  const { schema, validation, onUndo, onRedo, onNotice, onRowOp, onColOp, onMoveColumns, onFind, onFindStep, matches, calcCells, onCalc } = p
+  // ---- 보기 (정렬 · 필터 · 숨긴 열, DESIGN §61). 아래의 table · active · onEdit 은 모두 "보이는 행" 기준이다
+  const rowView = p.rowView ?? null
+  const hidden = p.hiddenCols ?? NO_COLS
+  const realTable = p.table
+  const table = rowView ? rowView.table : realTable
+  const pActive = p.active
+  const activeVr = rowView ? rowView.toView(pActive.r) : pActive.r
+  // 걸러져 안 보이는 행이면 잠깐 첫 본문 행으로 그린다 (창이 곧 보이는 행으로 옮긴다)
+  const activeR = activeVr >= 0 ? activeVr : Math.min(rowView?.headerRows ?? 0, Math.max(0, table.rows.length - 1))
+  const active = useMemo<CellPos>(() => ({ r: activeR, c: pActive.c }), [activeR, pActive.c])
+  const parentActive = p.onActiveChange
+  const onActiveChange = useCallback((v: CellPos) => parentActive(rowView ? { r: rowView.toActual(v.r), c: v.c } : v), [rowView, parentActive])
+  const parentEdit = p.onEdit
+  const onEdit = useCallback((fn: (t: TsvTable) => TsvTable) => parentEdit(rowView ? (t) => editInView(t, rowView, fn) : fn), [rowView, parentEdit])
   const headerRows = schema.headerRows
   const headerH = LETTER_H + headerRows * ROW_H
   const bodyCount = Math.max(0, table.rows.length - headerRows)
@@ -293,27 +321,38 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     const a = anchor ? { r: Math.min(anchor.r, maxR), c: Math.min(anchor.c, maxC) } : active
     return normalizeRange(a, active)
   }, [anchor, active, maxR, maxC])
+  // 보이는 순서가 새로 정해지면(정렬 · 필터를 고르거나 풀면) 범위를 푼다 — 보이는 행 번호의 범위가 다른 행들을 가리키게 되므로
+  const viewOrderKey = rowView?.order
+  useEffect(() => { setAnchor(null) }, [viewOrderKey])
   const multi = range.r1 !== range.r2 || range.c1 !== range.c2
   const onRangeChange = p.onRangeChange
   useEffect(() => { onRangeChange?.(range) }, [range, onRangeChange])
 
   // ---- 열 너비. 열 수가 바뀐 그 렌더에서 바로 길이를 맞춘다 — effect 로 한 박자 늦추면
   // 열 삭제 직후 옛 너비 배열이 없는 열(schema.columns[c] = undefined)을 그리려다 터진다 (TC-307)
-  const [savedWidths, setWidths] = useState<number[]>(() => loadWidths(p.widthsKey, table.width) ?? estimateWidths(table))
+  const [savedWidths, setWidths] = useState<number[]>(() => loadWidths(p.widthsKey, realTable.width) ?? estimateWidths(realTable))
   const widths = useMemo(
-    () => (savedWidths.length === table.width ? savedWidths : loadWidths(p.widthsKey, table.width) ?? estimateWidths(table)),
-    [savedWidths, table, p.widthsKey],
+    () => (savedWidths.length === realTable.width ? savedWidths : loadWidths(p.widthsKey, realTable.width) ?? estimateWidths(realTable)),
+    [savedWidths, realTable, p.widthsKey],
   )
   useEffect(() => {
     if (widths !== savedWidths) setWidths(widths)
   }, [widths, savedWidths])
+  /** 그릴 폭 — 숨긴 열은 0 (그리지 않는다) */
+  const shown = useMemo(() => (hidden.size ? widths.map((w, c) => (hidden.has(c) ? 0 : w)) : widths), [widths, hidden])
   const offsets = useMemo(() => {
     const out: number[] = []
     let x = 0
-    for (const w of widths) { out.push(x); x += w }
+    for (const w of shown) { out.push(x); x += w }
     return out
-  }, [widths])
-  const totalWidth = ROWNUM_W + (offsets.length ? offsets[offsets.length - 1] + widths[widths.length - 1] : 0)
+  }, [shown])
+  const totalWidth = ROWNUM_W + (offsets.length ? offsets[offsets.length - 1] + shown[shown.length - 1] : 0)
+  /** 열 c1..c2 의 폭을 내용에 맞춘다 (DESIGN §61) — 숨긴 열은 그대로 */
+  const fitColumns = useCallback((c1: number, c2: number) => {
+    const next = widths.map((w, c) => (c >= c1 && c <= c2 && !hidden.has(c) ? fitColumnWidth(realTable, c, MIN_COL, MAX_COL * 2) : w))
+    setWidths(next)
+    saveWidths(p.widthsKey, next)
+  }, [widths, hidden, realTable, p.widthsKey])
 
   const resizing = useRef<{ c: number; startX: number; startW: number } | null>(null)
   /** 채우기 핸들을 끄는 중: 원본 범위 */
@@ -377,11 +416,11 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       else if (bottom > el.scrollTop + viewH) el.scrollTop = bottom - viewH
     }
     const left = offsets[active.c] ?? 0
-    const right = left + (widths[active.c] ?? 0)
+    const right = left + (shown[active.c] ?? 0)
     const viewW = el.clientWidth - ROWNUM_W
     if (left < el.scrollLeft) el.scrollLeft = left
     else if (right > el.scrollLeft + viewW) el.scrollLeft = Math.max(0, right - viewW)
-  }, [active, headerRows, headerH, offsets, widths])
+  }, [active, headerRows, headerH, offsets, shown, widths.length])
 
   const focusInput = useCallback(() => { ta.current?.focus({ preventScroll: true }) }, [])
   useImperativeHandle(ref, () => ({
@@ -392,24 +431,28 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
       if (anchor) setAnchor({ r: anchor.r + dr, c: anchor.c })
       onActiveChange({ r: active.r + dr, c: active.c })
     },
-  }), [focusInput, range, anchor, active, onActiveChange])
+    fitColumns,
+  }), [focusInput, range, anchor, active, onActiveChange, fitColumns])
 
   // ---- 선택 · 이동
   /** 활성 셀을 옮긴다. extend 면 범위를 넓힌다 (기준점 유지), 아니면 범위를 푼다 */
   const select = useCallback((pos: CellPos, extend = false) => {
-    const next = { r: Math.max(0, Math.min(maxR, pos.r)), c: Math.max(0, Math.min(maxC, pos.c)) }
+    const c0 = Math.max(0, Math.min(maxC, pos.c))
+    // 숨긴 열에는 서지 않는다 — 움직인 쪽으로 다음 보이는 열
+    const c = hidden.size ? visibleColumn(c0, c0 >= active.c ? 1 : -1, maxC + 1, hidden) : c0
+    const next = { r: Math.max(0, Math.min(maxR, pos.r)), c }
     if (extend) { if (!anchor) setAnchor(active) } else setAnchor(null)
     if (next.r !== active.r || next.c !== active.c) onActiveChange(next)
-  }, [active, anchor, maxR, maxC, onActiveChange])
+  }, [active, anchor, maxR, maxC, onActiveChange, hidden])
 
   const moveActive = useCallback((dir: Move, far = false, extend = false) => {
     let { r, c } = active
     if (dir === 'up') r = far ? 0 : r - 1
     if (dir === 'down') r = far ? maxR : r + 1
-    if (dir === 'left') c = far ? 0 : c - 1
-    if (dir === 'right') c = far ? maxC : c + 1
+    if (dir === 'left') c = far ? 0 : stepColumn(c, -1, maxC + 1, hidden)
+    if (dir === 'right') c = far ? maxC : stepColumn(c, 1, maxC + 1, hidden)
     select({ r, c }, extend)
-  }, [active, maxR, maxC, select])
+  }, [active, maxR, maxC, select, hidden])
 
   const selectRows = useCallback((r1: number, r2: number) => {
     setAnchor({ r: Math.min(r1, r2), c: 0 })
@@ -511,7 +554,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   const columnAt = (x: number): number => {
     let c = 0
     while (c < widths.length - 1 && x >= offsets[c + 1]) c++
-    return c
+    return hidden.size ? visibleColumn(c, -1, widths.length, hidden) : c
   }
   /** 화면 좌표 → 셀. 그리드 밖이면 보이는 가장자리로 붙인다. 표 끝 아래 빈 곳이면 표보다 큰 행 번호가 나온다 */
   const cellFromPoint = (x: number, y: number): CellPos => {
@@ -531,7 +574,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     if (!el || widths.length === 0) return 0
     const cx = x - el.getBoundingClientRect().left - ROWNUM_W + el.scrollLeft
     const c = columnAt(cx)
-    return cx < offsets[c] + widths[c] / 2 ? c : c + 1
+    return cx < offsets[c] + shown[c] / 2 ? c : c + 1
   }
   const applyFill = (src: CellRange, target: CellRange) => {
     const added = Math.max(0, target.r2 + 1 - table.rows.length)
@@ -740,9 +783,16 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
           // Ctrl+Shift+D(행 복제)는 Shift+Alt+↓ 로 옮겼다 (K5). 손에 익은 키를 누르면 새 키를 알린다 —
           // 흘려보내면 Chrome 의 "모든 탭을 북마크에 추가" 가 뜬다
           if (e.shiftKey) { onNotice('행 복제는 Shift+Alt+↓ 로 바뀌었습니다 (Alt+↑ / ↓ 는 행 옮기기)'); return }
+          if (rowView) { onNotice(VIEW_BLOCKED); return }
           { const g = range; onEdit((t) => fillDown(t, g)) }
           return
-        case 'KeyR': { e.preventDefault(); const g = range; onEdit((t) => fillRight(t, g)); return }
+        case 'KeyR': {
+          e.preventDefault()
+          if (rowView) { onNotice(VIEW_BLOCKED); return }
+          const g = range
+          onEdit((t) => fillRight(t, g))
+          return
+        }
         // Shift·Alt 가 겹친 Ctrl+F / Ctrl+H (Ctrl+Shift+F 등)는 그리드가 가로채지 않고 전역 단축키에 맡긴다
         case 'KeyF': if (e.shiftKey || e.altKey) return; e.preventDefault(); onFind(false); return
         case 'KeyH': if (e.shiftKey || e.altKey) return; e.preventDefault(); onFind(true); return
@@ -800,6 +850,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
 
     // 마크다운 표·<th> 머리글 HTML 표: 머리글은 머리글 행으로, 모자라는 열·행은 늘린다 (DESIGN §19)
     const headed = parseMarkdownTable(text) ?? parseHtmlTable(html)
+    // 정렬 · 필터 중에는 행이 늘어나는 붙여넣기를 하지 않는다 (DESIGN §61) — 보이는 행 다음이 파일의 어디인지 정할 수 없다
+    if (headed && rowView) { onNotice(VIEW_PASTE_BLOCKED); return }
     if (headed) {
       const b = { header: headed.header.map(clean), rows: headed.rows.map((l) => l.map(clean)) }
       const r = range.r1
@@ -833,6 +885,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     const r = g.r1
     const c = g.c1
     const preview = pasteBlock(table, r, c, block)
+    if (rowView && preview.addedRows) { onNotice(VIEW_PASTE_BLOCKED); return }
     onEdit((t) => pasteBlock(t, r, c, block).table)
     const cols = Math.max(...block.map((l) => l.length))
     const notes = [`${block.length}×${cols} 붙여넣음`]
@@ -849,6 +902,22 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     if (e.button === 2) { onRightDown(e); return }
     if (e.button !== 0) return
     const target = e.target as HTMLElement
+    // 열 글자의 ▾ — 그 열을 고르고 맥락 메뉴(열 머리 메뉴가 위)를 연다. 마우스용이고 키보드는 Alt+Enter (DESIGN §61)
+    const menuBtn = target.closest<HTMLElement>('[data-colmenu]')
+    if (menuBtn) {
+      e.preventDefault()
+      if (editing) commitEdit(null)
+      const c = Number(menuBtn.dataset.colmenu)
+      if (!(c >= range.c1 && c <= range.c2 && range.r1 === 0 && range.r2 === maxR)) selectCols(c, c)
+      focusInput()
+      const letterEl = menuBtn.closest<HTMLElement>('[data-letter]') ?? menuBtn
+      // 고른 열이 그려진 뒤에 연다 — 메뉴는 앱의 contextmenu 처리가 띄운다
+      window.setTimeout(() => {
+        const rect = letterEl.getBoundingClientRect()
+        letterEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.left + 4, clientY: rect.bottom + 2 }))
+      }, 0)
+      return
+    }
     if (target.closest('[data-fill]')) {
       e.preventDefault()
       filling.current = range
@@ -939,6 +1008,14 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     select({ r, c }, true)
   }
   const onDoubleClick = (e: React.MouseEvent) => {
+    // 열 경계를 두 번 누르면 폭 맞춤 — 고른 여러 열 안이면 그 열들 모두 (Excel 과 같다)
+    const rz = (e.target as HTMLElement).closest<HTMLElement>('[data-resize]')
+    if (rz) {
+      const c = Number(rz.dataset.resize)
+      if (range.c2 > range.c1 && c >= range.c1 && c <= range.c2 && range.r1 === 0 && range.r2 === maxR) fitColumns(range.c1, range.c2)
+      else fitColumns(c, c)
+      return
+    }
     const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-r]')
     if (!cell || (e.target as HTMLElement).closest('[data-bool]')) return
     startEdit('edit', Number(cell.dataset.r), Number(cell.dataset.c))
@@ -951,7 +1028,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   // ---- 입력창 위치
   const inputX = ROWNUM_W + (offsets[active.c] ?? 0) - scroll.left
   const inputY = active.r < headerRows ? LETTER_H + active.r * ROW_H : headerH + (active.r - headerRows) * ROW_H - scroll.top
-  const inputW = Math.max(widths[active.c] ?? MIN_COL, 160)
+  const inputW = Math.max(shown[active.c] || MIN_COL, 160)
   const inputH = editing && textWidth(draft) > inputW - 12 ? ROW_H * 3 : ROW_H
 
   const rowSel = (r: number): { c1: number; c2: number } => (r >= range.r1 && r <= range.r2 ? { c1: range.c1, c2: range.c2 } : { c1: -1, c2: -1 })
@@ -960,11 +1037,12 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
   // ---- 채우기 핸들: 범위 오른쪽 아래 모서리. 헤더 행이면 고정 헤더 안에, 아니면 스크롤 내용 안에 둔다
   const fillT = fillDrag?.target ?? null
   const fillSel = (r: number): { c1: number; c2: number } => (fillT && r >= fillT.r1 && r <= fillT.r2 ? { c1: fillT.c1, c2: fillT.c2 } : { c1: -1, c2: -1 })
-  const handleX = ROWNUM_W + (offsets[range.c2] ?? 0) + (widths[range.c2] ?? 0)
+  const handleX = ROWNUM_W + (offsets[range.c2] ?? 0) + (shown[range.c2] ?? 0)
   const handleInHead = range.r2 < headerRows
   const handleY = handleInHead ? LETTER_H + (range.r2 + 1) * ROW_H : headerH + (range.r2 - headerRows + 1) * ROW_H
   // 행 번호 칸 밑으로 스크롤돼 들어가면 숨긴다
-  const handle = !editing && table.rows.length > 0 && widths.length > 0 && handleX - scroll.left >= ROWNUM_W
+  // 정렬 · 필터 중에는 채우기를 하지 않으니 핸들도 없다 (DESIGN §61)
+  const handle = !editing && !rowView && table.rows.length > 0 && widths.length > 0 && handleX - scroll.left >= ROWNUM_W
     ? <div className="grid-fill-handle" data-fill="1" style={{ left: handleX, top: handleY }} title="끌어서 채우기 — 값 무늬를 되풀이, 숫자는 수열로" />
     : null
   // 표 끝을 넘어 새로 생길 행 자리 (셀이 없으니 덮개 하나로 보인다)
@@ -973,13 +1051,13 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
     ? {
         left: ROWNUM_W + offsets[fillT.c1],
         top: headerH + (ghostR1 - headerRows) * ROW_H,
-        width: offsets[fillT.c2] + widths[fillT.c2] - offsets[fillT.c1],
+        width: offsets[fillT.c2] + shown[fillT.c2] - offsets[fillT.c1],
         height: (fillT.r2 - ghostR1 + 1) * ROW_H,
       }
     : null
   // ---- 열 옮기기: 놓을 경계의 세로선
   const dropAt = colDrop?.at ?? null
-  const dropX = dropAt === null ? null : ROWNUM_W + (dropAt < widths.length ? offsets[dropAt] : totalWidth - ROWNUM_W) - scroll.left
+  const dropX = dropAt === null ? null : ROWNUM_W + (dropAt < shown.length ? offsets[dropAt] : totalWidth - ROWNUM_W) - scroll.left
 
   let wrapCls = 'grid-wrap'
   if (fillDrag) wrapCls += ' is-filling'
@@ -993,15 +1071,37 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
           <div className="grid-head" style={{ width: totalWidth }}>
             <div className="grid-row is-letters" style={{ width: totalWidth }}>
               <div className="grid-rownum grid-corner" data-corner="1" title="전체 선택 (Ctrl+A)" />
-              {widths.map((w, c) => {
+              {shown.map((w, c) => {
+                if (w === 0) return null
                 const col = schema.columns[c]
                 const errs = validation.byColumn[c]
                 const colSel = c >= range.c1 && c <= range.c2 && (multi || active.c === c)
+                const sorted = p.sort?.c === c ? p.sort.dir : 0
+                const filtered = !!p.filteredCols?.has(c)
+                // 숨긴 열이 이 열 왼쪽(또는 끝 열 오른쪽)에 있으면 경계에 표시
+                const hiddenBefore = c > 0 && hidden.has(c - 1)
+                const hiddenAfter = c < shown.length - 1 && hidden.has(c + 1) && shown.slice(c + 1).every((x) => x === 0)
+                let cls = 'grid-letter'
+                if (colSel) cls += ' is-active-col'
+                if (sorted || filtered) cls += ' is-viewed'
+                if (hiddenBefore) cls += ' has-hidden-before'
+                if (hiddenAfter) cls += ' has-hidden-after'
+                let title = columnTitle(col)
+                if (sorted) title += `\n${sorted > 0 ? '오름차순' : '내림차순'}으로 정렬해 보는 중 (파일 순서는 그대로)`
+                if (filtered) title += '\n값으로 거르는 중'
+                if (hiddenBefore || hiddenAfter) title += '\n옆에 숨긴 열이 있다 — 열 머리 메뉴의 "숨긴 열 모두 보이기"'
                 return (
-                  <div key={c} className={'grid-letter' + (colSel ? ' is-active-col' : '')} data-letter={c} style={{ width: w }} title={columnTitle(col)}>
+                  <div key={c} className={cls} data-letter={c} style={{ width: w }} title={title}>
                     {columnLetter(c)}
+                    {sorted !== 0 && <span className="grid-colmark">{sorted > 0 ? '↑' : '↓'}</span>}
+                    {filtered && (
+                      <svg className="grid-colmark is-filter" viewBox="0 0 10 10" width="9" height="9" aria-label="거르는 중">
+                        <path d="M0 1h10L6 5.5V9.5L4 8.5V5.5z" fill="currentColor" />
+                      </svg>
+                    )}
                     {errs > 0 && <span className="grid-errcount">{errs}</span>}
-                    <span className="grid-resize" data-resize={c} />
+                    <span className="grid-colmenu" data-colmenu={c} title="열 머리 메뉴 — 정렬 · 거르기 · 숨기기 · 폭 맞춤 (키보드: Alt+Enter)">▾</span>
+                    <span className="grid-resize" data-resize={c} title="끌기: 너비 · 두 번 누르기: 내용에 맞추기" />
                   </div>
                 )
               })}
@@ -1010,7 +1110,7 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
               const s = rowSel(r)
               const f = fillSel(r)
               return (
-                <Row key={r} row={row} r={r} widths={widths} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} calcCells={calcCells} rowSelected={wholeRow && s.c1 >= 0} head inv={inv} />
+                <Row key={r} row={row} r={r} ar={r} widths={shown} schema={schema} validation={validation} tableWidth={table.width} totalWidth={totalWidth} activeC={active.r === r ? active.c : -1} selC1={s.c1} selC2={s.c2} fillC1={f.c1} fillC2={f.c2} matches={matches} calcCells={calcCells} rowSelected={wholeRow && s.c1 >= 0} head inv={inv} />
               )
             })}
             {handleInHead && handle}
@@ -1024,7 +1124,8 @@ export const Grid = forwardRef<GridHandle, GridProps>(function Grid(p, ref) {
                 key={vi.key}
                 row={table.rows[r]}
                 r={r}
-                widths={widths}
+                ar={rowView ? rowView.toActual(r) : r}
+                widths={shown}
                 schema={schema}
                 validation={validation}
                 tableWidth={table.width}
