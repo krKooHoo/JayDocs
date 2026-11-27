@@ -78,6 +78,7 @@ export const SHORTCUTS = [
       { hint: { at: 'pathBar', label: '목록 닫기 · 문서로 돌아가기' }, keys: 'Esc (경로 막대)', label: '목록을 닫는다. 목록이 없으면 편집기 · 그리드로 돌아간다' },
       { hint: { at: ['tab', 'mdPreview'], label: '다음 영역 (트리 → 창들)' }, keys: 'F6', label: '다음 영역으로 포커스 — 파일 트리 → 탭 묶음들 (분할한 창 사이를 옮긴다)', command: 'nextPane' },
       { keys: 'Shift+F6', label: '이전 영역으로 포커스', command: 'prevPane' },
+      { keys: 'Ctrl+Alt+Enter', label: '집중 모드 들어가기 / 나오기 — 위 막대 · 파일 트리 · 탭 줄 · 창 막대 · 목차 · 훑어보기 패널을 숨기고, 분할 중이면 포커스가 있는 창만 남긴다. 같은 키(또는 오른쪽 위 "집중 모드 나가기")로 그대로 돌아온다. 트리를 펴면(Ctrl+B · Ctrl+Shift+E) 나온다', command: 'toggleFocusMode' },
       { keys: 'Ctrl+Alt+O', label: '다른 창으로 포커스 — 직전에 쓰던 문서 창으로. 다시 누르면 돌아온다(시트 창 ↔ 문서 창). 트리에 있으면 마지막으로 쓰던 문서 창으로. 창마다 커서 · 선택 · 스크롤은 그대로', command: 'focusOtherPane' },
       { hint: { at: ['md', 'mdPreview'], when: 'markdown', label: '보기 모드 바꾸기' }, keys: 'Ctrl+Shift+V', label: '마크다운 보기 모드 순환: 소스 → 하이브리드 → 분할 → 미리보기', command: 'cycleMdMode' },
       { hint: { at: 'md', label: '훑어보기 패널' }, keys: 'Ctrl+Alt+M', label: '훑어보기 패널 켜기 / 끄기 — .md · .txt 창의 오른쪽에 문서 전체를 축소해 띄운다 (문서 창이 하나일 때만 보인다). 누르면 그 자리로 커서, 상자는 편집기가 보여 주는 범위 — 끌면 스크롤. 다시 그리는 데 오래 걸리는 큰 문서는 자동으로 다시 그리지 않는다 — 패널의 "새로 고침" 또는 팔레트의 "훑어보기 패널 새로 고침"', command: 'toggleSkim' },

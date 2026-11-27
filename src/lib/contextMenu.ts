@@ -159,7 +159,7 @@ export function markdownContextIds(s: MarkdownSpot): string[] {
 /** 탭 제목 */
 export function tabContextIds(s: TabSpot): string[] {
   const doc = s.path ? ['save', 'revertToSaved', 'copyActivePath', 'saveAsTemplate'] : []
-  return ['closeTab', 'closeOtherTabs', 'split', 'keepTab', 'nextTab', 'prevTab', ...doc]
+  return ['closeTab', 'closeOtherTabs', 'split', 'splitDown', 'keepTab', 'nextTab', 'prevTab', ...doc]
 }
 
 /** 어느 영역도 아닌 곳 */

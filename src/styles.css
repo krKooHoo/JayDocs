@@ -292,6 +292,25 @@ button.tree-search {
 .flexlayout__layout { font-family: var(--font); font-size: 13px; }
 .flexlayout__tab { background: var(--bg); overflow: hidden; }
 
+/* ---- 집중 모드 (DESIGN §59) — 막대 · 트리 · 탭 줄 · 패널을 숨기고 본문을 읽기 좋은 폭으로 가운데에 ---- */
+.focus-mode .topbar,
+.focus-mode .flexlayout__border_left,
+.focus-mode .flexlayout__border_inner_left,
+.focus-mode .flexlayout__tabset_tabbar_outer,
+.focus-mode .pane-bar,
+.focus-mode .outline-panel,
+.focus-mode .skim-panel { display: none !important; }
+.focus-mode .md-body .cm-content { max-width: 780px; margin: 0 auto; }
+.focus-mode .preview-body { margin: 0 auto; }
+.focus-exit {
+  position: fixed; top: 8px; right: 12px; z-index: 50;
+  font-size: 12px; padding: 3px 10px; border-radius: 12px;
+  background: var(--bg); color: var(--muted, inherit); border: 1px solid var(--border);
+  opacity: 0.55; transition: opacity 0.15s;
+}
+.focus-exit:hover { opacity: 1; }
+.focus-exit kbd { font-size: 11px; margin-left: 4px; }
+
 /* ---- 마크다운 창 모드 ---- */
 .md-body { flex: 1; min-height: 0; display: flex; container: md-body / inline-size; }
 .md-body .editor-host { flex: 1; min-width: 0; }

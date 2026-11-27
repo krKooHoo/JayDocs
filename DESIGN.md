@@ -1911,6 +1911,40 @@ UI/UX 개편 D2(`docs/research/apple-uiux/ADOPT.md`, Xcode 의 이탤릭 탭). �
 
 - 창이 둘일 때(임시 탭은 활성 묶음마다), 임시 탭을 다른 묶음으로 끌기, 탭 맥락 메뉴의 "탭 유지", 실제 폴더.
 
+## 59. 집중 모드 (2026-11-27)
+
+UI/UX 개편 D3(`docs/research/apple-uiux/ADOPT.md`, Pages Screen View · Xcode "편집기만 보기"). 결론을 쓸 때 막대 · 패널을 한 번에 치우고, 같은 키로 그대로 돌아온다. 원칙 확인: 5 맞음(집중), 3 맞음(분할 중이면 포커스 창만 — 나머지 창은 그대로 있다가 돌아온다, 권고대로), 1 맞음(키 + 팔레트 + 나가기 단추), 7 맞음(남기지 않는다), 2 · 4 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| FM1 | **`Ctrl+Alt+Enter`** · 팔레트 **집중 모드 들어가기 / 나오기**. 같은 키로 나온다 | ADOPT D3. 표에 없던 키 |
+| FM2 | 숨기는 것: 위 막대 · 파일 트리(접는다) · 왼쪽 패널 줄 · 탭 줄 · 창 막대(경로 막대 · 보기 모드 단추) · 목차 · 훑어보기 패널. 남기는 것: 문서 상태 줄 · 그리드의 편집 막대 · 단축키 안내 창(켜 둔 경우) | 표는 막대 없이 편집하기 어렵다. 상태 줄은 저장 여부를 보여 준다 |
+| FM3 | 분할 중이면 **포커스가 든 창만** 남긴다(flexlayout 최대화 — 단추 · 두 번 누르기 최대화는 계속 꺼 둔다). 포커스가 문서 창 밖이면 활성 창 | ADOPT D3 권고 |
+| FM4 | 마크다운 편집기는 본문 폭 780px 로 가운데, 미리보기도 가운데 | 읽기 좋은 폭 |
+| FM5 | 나오는 길을 늘 보인다 — 오른쪽 위 흐린 단추 "집중 모드 나가기 `Ctrl+Alt+Enter`"(포커스는 받지 않는다), 들어갈 때 알림. 나오면 트리 · 창을 들어가기 전대로, 포커스는 그 문서로 | HIG — 복구 방법을 확실히 |
+| FM6 | 집중 모드 중에 트리를 펴면(`Ctrl+B` · `Ctrl+Shift+E`) 집중 모드에서 나온다 — 숨긴 트리에 포커스가 가지 않게 | |
+| FM7 | 남기지 않는다 — 새로고침하면 꺼진 채로, 레이아웃에 남은 최대화도 푼다. 단 접힌 트리는 접힌 채로 남는다(`Ctrl+B`) | 원칙 7 |
+
+코드: `lib/focusMode.ts`(상태 · `html.focus-mode` · `focusEnterPlan`) · `focusMode.test.ts`, `Workbench.tsx`(`toggleFocusMode` · `onModelChange` 에서 나오기 · 나가기 단추), `styles.css`, `lib/shortcuts-table.mjs` → `SHORTCUTS.md`.
+
+### 59.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저(1400×900): 위아래로 나눈 표(D4)의 아래 창에서 `Ctrl+Alt+Enter` → 위 막대 · 트리 · 탭 줄이 사라지고 아래 표 하나만, 오른쪽 위 나가기 단추 · 알림 → 다시 `Ctrl+Alt+Enter` → 두 창 · 트리 그대로, 포커스는 아래 표의 같은 셀(F9). 위 창에 개요.md 를 열고 들어가면 본문 780px 가운데(좌우 310px). 집중 모드에서 `Ctrl+B` → 나오고 두 창 · 트리. 집중 모드 중 새로고침 → 꺼진 채로 두 창(저장된 레이아웃에 최대화 없음). 나가기 단추 클릭 → 나옴, 포커스는 편집기. 콘솔 오류 없음.
+
+### 59.2 확인하지 못한 것 (TESTCASES §53)
+
+- 창 셋 이상, 집중 모드 중에 `Ctrl+P` · `Ctrl+Enter`(오른쪽 창에 열기)로 창이 늘 때, 미리보기 전용 · 분할 모드의 마크다운, 설치한 Edge 앱 · Mac 에서 `Ctrl+Alt+Enter` 가 앱에 오는지.
+
+## 60. 아래에 분할 (2026-11-27)
+
+UI/UX 개편 D4(ADOPT, Xcode 의 Option 분할). 표 두 개를 위아래로 비교할 때. 원칙 확인: 3 맞음, 1 맞음(드문 동작이라 키는 주지 않는다 — 팔레트 · 탭 맥락 메뉴), 나머지 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| SD1 | 팔레트 **아래에 분할** · 탭 맥락 메뉴(오른쪽에 분할 다음). 지금 문서를 활성 창 아래의 새 창에도 연다. 포커스는 옮기지 않는다(오른쪽에 분할과 같다) | ADOPT D4 |
+
+코드: `Workbench.tsx`(`splitActive('down')` · `splitDown`), `lib/contextMenu.ts`. 확인: dev 화면에서 `Item_Table.tsv` 를 팔레트로 아래에 분할 → 위아래 두 창에 같은 표(D3 확인에 썼다). 탭 맥락 메뉴에서는 확인하지 못했다(TESTCASES §54).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

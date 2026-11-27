@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Actions, DockLocation, Layout, Model, TabNode, TabSetNode, type Action, type BorderNode, type IJsonModel, type ITabRenderValues, type Node } from 'flexlayout-react'
 import type { TreeEntry } from '../lib/backend'
-import { keysOf, registerCommands, runCommand } from '../lib/commands'
+import { cmdTitle, keysOf, registerCommands, runCommand } from '../lib/commands'
 import { askConfirm, dialogOpen } from '../lib/dialogs'
 import { recordRecentFile } from '../lib/recents'
 import { paneAction, requestLine, requestQuickLook, requestTreeFilter, requestTreeOpenSide, sendToPane, setOpener } from '../lib/nav'
@@ -31,6 +31,7 @@ import { PANE_COMMANDS, type PaneScope } from '../lib/paneCommands'
 import { registerSpotReader, type SpotReader, type TabSpot } from '../lib/contextMenu'
 import { currentLink, currentTsvView } from './mdContext'
 import { EMPTY_TRACK, notePaneFocus, otherPaneTarget, type PaneFocusTrack } from '../lib/paneFocus'
+import { focusEnterPlan, focusModeOn, setFocusMode, useFocusMode, type FocusRestore } from '../lib/focusMode'
 import { pinnedConfig, toggleTransientTabs, transientSlot, transientTabsOn, useTransientTabs, type TabInfo } from '../lib/transientTabs'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다). 열은 키가 없다 (DESIGN §41 K2) */
@@ -322,11 +323,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     }
   }, [model, activeTabSet, openFile, selectTab, p.layoutId])
 
-  const splitActive = useCallback(() => {
+  /** 지금 문서를 오른쪽(`Ctrl+\`) · 아래(DESIGN §60 — 표 두 개를 위아래로 비교) 창에도 연다 */
+  const splitActive = useCallback((where: 'right' | 'down' = 'right') => {
     const path = activePath()
     const ts = activeTabSet()
     if (!path || !ts) return
-    model.doAction(Actions.addNode(tabJson(path), ts.getId(), DockLocation.RIGHT, -1, true))
+    model.doAction(Actions.addNode(tabJson(path), ts.getId(), where === 'down' ? DockLocation.BOTTOM : DockLocation.RIGHT, -1, true))
   }, [model, activePath, activeTabSet])
 
   const saveActive = useCallback(() => {
@@ -519,8 +521,51 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     focusTabPane(tab.getId())
   }, [model])
 
+  /**
+   * 집중 모드 (Ctrl+Alt+Enter, DESIGN §59). 들어갈 때 트리를 접고, 창이 여럿이면 포커스 창만 남기고(최대화), 나올 때 그대로 되돌린다.
+   * 숨기는 막대 · 패널은 CSS(`html.focus-mode`)
+   */
+  const focusRestore = useRef<FocusRestore | null>(null)
+  // 저장된 레이아웃에 최대화가 남아 있으면(집중 모드 중에 닫았다) 푼다 — 집중 모드는 남기지 않는다
+  useEffect(() => {
+    const ts = model.getMaximizedTabset()
+    if (ts) model.doAction(Actions.maximizeToggle(ts.getId()))
+    return () => setFocusMode(false)
+  }, [model])
+  const toggleFocusMode = useCallback(() => {
+    if (focusModeOn()) {
+      const r = focusRestore.current
+      focusRestore.current = null
+      setFocusMode(false)
+      if (r?.maximized && model.getMaximizedTabset()?.getId() === r.maximized) model.doAction(Actions.maximizeToggle(r.maximized))
+      if (r?.treeOpen) toggleBorder('tree', true)
+      dismissNotice('focusMode')
+      focusEditor()
+      return
+    }
+    // 포커스가 든 문서 창, 없으면 활성 탭 묶음
+    const tabId = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId
+    const here = tabId ? model.getNodeById(tabId)?.getParent() : undefined
+    const ts = here instanceof TabSetNode ? here : activeTabSet()
+    const tab = ts?.getSelectedNode()
+    if (!ts || !(tab instanceof TabNode) || !DOC_COMPONENTS.has(tab.getComponent() ?? '')) { notify('집중할 문서가 없습니다 — 문서를 연 뒤에 Ctrl+Alt+Enter', { key: 'focusMode' }); return }
+    let sets = 0
+    model.visitNodes((n: Node) => { if (n instanceof TabSetNode && n.getChildren().length) sets++ })
+    const treeOpen = (findBorder(model, 'tree')?.border.getSelected() ?? -1) >= 0
+    const plan = focusEnterPlan(ts.getId(), sets, !!model.getMaximizedTabset(), treeOpen)
+    focusRestore.current = plan
+    model.doAction(Actions.setActiveTabset(ts.getId()))
+    if (plan.maximized) model.doAction(Actions.maximizeToggle(plan.maximized))
+    if (treeOpen) toggleBorder('tree')
+    setFocusMode(true)
+    notify(`집중 모드 — ${keysOf('toggleFocusMode')} 로 돌아갑니다`, { key: 'focusMode' })
+    focusTabPane(tab.getId())
+  }, [model, activeTabSet, toggleBorder, focusEditor])
+  const focusMode = useFocusMode()
+
   useEffect(() => registerCommands([
-    { id: 'split', label: '오른쪽에 분할', run: splitActive, enabled: () => activePath() !== null },
+    { id: 'split', label: '오른쪽에 분할', run: () => splitActive('right'), enabled: () => activePath() !== null },
+    { id: 'splitDown', label: '아래에 분할 (이 문서를 아래 창에도 연다 — 표 두 개를 위아래로 비교)', run: () => splitActive('down'), enabled: () => activePath() !== null },
     { id: 'nextTab', label: '다음 탭', run: () => cycleTab(1) },
     { id: 'prevTab', label: '이전 탭', run: () => cycleTab(-1) },
     ...Array.from({ length: 9 }, (_, i) => ({ id: `tab${i + 1}`, label: `${i + 1}번째 탭`, hidden: true, run: () => selectTabIndex(i) })),
@@ -551,6 +596,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },
     { id: 'focusOtherPane', label: '다른 창으로 포커스 (직전 창) — 다시 하면 돌아온다', run: focusOtherPane },
+    { id: 'toggleFocusMode', label: '집중 모드 들어가기 / 나오기 (막대 · 트리 · 패널을 숨기고 이 창만)', run: toggleFocusMode },
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 하이브리드 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
@@ -566,7 +612,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, focusOtherPane, toggleSkim, goNav])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, focusOtherPane, toggleFocusMode, toggleSkim, goNav])
 
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()
@@ -769,6 +815,17 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     try { localStorage.setItem(layoutKey(p.layoutId), JSON.stringify(m.toJson())) } catch { /* 저장 못 해도 동작엔 지장 없음 */ }
     setActiveDoc(activePath())
     setPaneCount(countDocPanes(m))
+    // 집중 모드 중에 트리를 폈거나(Ctrl+B · Ctrl+Shift+E) 남긴 창이 풀렸으면 — 집중 모드에서 나온다(되돌릴 것은 이미 바뀌었다)
+    if (focusModeOn()) {
+      const r = focusRestore.current
+      const treeOpen = (findBorder(m, 'tree')?.border.getSelected() ?? -1) >= 0
+      if (treeOpen || (r?.maximized && !m.getMaximizedTabset())) {
+        if (r?.maximized && m.getMaximizedTabset()) m.doAction(Actions.maximizeToggle(r.maximized))
+        focusRestore.current = null
+        setFocusMode(false)
+        dismissNotice('focusMode')
+      }
+    }
     // 탭이 닫히며 포커스가 있던 편집기 · 탭 버튼이 사라지면 body 로 빠진다 — 남은 문서 창으로, 없으면 트리로 (DESIGN §24.7 X3)
     if (action.type === Actions.DELETE_TAB) {
       window.setTimeout(() => {
@@ -806,6 +863,12 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
           onTabSetPlaceHolder={emptyPane}
         />
       </DocPaneCountContext.Provider>
+      {/* 집중 모드에서 나가는 길 (DESIGN §59) — 늘 보이게. 포커스는 받지 않는다(Tab 이 문서를 벗어나지 않게) */}
+      {focusMode && (
+        <button className="focus-exit" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={toggleFocusMode} title={cmdTitle('toggleFocusMode')}>
+          집중 모드 나가기 <kbd>{keysOf('toggleFocusMode')}</kbd>
+        </button>
+      )}
     </div>
   )
 })
