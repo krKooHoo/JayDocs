@@ -228,6 +228,8 @@ button.start-open:hover { background: var(--hover); }
 }
 .banner.is-error { background: var(--err-bg); border-color: var(--err-border); color: var(--danger); }
 .dirty-dot { color: var(--dirty); font-size: 9px; vertical-align: middle; }
+/* 임시 탭 (DESIGN §58) — 트리에서 연 문서, 다음 문서로 바뀐다 */
+.tab-transient { font-style: italic; opacity: 0.85; }
 /* 다른 인코딩으로 다시 열기 (DESIGN §55) */
 .banner-select { display: inline-flex; align-items: center; gap: 6px; }
 .banner-select select { font: inherit; }

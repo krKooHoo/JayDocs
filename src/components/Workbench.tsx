@@ -31,6 +31,7 @@ import { PANE_COMMANDS, type PaneScope } from '../lib/paneCommands'
 import { registerSpotReader, type SpotReader, type TabSpot } from '../lib/contextMenu'
 import { currentLink, currentTsvView } from './mdContext'
 import { EMPTY_TRACK, notePaneFocus, otherPaneTarget, type PaneFocusTrack } from '../lib/paneFocus'
+import { pinnedConfig, toggleTransientTabs, transientSlot, transientTabsOn, useTransientTabs, type TabInfo } from '../lib/transientTabs'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다). 열은 키가 없다 (DESIGN §41 K2) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string | undefined][] = [
@@ -230,15 +231,50 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     return model.doAction(Actions.addNode(json, ts.getId(), DockLocation.CENTER, -1, true)) as TabNode | undefined
   }, [model, activeTabSet])
 
-  const openFile = useCallback((path: string, focus = false) => {
+  /**
+   * 임시 탭에 연다 (DESIGN §58) — 활성 탭 묶음의 임시 탭을 그 자리에서 바꾼다. 없으면 끝에 새 임시 탭.
+   * 새 탭을 먼저 붙이고 옛 탭을 지운다 — 옛 탭이 묶음의 마지막 탭이면 묶음이 먼저 없어진다
+   */
+  const addTransientTab = useCallback((path: string): TabNode | undefined => {
+    const ts = activeTabSet()
+    if (!ts) return undefined
+    const json = { ...tabJson(path), config: { path, transient: true } }
+    const tabs: TabInfo[] = ts.getChildren().map((t) => {
+      const cfg = t instanceof TabNode ? t.getConfig() : undefined
+      const tp = (cfg?.path as string | undefined) ?? null
+      return { id: t.getId(), path: tp, transient: !!cfg?.transient, dirty: !!tp && store.isDirty(tp) }
+    })
+    const slot = transientSlot(tabs)
+    const tab = model.doAction(Actions.addNode(json, ts.getId(), DockLocation.CENTER, slot ? slot.index + 1 : -1, true)) as TabNode | undefined
+    if (slot) model.doAction(Actions.deleteTab(slot.replace))
+    return tab
+  }, [model, activeTabSet])
+
+  /** `transient`: 파일 트리에서 연 것 — 임시 탭에 (켜져 있을 때). 이미 열린 문서면 그 탭으로 간다 */
+  const openFile = useCallback((path: string, focus = false, opts?: { transient?: boolean }) => {
     recordRecentFile(p.layoutId, path)
     const existing = findTabs(model, (cfg, comp) => DOC_COMPONENTS.has(comp) && cfg.path === path)
     let tab: TabNode | undefined = existing[0]
     if (tab) selectTab(tab)
+    else if (opts?.transient && transientTabsOn()) tab = addTransientTab(path)
     else tab = addTab(tabJson(path))
     // 막 만든 파일은 읽힌 뒤에야 편집기가 생긴다 — 넉넉히 기다린다 (약 1초)
     if (focus && tab) focusTabPane(tab.getId(), 25)
-  }, [model, selectTab, addTab, p.layoutId])
+  }, [model, selectTab, addTab, addTransientTab, p.layoutId])
+  const openFromTree = useCallback((path: string, focus = false) => openFile(path, focus, { transient: true }), [openFile])
+
+  /** 탭 고정 — 임시 표시를 뺀다. `pred` 에 맞는 임시 탭 모두 */
+  const pinTabs = useCallback((pred: (tab: TabNode) => boolean): number => {
+    const tabs = findTabs(model, (cfg, comp) => DOC_COMPONENTS.has(comp) && !!cfg.transient).filter(pred)
+    for (const t of tabs) model.doAction(Actions.updateNodeAttributes(t.getId(), { config: pinnedConfig(t.getConfig()) }))
+    return tabs.length
+  }, [model])
+  // 편집하면 고정 — 저장 안 한 문서의 임시 탭
+  useEffect(() => {
+    if (dirtyPaths.size) pinTabs((t) => dirtyPaths.has(t.getConfig()?.path as string))
+  }, [dirtyPaths, pinTabs])
+  /** 트리의 파일을 두 번 누르면 — 그 문서의 임시 탭을 고정 */
+  const pinPath = useCallback((path: string) => { pinTabs((t) => t.getConfig()?.path === path) }, [pinTabs])
 
   useEffect(() => {
     setOpener(openFile)
@@ -536,6 +572,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
   const summaryKeys = useSummaryKeys()
   const invOn = useInvisibles()
   const syncOn = useScrollSync()
+  const tabsOn = useTransientTabs()
   useEffect(() => registerCommands([
     ...SUMMARY_KEYS.map((k) => ({
       id: `selSummary:${k}`,
@@ -552,6 +589,22 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'toggleInvisibles', label: `보이지 않는 문자 ${invisiblesOn() ? '숨기기' : '보이기'} (공백 · · 탭 → · 줄 끝 ↵, 표는 셀 앞뒤 공백)`, run: () => { const on = toggleInvisibles(); notify(on ? '보이지 않는 문자를 보입니다 — 공백 · · 탭 → · 줄 끝 ↵' : '보이지 않는 문자를 숨깁니다', { key: 'invisibles' }) } },
     // 분할 보기 스크롤 맞추기 (DESIGN §56) — 앱 전체에 하나, 기본 켜짐
     { id: 'splitScrollSync', label: `분할 보기: 스크롤 맞추기 ${scrollSyncOn() ? '끄기' : '켜기'} (마크다운 분할 모드에서 소스 ↔ 미리보기)`, run: () => { const on = toggleScrollSync(); notify(on ? '분할 보기에서 소스와 미리보기의 스크롤을 맞춥니다' : '분할 보기에서 소스와 미리보기를 따로 스크롤합니다', { key: 'scrollSync' }) } },
+    // 임시 탭 (DESIGN §58) — 고정 · 켜고 끄기(끄면 지금의 임시 탭도 모두 고정)
+    {
+      id: 'keepTab',
+      label: '탭 유지 (임시 탭 고정)',
+      run: () => { const tab = activeTab(); if (tab) pinTabs((t) => t === tab) },
+      enabled: () => !!activeTab()?.getConfig()?.transient,
+    },
+    {
+      id: 'toggleTransientTabs',
+      label: `임시 탭 ${transientTabsOn() ? '끄기' : '켜기'} (트리에서 연 문서를 한 탭에서 바꿔 가며 보기)`,
+      run: () => {
+        const on = toggleTransientTabs()
+        if (!on) pinTabs(() => true)
+        notify(on ? '트리에서 연 문서는 임시 탭에 열립니다 — 편집하거나 두 번 누르면 고정' : '임시 탭을 껐습니다 — 트리에서 연 문서마다 탭이 생깁니다', { key: 'transientTabs' })
+      },
+    },
     // 다른 인코딩으로 다시 열기 (DESIGN §55) — UTF-8 이 아닌 현재 문서. 화면만 바뀐다
     ...REOPEN_ENCODINGS.map((c) => ({
       id: `reopenEncoding:${c.id}`,
@@ -559,7 +612,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       run: () => { const path = activePath(); if (path) void reopenAs(path, c.id) },
       enabled: () => { const path = activePath(); const d = path ? store.get(path) : undefined; return !!d && d.status === 'ready' && d.encoding !== 'utf-8' && d.encoding !== c.id && !store.isDirty(path!) },
     })),
-  ]), [summaryKeys, activePath, invOn, syncOn])
+  ]), [summaryKeys, activePath, activeTab, pinTabs, invOn, syncOn, tabsOn])
 
   // 창 막대 단추의 팔레트 명령 (DESIGN §36) — 활성 탭의 창 하나에만 보낸다. 충돌 배너의 두 선택도 팔레트에
   useEffect(() => {
@@ -624,7 +677,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
             entries={p.tree}
             activePath={activeDoc}
             dirtyPaths={dirtyPaths}
-            onOpen={openFile}
+            onOpen={openFromTree}
+            onPin={pinPath}
             onOpenSide={openFileSide}
             onRefresh={p.onRefresh}
             onNewFile={p.onNewFile}
@@ -656,6 +710,8 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     const path = node.getConfig()?.path as string | undefined
     if (!path || !DOC_COMPONENTS.has(comp)) return
     if (dirtyPaths.has(path)) values.content = <span>{node.getName()}<span className="dirty-dot"> ●</span></span>
+    // 임시 탭 (DESIGN §58) — 이름 이탤릭. 편집하면 고정되므로 수정됨 표시와 같이 나오지 않는다
+    else if (node.getConfig()?.transient) values.content = <span className="tab-transient" title="임시 탭 — 트리에서 다른 문서를 열면 이 탭이 바뀝니다. 편집하거나 두 번 누르면 고정">{node.getName()}</span>
   }
 
   const docTabs = () => findTabs(model, (_cfg, comp) => DOC_COMPONENTS.has(comp))
@@ -685,6 +741,11 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (!button || target.closest('.flexlayout__tab_button_trailing')) return
     const tab = docTabs().find((t) => tabButtonId(t.getId()) === button.id)
     if (tab) focusTabPane(tab.getId())
+  }
+  // 탭을 두 번 누르면 고정 (DESIGN §58 — flexlayout 의 이름 바꾸기는 꺼져 있다)
+  const onLayoutDoubleClick = (e: React.MouseEvent) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('[id^="flexlayout-tabbutton-"]')
+    if (button) pinTabs((t) => tabButtonId(t.getId()) === button.id)
   }
 
   // 탭 제목의 맥락 메뉴 자리 (DESIGN §40). 오른쪽 클릭한 탭을 먼저 고른다 — 메뉴의 명령은 활성 탭에 돈다
@@ -734,7 +795,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
 
   // display: contents — 레이아웃엔 영향이 없고 탭 제목 클릭만 받는다
   return (
-    <div ref={wrap} style={{ display: 'contents' }} onClick={onLayoutClick}>
+    <div ref={wrap} style={{ display: 'contents' }} onClick={onLayoutClick} onDoubleClick={onLayoutDoubleClick}>
       <DocPaneCountContext.Provider value={paneCount}>
         <Layout
           model={model}

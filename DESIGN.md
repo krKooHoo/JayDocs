@@ -1888,6 +1888,29 @@ UI/UX 개편 D1(`docs/research/apple-uiux/ADOPT.md`). 시트 창과 문서 창�
 
 - 창이 셋 이상 · 아래로 나눈 창, 미리보기 전용 모드의 창(미리보기로 가야 한다), 문서 창이 하나뿐일 때의 알림, Mac(`⌘⌥O`).
 
+## 58. 임시 탭 (2026-11-27)
+
+UI/UX 개편 D2(`docs/research/apple-uiux/ADOPT.md`, Xcode 의 이탤릭 탭). 전에는 트리에서 문서를 누르거나 `Enter` 를 칠 때마다 탭이 붙어, 흩어진 문서를 훑으면 탭이 그만큼 쌓였다. 원칙 확인: 4 · 5 맞음(훑는 동안 탭이 쌓이지 않는다), 1 맞음(마우스 클릭과 `Enter` 가 같은 규칙, 고정은 편집 · 두 번 누르기 · 팔레트 · 탭 맥락 메뉴 — 키는 주지 않는다), 3 맞음(고정한 탭은 그대로), 7 맞음(켜고 끄기만 브라우저에, 임시 표시는 레이아웃에), 2 · 6 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| TT1 | **파일 트리**에서 누르기 · `Enter` · `→`(파일) · 폴더 격자에서 고르기로 연 문서는 **임시 탭**(이름 이탤릭)에 연다. 같은 탭 묶음에 임시 탭이 있으면 그 자리에서 바꾸고, 없으면 끝에 붙인다. 이미 열린 문서면 그 탭으로 간다(새로 열지 않는다) | ADOPT D2 |
+| TT2 | 파일 검색(`Ctrl+P`) · 전체 검색 · 링크 · tsv-view · 경로 막대 · 뒤로 · 앞으로 · `Ctrl+Enter`(오른쪽 창) · 새 문서로 연 것은 **고정 탭** — 찾아서 연 것이다. "훑기는 Space(훑어보기 창), 열기는 임시 탭" | ADOPT D2 주의 |
+| TT3 | **고정**: 편집하면(저장 안 한 문서가 되면) · 탭을 두 번 누르면 · 트리의 그 파일을 두 번 누르면 · 팔레트 **탭 유지 (임시 탭 고정)** · 탭 맥락 메뉴. 고친 채로 남은 임시 탭은 바꾸지 않는다(새 탭을 붙인다) | 저장 안 한 글을 잃지 않게 |
+| TT4 | 팔레트 **임시 탭 끄기 / 켜기** — 기본 켜짐, 앱 전체에 하나(`jaydocs.transientTabs`). 끄면 지금의 임시 탭도 모두 고정 | ADOPT "끄는 설정을 둔다" |
+| TT5 | 임시 표시는 탭 설정(`config.transient`)에 있어 레이아웃과 함께 남는다 — 다시 열어도 이탤릭 | ADOPT "레이아웃 복원 때 임시 상태를 남길지" — 남긴다. 닫았던 그대로 이어서 훑는다 |
+| TT6 | 바꿀 때는 새 탭을 임시 탭 바로 뒤에 붙이고 옛 탭을 지운다 — 옛 탭이 묶음의 하나뿐인 탭이면 먼저 지우면 묶음이 없어진다 | |
+
+코드: `lib/transientTabs.ts`(상태 · `transientSlot` · `pinnedConfig`) · `transientTabs.test.ts`, `Workbench.tsx`(`addTransientTab` · `openFile(path, focus, { transient })` · `openFromTree` · `pinTabs` · 탭 두 번 누르기 · `onRenderTab` 이탤릭 · 팔레트), `FileTree.tsx`(`onPin` — 파일 두 번 누르기), `lib/contextMenu.ts`(탭 메뉴 `keepTab`), `styles.css`(`.tab-transient`).
+
+### 58.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: 트리에서 개요.md → 아이템.md 누르기 → `↓` `Enter` 로 코드.md — 탭은 내내 하나(이탤릭)이고 문서만 바뀜. `Ctrl+P` 로 목록.csv → 고정 탭으로 붙음, 트리에서 개요.md → 임시 탭 자리에서 바뀜. 개요.md 탭 두 번 누르기 → 고정, 트리에서 아이템.md → 새 임시 탭. 아이템.md 에 한 글자 → 고정(● 수정됨, 되돌려도 고정 그대로), 트리에서 코드.md → 새 임시 탭. 트리에서 표.tsv 두 번 누르기 → 코드.md 자리에 열리고 고정. 팔레트 "탭 유지" — 고정 탭에서는 꺼져 있고 임시 탭에서는 고정. "임시 탭 끄기" → 트리에서 연 메모.txt 가 고정 탭으로. 다시 켜고 임시 탭을 연 채 새로고침 → 이탤릭 그대로. 콘솔 오류 없음. (저장하지 않고 레이아웃 · 설정을 지웠다)
+
+### 58.2 확인하지 못한 것 (TESTCASES §52)
+
+- 창이 둘일 때(임시 탭은 활성 묶음마다), 임시 탭을 다른 묶음으로 끌기, 탭 맥락 메뉴의 "탭 유지", 실제 폴더.
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

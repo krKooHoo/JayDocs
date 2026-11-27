@@ -22,7 +22,10 @@ interface Props {
   activePath: string | null
   dirtyPaths: ReadonlySet<string>
   /** focus: 연 문서의 편집기로 포커스 (훑어보기 창에서 열 때) */
+  /** 트리에서 연 문서 — 임시 탭에 (DESIGN §58) */
   onOpen: (path: string, focus?: boolean) => void
+  /** 파일을 두 번 누르면 — 그 문서의 임시 탭을 고정 */
+  onPin?: (path: string) => void
   /** 오른쪽 창에 열기 (`Ctrl+Enter`, DESIGN §38) — 포커스는 연 창으로 */
   onOpenSide?: (path: string) => void
   onNewFile: (dir: string) => void
@@ -563,6 +566,7 @@ export function FileTree(p: Props) {
         style={{ paddingLeft: '8px' }}
         title={`${e.path}${dir ? ' — 트리의 그 폴더로' : ''}`}
         onClick={() => activate(row)}
+        onDoubleClick={dir ? undefined : () => p.onPin?.(e.path)}
       >
         <span className="tree-icon">{dir ? (e.mount ? '🔗' : '▸') : fileIcon(e.name)}</span>
         <span className="tree-name">{e.name}</span>
@@ -605,6 +609,7 @@ export function FileTree(p: Props) {
         style={indent}
         title={e.path}
         onClick={() => activate(row)}
+        onDoubleClick={() => p.onPin?.(e.path)}
       >
         <span className="tree-icon">{fileIcon(e.name)}</span>
         <span className="tree-name">{e.name}</span>
