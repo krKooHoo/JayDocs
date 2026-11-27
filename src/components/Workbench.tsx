@@ -30,6 +30,7 @@ import { revertTextInView } from '../lib/revert'
 import { PANE_COMMANDS, type PaneScope } from '../lib/paneCommands'
 import { registerSpotReader, type SpotReader, type TabSpot } from '../lib/contextMenu'
 import { currentLink, currentTsvView } from './mdContext'
+import { EMPTY_TRACK, notePaneFocus, otherPaneTarget, type PaneFocusTrack } from '../lib/paneFocus'
 
 /** 마크다운 표 팔레트 명령: id · 동작 · 이름 · 키(표시용, 그리드와 같다). 열은 키가 없다 (DESIGN §41 K2) */
 const MD_TABLE_COMMANDS: [string, TableOp, string, string | undefined][] = [
@@ -450,6 +451,38 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     if (tab) focusTabPane(tab.getId())
   }, [model, focusTree])
 
+  /** 다른 창으로 포커스 — 직전 창 (Ctrl+Alt+O, DESIGN §57). 문서 창(탭 묶음)에 포커스가 들어올 때마다 적는다 — 클릭 · F6 · 탭 이동 모두 */
+  const paneTrack = useRef<PaneFocusTrack>(EMPTY_TRACK)
+  useEffect(() => {
+    const onFocus = (e: FocusEvent) => {
+      const tabId = (e.target instanceof Element ? e.target : null)?.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId
+      const node = tabId ? model.getNodeById(tabId) : undefined
+      if (!(node instanceof TabNode) || !DOC_COMPONENTS.has(node.getComponent() ?? '')) return
+      const parent = node.getParent()
+      if (parent instanceof TabSetNode) paneTrack.current = notePaneFocus(paneTrack.current, parent.getId())
+    }
+    document.addEventListener('focusin', onFocus)
+    return () => document.removeEventListener('focusin', onFocus)
+  }, [model])
+  const focusOtherPane = useCallback(() => {
+    // 문서가 열린 탭 묶음들 (화면 순서)
+    const open: string[] = []
+    model.visitNodes((n: Node) => {
+      if (!(n instanceof TabSetNode)) return
+      const sel = n.getSelectedNode()
+      if (sel instanceof TabNode && DOC_COMPONENTS.has(sel.getComponent() ?? '')) open.push(n.getId())
+    })
+    const tabId = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId
+    const focused = (tabId ? model.getNodeById(tabId)?.getParent()?.getId() : null) ?? null
+    const target = otherPaneTarget(paneTrack.current, focused, open)
+    const ts = target ? model.getNodeById(target) : undefined
+    const tab = ts instanceof TabSetNode ? ts.getSelectedNode() : undefined
+    if (!target || !tab) { notify('옮겨 갈 다른 문서 창이 없습니다 — 오른쪽에 분할은 Ctrl+\\', { key: 'otherPane' }); return }
+    dismissNotice('otherPane')
+    model.doAction(Actions.setActiveTabset(target))
+    focusTabPane(tab.getId())
+  }, [model])
+
   useEffect(() => registerCommands([
     { id: 'split', label: '오른쪽에 분할', run: splitActive, enabled: () => activePath() !== null },
     { id: 'nextTab', label: '다음 탭', run: () => cycleTab(1) },
@@ -481,6 +514,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
     { id: 'focusPathBar', label: '경로 막대로 포커스 (폴더 · 파일 · 제목 · 열 목록)', run: focusPathBar, enabled: () => activePath() !== null },
     { id: 'nextPane', label: '다음 영역으로 포커스 (파일 트리 → 탭 묶음)', run: () => cyclePane(1) },
     { id: 'prevPane', label: '이전 영역으로 포커스', run: () => cyclePane(-1) },
+    { id: 'focusOtherPane', label: '다른 창으로 포커스 (직전 창) — 다시 하면 돌아온다', run: focusOtherPane },
     { id: 'cycleMdMode', label: '마크다운 보기 모드 순환 (소스 → 하이브리드 → 분할 → 미리보기)', run: () => { const path = activePath(); if (path && isMarkdownPath(path)) paneAction(path, 'cycleMdMode') }, enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) } },
     { id: 'formatJson', label: 'JSON 정렬 (들여쓰기 2칸)', run: () => { const path = activePath(); if (path && fileTypeOf(path)?.lang === 'json') paneAction(path, 'formatJson') }, enabled: () => { const path = activePath(); return !!path && fileTypeOf(path)?.lang === 'json' && !store.isReadOnly(path) } },
     { id: 'calc', label: '계산식 적용 — _Calc.tsv 의 결과를 표에 써 넣기', run: () => { const path = activePath(); if (path && isTsvPath(path)) paneAction(path, 'calc') }, enabled: () => { const path = activePath(); return !!path && isTsvPath(path) } },
@@ -496,7 +530,7 @@ export const Workbench = forwardRef<WorkbenchHandle, Props>(function Workbench(p
       enabled: () => { const path = activePath(); return !!path && isMarkdownPath(path) && !store.isReadOnly(path) },
     })),
     { id: 'refreshSkim', label: '훑어보기 패널 새로 고침 (큰 문서는 자동으로 다시 그리지 않는다)', run: refreshSkimPanels, enabled: () => skimPanelState().on },
-  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, toggleSkim, goNav])
+  ]), [splitActive, activePath, cycleTab, selectTabIndex, closeActive, closeOthers, activeTabSet, openFile, openFileSide, toggleBorder, focusTree, focusEditor, focusPathBar, revertActive, canRevert, cyclePane, focusOtherPane, toggleSkim, goNav])
 
   // 상태 줄 (DESIGN §32): 선택 요약에 보일 계산 켜고 끄기 · UTF-8 로 바꿔 저장. 이름이 지금 상태를 따라가게 다시 등록한다
   const summaryKeys = useSummaryKeys()

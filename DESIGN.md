@@ -1867,6 +1867,27 @@ UI/UX 개편 C5(`docs/research/apple-uiux/ADOPT.md`, Jay 요청 2026-11-26). 마
 
 - 아주 긴 문서(수천 줄)에서 굴릴 때 끊김, 트랙패드 · 터치, 문서 끝 근처(편집기가 먼저 바닥에 닿으면 미리보기의 마지막 몇 줄은 미리보기를 직접 굴려야 보인다), 실제 폴더.
 
+## 57. 다른 창으로 포커스 — 직전 창 (2026-11-27)
+
+UI/UX 개편 D1(`docs/research/apple-uiux/ADOPT.md`). 시트 창과 문서 창을 띄워 놓고 포커스를 바꿔 가며 쓰는 것을 한 키로. `F6` · `Shift+F6` 은 트리 → 탭 묶음들을 한 방향으로 돌아 창이 둘이면 방향을 골라야 한다 — 이 명령은 방향 없이 "아까 그 창" 이다. 원칙 확인: 3 맞음(원칙에서 나온 항목 — 창마다 커서 · 선택 · 스크롤은 그대로), 1 맞음(키 + 팔레트), 2 · 4 · 5 · 6 · 7 상관없음.
+
+| # | 결정 | 근거 |
+|---|---|---|
+| PF1 | **`Ctrl+Alt+O`** · 팔레트 **다른 창으로 포커스 (직전 창)**. 직전에 쓰던 문서 창(탭 묶음)으로 포커스를 옮기고, 다시 누르면 돌아온다 | ADOPT D1. 브라우저가 가로채지 않는 조합, 표에 없던 키 |
+| PF2 | 문서 창(문서 · 표 탭)에 포커스가 들어올 때마다 그 탭 묶음을 적는다 — 클릭 · `F6` · 탭 이동 · 이 명령 모두(`focusin`). 같은 창 안에서 옮겨 다니면 그대로 | 어떤 길로 왔든 "직전 창" 이 맞게 |
+| PF3 | 트리 · 팔레트처럼 문서 창 밖에 있으면 마지막으로 쓰던 문서 창으로. 직전 창이 닫혔으면 다른 문서 창 중 첫째. 문서 창이 하나뿐이면 알림 "옮겨 갈 다른 문서 창이 없습니다" | |
+| PF4 | 포커스만 옮긴다 — 그 창에 선택된 탭의 편집기 · 그리드(F6 과 같은 `focusTabPane`). 커서 · 활성 셀 · 스크롤은 건드리지 않는다 | 원칙 3 |
+
+코드: `lib/paneFocus.ts`(`notePaneFocus` · `otherPaneTarget`) · `paneFocus.test.ts`, `Workbench.tsx`(`focusin` 기록 · `focusOtherPane` · 팔레트), `lib/shortcuts-table.mjs` → `SHORTCUTS.md`.
+
+### 57.1 확인한 것
+
+`npm test` · `npm run build` · `npm run lint`. dev `?opfs` + 내장 브라우저: 왼쪽 `Item_Table.tsv`(그리드) · 오른쪽 `개요.md`. 편집기에서 `Ctrl+Alt+O` → 그리드(`grid-input`), 활성 셀 D5 그대로 → 다시 → 편집기 → 다시 → 그리드. 그리드에서 ↓ 로 D6 → 편집기로 갔다 와도 D6, 편집기 커서(문서 끝)도 오가도 같은 자리. 트리(`Ctrl+Shift+E`)에서 누르면 마지막으로 쓰던 그리드로. 콘솔 오류 없음. (저장하지 않고 레이아웃을 지웠다)
+
+### 57.2 확인하지 못한 것 (TESTCASES §51)
+
+- 창이 셋 이상 · 아래로 나눈 창, 미리보기 전용 모드의 창(미리보기로 가야 한다), 문서 창이 하나뿐일 때의 알림, Mac(`⌘⌥O`).
+
 ## 15. 출처
 
 - 기성품: VS Code mermaid 확장 https://github.com/mjbvz/vscode-markdown-mermaid · Edit CSV https://github.com/janisdd/vscode-edit-csv · SilverBullet https://docs.silverbullet.md/CHANGELOG · Obsidian 메모리 보고 https://forum.obsidian.md/t/question-about-obsidian-software-performance/75588

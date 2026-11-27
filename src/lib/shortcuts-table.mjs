@@ -78,6 +78,7 @@ export const SHORTCUTS = [
       { hint: { at: 'pathBar', label: '목록 닫기 · 문서로 돌아가기' }, keys: 'Esc (경로 막대)', label: '목록을 닫는다. 목록이 없으면 편집기 · 그리드로 돌아간다' },
       { hint: { at: ['tab', 'mdPreview'], label: '다음 영역 (트리 → 창들)' }, keys: 'F6', label: '다음 영역으로 포커스 — 파일 트리 → 탭 묶음들 (분할한 창 사이를 옮긴다)', command: 'nextPane' },
       { keys: 'Shift+F6', label: '이전 영역으로 포커스', command: 'prevPane' },
+      { keys: 'Ctrl+Alt+O', label: '다른 창으로 포커스 — 직전에 쓰던 문서 창으로. 다시 누르면 돌아온다(시트 창 ↔ 문서 창). 트리에 있으면 마지막으로 쓰던 문서 창으로. 창마다 커서 · 선택 · 스크롤은 그대로', command: 'focusOtherPane' },
       { hint: { at: ['md', 'mdPreview'], when: 'markdown', label: '보기 모드 바꾸기' }, keys: 'Ctrl+Shift+V', label: '마크다운 보기 모드 순환: 소스 → 하이브리드 → 분할 → 미리보기', command: 'cycleMdMode' },
       { hint: { at: 'md', label: '훑어보기 패널' }, keys: 'Ctrl+Alt+M', label: '훑어보기 패널 켜기 / 끄기 — .md · .txt 창의 오른쪽에 문서 전체를 축소해 띄운다 (문서 창이 하나일 때만 보인다). 누르면 그 자리로 커서, 상자는 편집기가 보여 주는 범위 — 끌면 스크롤. 다시 그리는 데 오래 걸리는 큰 문서는 자동으로 다시 그리지 않는다 — 패널의 "새로 고침" 또는 팔레트의 "훑어보기 패널 새로 고침"', command: 'toggleSkim' },
       { hint: { at: 'md', when: 'hybrid', label: '목차로' }, keys: 'Ctrl+Alt+T', label: '목차로 포커스 — 마크다운 창이 하이브리드 모드일 때 왼쪽에 뜨는 제목 목록(꺼져 있으면 켠다, 목차에서 다시 누르면 편집기로). 지금 보이는 절의 제목이 칠해지고, 누르면 그 제목으로 간다. 보이기 / 숨기기는 창 막대의 "목차" 버튼 또는 팔레트의 "목차 보이기 / 숨기기". 창이 좁으면 숨는다', command: 'focusOutline' },
